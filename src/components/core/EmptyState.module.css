@@ -1,0 +1,14 @@
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-8);
+  gap: var(--space-3);
+}
+
+.icon { color: var(--color-text-muted); font-size: 32px; }
+.title { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
+.description { font-size: var(--font-size-body); color: var(--color-text-tertiary); max-width: 360px; line-height: 1.6; }
+.action { margin-top: var(--space-2); }

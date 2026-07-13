@@ -1,0 +1,76 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-easing),
+              color var(--motion-fast) var(--motion-easing),
+              opacity var(--motion-fast) var(--motion-easing);
+  white-space: nowrap;
+  position: relative;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Sizes */
+.btn--sm  { padding: var(--space-1) var(--space-3); font-size: var(--font-size-meta); }
+.btn--md  { padding: var(--space-2) var(--space-4); font-size: var(--font-size-body); }
+.btn--lg  { padding: var(--space-3) var(--space-6); font-size: 15px; }
+
+/* Variants */
+.btn--primary {
+  background: var(--color-accent-primary);
+  color: #fff;
+}
+.btn--primary:hover:not(:disabled) { background: var(--color-accent-hover); }
+.btn--primary:active:not(:disabled) { background: var(--color-accent-active); }
+
+.btn--secondary {
+  background: var(--color-bg-surface-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+}
+.btn--secondary:hover:not(:disabled) { background: var(--color-bg-surface-alt); }
+
+.btn--tertiary {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+.btn--tertiary:hover:not(:disabled) { color: var(--color-text-primary); background: var(--color-accent-soft); }
+
+.btn--destructive {
+  background: var(--color-state-error);
+  color: #fff;
+}
+.btn--destructive:hover:not(:disabled) { opacity: 0.88; }
+
+/* Loading */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}
+
+.btn__label--loading { opacity: 0.6; }

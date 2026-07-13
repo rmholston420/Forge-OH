@@ -1,0 +1,21 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  text-transform: lowercase;
+  letter-spacing: 0.01em;
+}
+
+.badge--sm { padding: 2px var(--space-2); font-size: var(--font-size-meta); }
+.badge--md { padding: 3px var(--space-3); font-size: var(--font-size-meta); }
+
+.badge--default  { background: var(--color-bg-surface-elevated); color: var(--color-text-secondary); }
+.badge--success  { background: rgba(53,196,124,0.15); color: var(--color-text-success); }
+.badge--warning  { background: rgba(242,184,75,0.15); color: var(--color-text-warning); }
+.badge--error    { background: rgba(240,97,107,0.15); color: var(--color-text-error); }
+.badge--paused   { background: rgba(194,139,255,0.15); color: var(--color-state-paused); }
+.badge--running  { background: var(--color-accent-soft); color: var(--color-state-running); }
+.badge--accent   { background: var(--color-accent-soft); color: var(--color-text-accent); }
+.badge--muted    { background: var(--color-bg-surface-alt); color: var(--color-text-muted); }
