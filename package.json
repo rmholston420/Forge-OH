@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "triage:browser": "playwright test src/tests/e2e/browser-triage.spec.ts",
+    "triage:browser:headed": "playwright test src/tests/e2e/browser-triage.spec.ts --headed"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.99.1",
