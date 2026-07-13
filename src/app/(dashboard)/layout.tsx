@@ -1,43 +1,53 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/navigation/Sidebar';
 import { Topbar } from '@/components/navigation/Topbar';
 import { CommandPalette } from '@/components/navigation/CommandPalette';
+import { useAppStore } from '@/lib/state/app-store';
 import styles from './dashboard.module.css';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [cmdOpen, setCmdOpen] = useState(false);
+  const router = useRouter();
+
+  // Single source of truth for sidebar + command palette state lives in
+  // Zustand (app-store). Previously, local useState duplicated this state,
+  // meaning any component reading useAppStore would see stale values.
+  const sidebarExpanded     = useAppStore((s) => s.sidebarExpanded);
+  const toggleSidebar       = useAppStore((s) => s.toggleSidebar);
+  const commandPaletteOpen  = useAppStore((s) => s.commandPaletteOpen);
+  const toggleCommandPalette = useAppStore((s) => s.toggleCommandPalette);
+  const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setCmdOpen((v) => !v);
+        toggleCommandPalette();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [toggleCommandPalette]);
 
   return (
     <div className={styles.shell}>
-      <Sidebar collapsed={sidebarCollapsed} onToggle={setSidebarCollapsed} />
-      <Topbar onCommandPaletteOpen={() => setCmdOpen(true)} />
+      <Sidebar collapsed={!sidebarExpanded} onToggle={toggleSidebar} />
+      <Topbar onCommandPaletteOpen={() => setCommandPaletteOpen(true)} />
       <main
-        className={[styles.content, sidebarCollapsed ? styles['content--collapsed'] : ''].join(' ')}
+        className={[styles.content, !sidebarExpanded ? styles['content--collapsed'] : ''].join(' ')}
         id="main-content"
       >
         {children}
       </main>
       <CommandPalette
-        open={cmdOpen}
-        onClose={() => setCmdOpen(false)}
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
         commands={[
-          { id: 'goto-runs', label: 'Go to Runs', action: () => window.location.assign('/runs') },
-          { id: 'goto-workspaces', label: 'Go to Workspaces', action: () => window.location.assign('/workspaces') },
-          { id: 'goto-settings', label: 'Go to Settings', action: () => window.location.assign('/settings') },
+          { id: 'goto-runs',       label: 'Go to Runs',       action: () => router.push('/runs') },
+          { id: 'goto-workspaces', label: 'Go to Workspaces', action: () => router.push('/workspaces') },
+          { id: 'goto-settings',  label: 'Go to Settings',   action: () => router.push('/settings') },
         ]}
       />
     </div>

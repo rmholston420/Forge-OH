@@ -1,33 +1,21 @@
 from fastapi import APIRouter, HTTPException, Header
-from pydantic import BaseModel, EmailStr
-from typing import Optional, Literal
-import hashlib, secrets, time
+from pydantic import BaseModel
+import secrets
+
+from bff.auth_state import _TOKENS, _DEMO_USERS, SessionUser
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
 
 class LoginRequest(BaseModel):
     email: str
     password: str
 
-class SessionUser(BaseModel):
-    id: str
-    email: str
-    name: str
-    role: Literal["admin", "developer", "viewer"]
-    avatarUrl: Optional[str] = None
 
 class TokenResponse(BaseModel):
     token: str
     user: SessionUser
 
-_DEMO_USERS = [
-    SessionUser(id="1", email="admin@forge.dev",  name="Admin",     role="admin"),
-    SessionUser(id="2", email="dev@forge.dev",    name="Developer", role="developer"),
-    SessionUser(id="3", email="viewer@forge.dev", name="Viewer",    role="viewer"),
-]
-
-# In-memory token store (replace with JWT in production)
-_TOKENS: dict[str, str] = {}  # token -> user_id
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest):
@@ -38,11 +26,13 @@ def login(body: LoginRequest):
     _TOKENS[token] = user.id
     return TokenResponse(token=token, user=user)
 
+
 @router.post("/logout")
 def logout(authorization: str = Header(default="")):
     token = authorization.removeprefix("Bearer ").strip()
     _TOKENS.pop(token, None)
     return {"ok": True}
+
 
 @router.get("/me", response_model=SessionUser)
 def me(authorization: str = Header(default="")):

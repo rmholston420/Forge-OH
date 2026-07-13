@@ -11,29 +11,36 @@ const DEMO_USERS: SessionUser[] = [
   { id: '3', email: 'viewer@forge.dev',    name: 'Viewer',    role: 'viewer' },
 ];
 
+// Build the providers array conditionally so GitHub OAuth is only registered
+// when real credentials are present. An empty string passed to the GitHub
+// provider registers it as enabled but causes a cryptic client_id error at
+// the OAuth redirect — undefined correctly disables it.
+const githubClientId     = process.env.GITHUB_CLIENT_ID     || undefined;
+const githubClientSecret = process.env.GITHUB_CLIENT_SECRET || undefined;
+
+const providers = [
+  Credentials({
+    credentials: {
+      email:    { label: 'Email',    type: 'email'    },
+      password: { label: 'Password', type: 'password' },
+    },
+    async authorize(credentials) {
+      const parsed = LoginRequestSchema.safeParse(credentials);
+      if (!parsed.success) return null;
+      const user = DEMO_USERS.find(u => u.email === parsed.data.email);
+      if (!user) return null;
+      // In production: bcrypt.compare(parsed.data.password, user.passwordHash)
+      return { id: user.id, email: user.email, name: user.name,
+               role: user.role } as any;
+    },
+  }),
+  ...(githubClientId && githubClientSecret
+    ? [GitHub({ clientId: githubClientId, clientSecret: githubClientSecret })]
+    : []),
+];
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [
-    Credentials({
-      credentials: {
-        email:    { label: 'Email',    type: 'email'    },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        const parsed = LoginRequestSchema.safeParse(credentials);
-        if (!parsed.success) return null;
-        // Demo: any password >= 8 chars works for demo users
-        const user = DEMO_USERS.find(u => u.email === parsed.data.email);
-        if (!user) return null;
-        // In production: bcrypt.compare(parsed.data.password, user.passwordHash)
-        return { id: user.id, email: user.email, name: user.name,
-                 role: user.role } as any;
-      },
-    }),
-    GitHub({
-      clientId:     process.env.GITHUB_CLIENT_ID     ?? '',
-      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? '',
-    }),
-  ],
+  providers,
   session: { strategy: 'jwt' },
   callbacks: {
     jwt({ token, user }) {

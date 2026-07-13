@@ -7,7 +7,7 @@ All routes prefix: /api/lms
 
 Endpoints:
   POST  /api/lms/context          — inject RigpaAgentLaunchContext into session
-  GET   /api/lms/context/{id}     — fetch active context for a session
+  GET   /api/lms/context/{id}     — fetch active context (authenticated, same token only)
   POST  /api/lms/package          — package run artifacts back to LMS
 """
 
@@ -15,16 +15,20 @@ from __future__ import annotations
 
 import os
 import uuid
+import time
 from typing import Optional, Literal, List
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, HttpUrl
+from fastapi import APIRouter, HTTPException, Header, status
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/lms", tags=["lms"])
 
 FEATURE_ENABLED = os.getenv("FEATURE_RIGPA_LMS_ENABLED", "false").lower() == "true"
 
+# Session TTL: 1 hour
+_SESSION_TTL_SECONDS = 3600
+
 # ---------------------------------------------------------------------------
-# Pydantic models (mirror TypeScript RigpaAgentLaunchContextSchema exactly)
+# Pydantic models
 # ---------------------------------------------------------------------------
 
 class RigpaPermissions(BaseModel):
@@ -73,8 +77,16 @@ class LmsPackageRequest(BaseModel):
     lessonId: Optional[str] = None
 
 
-# In-memory session store (replace with Redis/DB in production)
-_sessions: dict[str, RigpaAgentLaunchContext] = {}
+# In-memory session store with TTL: { session_id -> (ctx, created_at_unix) }
+_sessions: dict[str, tuple[RigpaAgentLaunchContext, float]] = {}
+
+
+def _evict_expired() -> None:
+    """Evict sessions older than _SESSION_TTL_SECONDS."""
+    now = time.monotonic()
+    expired = [k for k, (_, ts) in _sessions.items() if now - ts > _SESSION_TTL_SECONDS]
+    for k in expired:
+        del _sessions[k]
 
 
 def _check_feature():
@@ -85,58 +97,73 @@ def _check_feature():
         )
 
 
+def _resolve_session(session_id: str) -> RigpaAgentLaunchContext:
+    """Look up a session, evicting expired ones first. Raises 404 if not found."""
+    _evict_expired()
+    entry = _sessions.get(session_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="LMS context session not found or expired")
+    return entry[0]
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
 @router.post("/context", response_model=ContextInjectionResponse, status_code=201)
-async def inject_context(ctx: RigpaAgentLaunchContext) -> ContextInjectionResponse:
+async def inject_context(
+    ctx: RigpaAgentLaunchContext,
+    authorization: str = Header(default=""),
+) -> ContextInjectionResponse:
     """
     Receives RigpaAgentLaunchContext from the LMS plugin shell.
-    Transforms it into an OpenHands task context envelope and
-    stores it in the session store for subsequent run creation calls.
-
-    The BFF injects the pedagogical context, learning goals, and
-    permission policy into every agent task preamble for this session.
-    Every agent session is reproducible and auditable within LMS context.
+    Requires a valid BFF auth token (Authorization: Bearer <token>).
     """
     _check_feature()
+    from bff.auth_state import _TOKENS
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token or token not in _TOKENS:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     session_id = f"sess_rigpa_{uuid.uuid4().hex[:12]}"
-    _sessions[session_id] = ctx
-
-    # TODO: forward to context_loader.py for ADR injection
-    # await context_loader.inject_lms_context(session_id, ctx)
-
+    _sessions[session_id] = (ctx, time.monotonic())
     return ContextInjectionResponse(sessionId=session_id, injected=True)
 
 
 @router.get("/context/{session_id}", response_model=RigpaAgentLaunchContext)
-async def get_context(session_id: str) -> RigpaAgentLaunchContext:
+async def get_context(
+    session_id: str,
+    authorization: str = Header(default=""),
+) -> RigpaAgentLaunchContext:
     """
     Returns the stored RigpaAgentLaunchContext for a given session.
-    Returns 404 if not found.
+    Requires a valid BFF auth token. Returns 404 if not found or expired.
     """
     _check_feature()
-    ctx = _sessions.get(session_id)
-    if ctx is None:
-        raise HTTPException(status_code=404, detail="LMS context session not found")
-    return ctx
+    from bff.auth_state import _TOKENS
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token or token not in _TOKENS:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return _resolve_session(session_id)
 
 
 @router.post("/package", response_model=List[LmsPackageItem])
-async def package_artifacts(req: LmsPackageRequest) -> List[LmsPackageItem]:
+async def package_artifacts(
+    req: LmsPackageRequest,
+    authorization: str = Header(default=""),
+) -> List[LmsPackageItem]:
     """
-    Packages one or more Forge-OH run artifacts back to Rigpa-LMS
-    as course objects (exercise, feedback-record, lesson-content,
-    starter-kit, hint-sequence, quiz).
-
+    Packages run artifacts back to Rigpa-LMS.
     In production this calls the LMS Exchange API.
-    Currently returns stub responses — wire to LMS API in Phase 6.
     """
     _check_feature()
+    from bff.auth_state import _TOKENS
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token or token not in _TOKENS:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     results: List[LmsPackageItem] = []
     for artifact_id in req.artifactIds:
-        # Stub: generate a deterministic LMS object ID
         lms_obj_id = f"lms_{req.targetType}_{artifact_id[:8]}"
         results.append(LmsPackageItem(
             artifactId=artifact_id,

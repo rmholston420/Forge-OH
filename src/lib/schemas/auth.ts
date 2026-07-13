@@ -3,12 +3,41 @@ import { z } from 'zod';
 export const RoleSchema = z.enum(['admin', 'developer', 'viewer']);
 export type Role = z.infer<typeof RoleSchema>;
 
+/**
+ * Allowlisted domains for OAuth avatar URLs.
+ * Prevents SSRF and user-tracking pixel injection via crafted OAuth tokens.
+ */
+const AVATAR_ALLOWED_HOSTNAMES = [
+  'avatars.githubusercontent.com',
+  'lh3.googleusercontent.com',
+  'secure.gravatar.com',
+  'cdn.discordapp.com',
+];
+
+const safeAvatarUrl = z
+  .string()
+  .url()
+  .refine(
+    (url) => {
+      try {
+        const { hostname } = new URL(url);
+        return AVATAR_ALLOWED_HOSTNAMES.some(
+          (allowed) => hostname === allowed || hostname.endsWith('.' + allowed),
+        );
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Avatar URL must be from an allowed provider' },
+  )
+  .optional();
+
 export const SessionUserSchema = z.object({
   id:        z.string(),
   email:     z.string().email(),
   name:      z.string(),
   role:      RoleSchema,
-  avatarUrl: z.string().url().optional(),
+  avatarUrl: safeAvatarUrl,
 });
 export type SessionUser = z.infer<typeof SessionUserSchema>;
 

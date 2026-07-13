@@ -22,8 +22,8 @@ export type ActiveRoute =
   | 'plugins'
   | 'observability'
   | 'settings'
-  | 'secrets'
-  | 'providers';
+  | 'secrets';
+  // Note: 'providers' was removed — no dashboard page exists for that route.
 
 export interface AppState {
   /** Whether the left sidebar is in its expanded (248px) state. */

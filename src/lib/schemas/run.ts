@@ -10,6 +10,7 @@ export const RunStatusSchema = z.enum([
   'succeeded',
   'failed',
   'blocked',
+  'stopped',   // terminal state: user-initiated stop (distinct from failed)
 ]);
 
 export type RunStatus = z.infer<typeof RunStatusSchema>;
@@ -39,7 +40,6 @@ export const RunDetailUIStateSchema = z.object({
   diffMode: z.enum(['split', 'unified']),
   inspectorOpen: z.boolean(),
   latestStreamEventId: z.number(),
-  pendingApprovalBanner: z.boolean(),
 });
 
 export type RunDetailUIState = z.infer<typeof RunDetailUIStateSchema>;
