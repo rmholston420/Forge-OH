@@ -11,7 +11,15 @@ export const RunStatusSchema = z.enum([
   'succeeded',
   'awaiting_approval',
   'pending_approval',
+  'blocked',
 ]);
+
+export const RunRoutingSchema = z.object({
+  taskComplexity: z.string(),
+  contextLength: z.number(),
+  selected: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
+});
 
 export const RunSchema = z.object({
   id: z.string().min(1),
@@ -28,6 +36,8 @@ export const RunSchema = z.object({
   durationMs: z.number().optional(),
   costUsd: z.number().optional(),
   estimatedCostUsd: z.number().nullable().optional(),
+  selectedModel: z.string().optional().nullable(),
+  routing: RunRoutingSchema.optional(),
 });
 
 export type Run = z.infer<typeof RunSchema>;
@@ -47,6 +57,8 @@ export const RunSummarySchema = z.object({
   durationMs: z.number().optional(),
   costUsd: z.number().optional(),
   estimatedCostUsd: z.number().nullable().optional(),
+  selectedModel: z.string().optional().nullable(),
+  routing: RunRoutingSchema.optional(),
 });
 
 export type RunSummary = z.infer<typeof RunSummarySchema>;
