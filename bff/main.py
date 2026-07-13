@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import socketio
+import os
 
 from bff.routers import (
     agent_presets,
@@ -19,12 +20,19 @@ from bff.routers import (
 
 app = FastAPI()
 
-# TODO(foh-phase2): restrict allow_origins to the actual frontend origin
-# before any production deployment.
+# CORS — use a specific origin in production via FRONTEND_ORIGIN env var.
+# allow_credentials=True is incompatible with allow_origins=["*"] per the CORS spec;
+# browsers will block all credentialed requests. We either allow a wildcard without
+# credentials, or we specify exact origins with credentials. In dev, the wildcard
+# without credentials is sufficient. Set FRONTEND_ORIGIN for production.
+_frontend_origin = os.getenv("FRONTEND_ORIGIN", "")
+_allow_origins = [_frontend_origin] if _frontend_origin else ["*"]
+_allow_credentials = bool(_frontend_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -43,4 +51,9 @@ app.include_router(settings.router, prefix="/api")
 app.include_router(workspaces.router, prefix="/api")
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+
+# CRITICAL: The canonical ASGI entry point is app_with_sio, NOT app.
+# Uvicorn must be started with: uvicorn bff.main:app_with_sio
+# Starting with bff.main:app silently bypasses the Socket.IO server
+# and all WebSocket connections will fail.
 app_with_sio = socketio.ASGIApp(sio, other_asgi_app=app)
