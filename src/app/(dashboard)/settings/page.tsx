@@ -17,7 +17,7 @@ const TABS = [
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = useSettings();
-  const { data: routingStatus, isLoading: routingLoading } = useModelRoutingStatus();
+  const { data: routingStatus, isLoading: routingLoading, isFetching: routingFetching, refetch: refetchRoutingStatus } = useModelRoutingStatus();
   const { data: presetsData } = useAgentPresets();
   const updateMutation = useUpdateSettings();
   const resetMutation  = useResetSettings();
@@ -25,6 +25,12 @@ export default function SettingsPage() {
           resetConfirmOpen, setResetConfirmOpen } = useSettingsStore();
 
   const [draft, setDraft] = useState<Partial<Settings>>({});
+
+  function healthBadgeClasses(healthy: boolean) {
+    return healthy
+      ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900'
+      : 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900';
+  }
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
@@ -113,8 +119,28 @@ export default function SettingsPage() {
                 Live backend diagnostics for Ollama-first and vLLM-backup routing.
               </p>
             </div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-400">
-              {routingLoading ? 'Refreshing…' : 'Live'}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {routingStatus && (
+                <>
+                  <span className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${healthBadgeClasses(routingStatus.ollamaPrimaryHealthy)}`}>
+                    Ollama primary: {routingStatus.ollamaPrimaryHealthy ? 'Healthy' : 'Unavailable'}
+                  </span>
+                  <span className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${healthBadgeClasses(routingStatus.ollamaFastHealthy)}`}>
+                    Ollama fast: {routingStatus.ollamaFastHealthy ? 'Healthy' : 'Unavailable'}
+                  </span>
+                  <span className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${healthBadgeClasses(routingStatus.vllmHealthy)}`}>
+                    vLLM: {routingStatus.vllmHealthy ? 'Healthy' : 'Unavailable'}
+                  </span>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => refetchRoutingStatus()}
+                className="inline-flex items-center rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium transition hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+                disabled={routingFetching}
+              >
+                {routingFetching || routingLoading ? 'Refreshing…' : 'Refresh diagnostics'}
+              </button>
             </div>
           </div>
 
