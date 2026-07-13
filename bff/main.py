@@ -1,3 +1,19 @@
+"""
+bff/main.py
+
+FastAPI application entry-point.
+
+CRITICAL — two constraints that must never be changed without a migration plan:
+
+1. The ASGI entry point is ``bff.main:app_with_sio`` (the Socket.IO ASGI
+   wrapper), NOT ``bff.main:app``.  Starting uvicorn with ``bff.main:app``
+   silently bypasses the Socket.IO server; all WebSocket connections fail.
+
+2. ``--workers 1`` is intentional.  The in-memory ``_TOKENS`` dict in
+   ``bff/auth_state.py`` is process-local.  With multiple workers a token
+   issued by worker-A will 401 on worker-B.  Replace ``_TOKENS`` with
+   Redis or JWT before increasing the worker count.
+"""
 from contextlib import asynccontextmanager
 import os
 
@@ -19,27 +35,29 @@ from bff.routers import (
     settings,
     workspaces,
 )
-from bff.openhands_client import get_openhands_client
+from bff.openhands_client import startup as oh_startup, shutdown as oh_shutdown
+from bff.services import episodic_memory
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Eagerly initialise the singleton so connection errors surface at startup.
-    await get_openhands_client()
+    # Initialise shared OpenHands httpx client.
+    await oh_startup()
+    # Initialise shared aiosqlite connection for episodic memory.
+    await episodic_memory.init_db(app)
     yield
-    # Graceful shutdown: close the shared httpx client.
-    from bff.openhands_client import _client  # noqa: PLC0415
-    if _client is not None:
-        await _client.aclose()
+    # Graceful shutdown.
+    await oh_shutdown()
+    await episodic_memory.close_db(app)
 
 
 app = FastAPI(lifespan=lifespan)
 
 # CORS — use a specific origin in production via FRONTEND_ORIGIN env var.
-# allow_credentials=True is incompatible with allow_origins=["*"] per the CORS spec;
-# browsers will block all credentialed requests. We either allow a wildcard without
-# credentials, or we specify exact origins with credentials. In dev, the wildcard
-# without credentials is sufficient. Set FRONTEND_ORIGIN for production.
+# allow_credentials=True is incompatible with allow_origins=["*"] per the
+# CORS spec; browsers block credentialed requests to a wildcard origin.
+# In dev the wildcard without credentials is sufficient.
+# Set FRONTEND_ORIGIN for production.
 _frontend_origin = os.getenv("FRONTEND_ORIGIN", "")
 _allow_origins = [_frontend_origin] if _frontend_origin else ["*"]
 _allow_credentials = bool(_frontend_origin)
@@ -67,8 +85,6 @@ app.include_router(workspaces.router, prefix="/api")
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
-# CRITICAL: The canonical ASGI entry point is app_with_sio, NOT app.
-# Uvicorn must be started with: uvicorn bff.main:app_with_sio
-# Starting with bff.main:app silently bypasses the Socket.IO server
-# and all WebSocket connections will fail.
+# ASGI entry-point: app_with_sio wraps the FastAPI app so Socket.IO
+# upgrade requests are intercepted before reaching FastAPI.
 app_with_sio = socketio.ASGIApp(sio, other_asgi_app=app)

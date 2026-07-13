@@ -1,3 +1,13 @@
+"""
+bff/routers/settings.py
+
+Settings router — UI preferences + model-routing probe endpoint.
+
+Naming note: local handler functions are suffixed _handler to avoid
+shadowing the `get_settings` name imported from bff.settings (Pydantic
+Settings singleton). Previously the collision caused the GET /api/settings
+endpoint to return the Pydantic Settings object instead of SettingsResponse.
+"""
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Literal, Optional
@@ -70,16 +80,16 @@ _SETTINGS = SettingsResponse()
 
 
 # NOTE: routes use "" (empty string) not "/" to avoid FastAPI registering
-# /api/settings/ with a trailing slash, which would cause 307 redirects
-# for clients that request /api/settings (no slash).
+# /api/settings/ with a trailing slash, which causes 307 redirects for
+# clients that request /api/settings (no slash).
 
 @router.get("", response_model=SettingsResponse)
-def get_settings():
+def get_settings_handler():
     return _SETTINGS
 
 
 @router.patch("", response_model=SettingsResponse)
-def update_settings(patch: SettingsPatch):
+def update_settings_handler(patch: SettingsPatch):
     global _SETTINGS
     data = _SETTINGS.model_dump()
     for field, value in patch.model_dump(exclude_none=True).items():
@@ -89,14 +99,14 @@ def update_settings(patch: SettingsPatch):
 
 
 @router.post("/reset", response_model=SettingsResponse)
-def reset_settings():
+def reset_settings_handler():
     global _SETTINGS
     _SETTINGS = SettingsResponse()
     return _SETTINGS
 
 
 @router.get("/model-routing", response_model=ModelRoutingStatus)
-async def get_model_routing():
+async def get_model_routing_handler():
     probes: list[RoutingProbe] = []
     scenarios = [
         ("agentic", 8000),

@@ -13,14 +13,16 @@ class CreateRunRequest(BaseModel):
     title: str
     agentPresetId: str
     workspaceId: str
-    contextPrompt: Optional[str] = None
+    # taskPrompt matches the canonical CreateRunRequest in lib/schemas/run.ts.
+    # Previously named contextPrompt which caused field-not-found on POST /api/runs.
+    taskPrompt: Optional[str] = None
     taskComplexity: Optional[str] = None
     contextLength: Optional[int] = None
 
 
 @router.get("/runs")
 async def list_runs() -> dict:
-    return {"data": [], "stub": True}
+    return {"data": [], "pageInfo": {"total": 0, "page": 1, "pageSize": 20}, "stub": True}
 
 
 @router.post("/runs")
@@ -29,7 +31,7 @@ async def create_run(
     _: None = Depends(require_role("write")),
 ) -> dict:
     task_complexity = body.taskComplexity or "agentic"
-    context_length = body.contextLength if body.contextLength is not None else len(body.contextPrompt or "")
+    context_length = body.contextLength if body.contextLength is not None else len(body.taskPrompt or "")
 
     try:
         selected_model = await route_request(task_complexity, context_length)
@@ -46,8 +48,8 @@ async def create_run(
         "workspaceId": body.workspaceId,
         "workspaceType": "local",
         "activeTool": None,
-        "updatedAt": "2026-07-12T00:00:00Z",
-        "createdAt": "2026-07-12T00:00:00Z",
+        "updatedAt": "2026-07-13T00:00:00Z",
+        "createdAt": "2026-07-13T00:00:00Z",
         "elapsedMs": None,
         "estimatedCostUsd": None,
         "selectedModel": selected_model,
@@ -65,14 +67,6 @@ async def compare_runs(
     base: str = Query(..., description="Base run ID"),
     fork: str = Query(..., description="Fork run ID"),
 ) -> dict:
-    """
-    GET /api/runs/compare?base=<id>&fork=<id>
-
-    Returns a file-level diff between a base run and its fork.
-    Stub implementation — real implementation will proxy to OpenHandsClient
-    workspace snapshot diffing once the OpenHands conversation/snapshot API
-    is confirmed stable.
-    """
     return {
         "data": {
             "baseRunId": base,
@@ -80,11 +74,7 @@ async def compare_runs(
             "baseTitle": f"Run {base[:8]}",
             "forkTitle": f"Run {fork[:8]} (fork)",
             "files": [],
-            "stats": {
-                "totalFiles": 0,
-                "additions": 0,
-                "deletions": 0,
-            },
+            "stats": {"totalFiles": 0, "additions": 0, "deletions": 0},
         },
         "stub": True,
     }
@@ -107,13 +97,11 @@ async def get_run_plan(run_id: str) -> dict:
 
 @router.get("/runs/{run_id}/files")
 async def get_run_files(run_id: str) -> dict:
-    """GET /api/runs/:id/files — file change summary list."""
     return {"data": [], "stub": True}
 
 
 @router.get("/runs/{run_id}/files/{file_path:path}")
 async def get_run_file_diff(run_id: str, file_path: str) -> dict:
-    """GET /api/runs/:id/files/:path — full diff for one file."""
     return {"data": None, "stub": True, "path": file_path}
 
 
@@ -177,12 +165,4 @@ async def fork_run(
     run_id: str,
     _: None = Depends(require_role("write")),
 ) -> dict:
-    """
-    POST /api/runs/:id/fork
-
-    Creates a new run forked from an existing one. The fork copies the
-    workspace snapshot, agent preset, and context prompt of the base run.
-    Stub — real implementation will call OpenHandsClient.create_run with
-    a fork_of parameter once the OpenHands fork API is confirmed.
-    """
-    return {"ok": True, "run_id": run_id, "forked_id": f"{run_id}-fork-1"}
+    return {"ok": True, "run_id": run_id, "forked_id": f"{run_id}-fork-1", "stub": True}

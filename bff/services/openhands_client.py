@@ -1,38 +1,21 @@
-import os
-from typing import Any, Dict, Optional
+"""
+bff/services/openhands_client.py
 
-import httpx
+Backward-compatibility shim.
 
-OPENHANDS_AGENT_SERVER_BASE_URL = os.getenv(
-    "OPENHANDS_AGENT_SERVER_BASE_URL", "http://localhost:8090"
-).rstrip("/")
+The canonical OpenHands HTTP client lives at bff/openhands_client.py
+(module-level singleton with startup/shutdown lifecycle helpers).
 
+This file previously contained a class-based duplicate (OpenHandsClient)
+that maintained its own httpx.AsyncClient per-instance, bypassing the
+shared lifespan-managed connection and hardcoding port 8080.
 
-class OpenHandsClient:
-    """
-    Thin HTTP client for the external OpenHands Agent Server.
+All new code should import from bff.openhands_client directly:
+    from bff.openhands_client import get_client, startup, shutdown
 
-    The BFF uses this client; the frontend never talks directly to OpenHands.
-    """
+This shim re-exports the essentials so any existing import of
+bff.services.openhands_client continues to resolve without errors.
+"""
+from bff.openhands_client import get_client, startup, shutdown  # noqa: F401
 
-    def __init__(self, base_url: Optional[str] = None) -> None:
-        self.base_url = (base_url or OPENHANDS_AGENT_SERVER_BASE_URL).rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self.base_url, timeout=30.0)
-
-    async def create_run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        resp = await self._client.post("/api/runs", json=payload)
-        resp.raise_for_status()
-        return resp.json()
-
-    async def get_run(self, run_id: str) -> Dict[str, Any]:
-        resp = await self._client.get(f"/api/runs/{run_id}")
-        resp.raise_for_status()
-        return resp.json()
-
-    async def list_events(self, run_id: str) -> Dict[str, Any]:
-        resp = await self._client.get(f"/api/runs/{run_id}/events")
-        resp.raise_for_status()
-        return resp.json()
-
-    async def close(self) -> None:
-        await self._client.aclose()
+__all__ = ["get_client", "startup", "shutdown"]
