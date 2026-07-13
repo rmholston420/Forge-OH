@@ -1,0 +1,53 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-bg-overlay);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 1100;
+}
+
+.palette {
+  background: var(--color-bg-surface-elevated);
+  border: 1px solid var(--color-border-accent);
+  border-radius: var(--radius-xl);
+  width: 560px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+
+.input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  outline: none;
+  padding: var(--space-4);
+  width: 100%;
+}
+.input::placeholder { color: var(--color-text-muted); }
+
+.list { overflow-y: auto; list-style: none; padding: var(--space-2); }
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.item:hover { background: var(--color-bg-surface-alt); }
+
+.label { font-size: var(--font-size-body); color: var(--color-text-primary); flex: 1; }
+.desc { font-size: var(--font-size-meta); color: var(--color-text-muted); }
+.shortcut { font-family: var(--font-mono); font-size: var(--font-size-meta); color: var(--color-text-muted); background: var(--color-bg-surface-alt); padding: 2px 6px; border-radius: var(--radius-sm); }
+
+.empty { padding: var(--space-4); color: var(--color-text-muted); text-align: center; font-size: var(--font-size-body); }
