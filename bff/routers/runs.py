@@ -1,5 +1,5 @@
-"""Runs router — Phase 2 — adds /files endpoints."""
-from fastapi import APIRouter
+"""Runs router — Phase 2 — adds /files, /fork, and /compare endpoints."""
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import Optional
 
@@ -33,6 +33,36 @@ async def create_run(body: CreateRunRequest) -> dict:
         "elapsedMs": None,
         "estimatedCostUsd": None,
     }}
+
+
+@router.get("/runs/compare")
+async def compare_runs(
+    base: str = Query(..., description="Base run ID"),
+    fork: str = Query(..., description="Fork run ID"),
+) -> dict:
+    """
+    GET /api/runs/compare?base=<id>&fork=<id>
+
+    Returns a file-level diff between a base run and its fork.
+    Stub implementation — real implementation will proxy to OpenHandsClient
+    workspace snapshot diffing once the OpenHands conversation/snapshot API
+    is confirmed stable.
+    """
+    return {
+        "data": {
+            "baseRunId": base,
+            "forkRunId": fork,
+            "baseTitle": f"Run {base[:8]}",
+            "forkTitle": f"Run {fork[:8]} (fork)",
+            "files": [],
+            "stats": {
+                "totalFiles": 0,
+                "additions": 0,
+                "deletions": 0,
+            },
+        },
+        "stub": True,
+    }
 
 
 @router.get("/runs/{run_id}")
@@ -104,4 +134,12 @@ async def reject_run(run_id: str) -> dict:
 
 @router.post("/runs/{run_id}/fork")
 async def fork_run(run_id: str) -> dict:
+    """
+    POST /api/runs/:id/fork
+
+    Creates a new run forked from an existing one. The fork copies the
+    workspace snapshot, agent preset, and context prompt of the base run.
+    Stub — real implementation will call OpenHandsClient.create_run with
+    a fork_of parameter once the OpenHands fork API is confirmed.
+    """
     return {"ok": True, "run_id": run_id, "forked_id": f"{run_id}-fork-1"}
