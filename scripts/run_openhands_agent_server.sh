@@ -7,10 +7,13 @@ if [ -f .env ]; then
 fi
 
 OPENHANDS_AGENT_SERVER_HOST="${OPENHANDS_AGENT_SERVER_HOST:-127.0.0.1}"
-OPENHANDS_AGENT_SERVER_PORT="${OPENHANDS_AGENT_SERVER_PORT:-8081}"
+OPENHANDS_AGENT_SERVER_PORT="${OPENHANDS_AGENT_SERVER_PORT:-8090}"
 
-echo "Starting OpenHands SDK Agent Server ${OPENHANDS_SDK_VERSION:-(version from env)} on ${OPENHANDS_AGENT_SERVER_HOST}:${OPENHANDS_AGENT_SERVER_PORT}..."
+echo "Starting external OpenHands Agent Server on ${OPENHANDS_AGENT_SERVER_HOST}:${OPENHANDS_AGENT_SERVER_PORT}..."
+echo "NOTE: This script assumes you start the Agent Server via its own CLI or Docker image."
 
-python -m openhands_sdk.agent_server \
-  --host "${OPENHANDS_AGENT_SERVER_HOST}" \
-  --port "${OPENHANDS_AGENT_SERVER_PORT}"
+# Example Docker placeholder:
+# docker run --rm -p "${OPENHANDS_AGENT_SERVER_PORT}:8080" openhands/agent-server:latest
+
+echo "No concrete agent server command configured yet."
+exit 1

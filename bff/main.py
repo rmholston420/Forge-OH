@@ -17,8 +17,10 @@ from bff.routers import (
     settings,
     workspaces,
 )
+from bff.services.openhands_client import OpenHandsClient
 
 app = FastAPI()
+openhands_client = OpenHandsClient()
 
 # CORS — use a specific origin in production via FRONTEND_ORIGIN env var.
 # allow_credentials=True is incompatible with allow_origins=["*"] per the CORS spec;
@@ -57,3 +59,7 @@ sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 # Starting with bff.main:app silently bypasses the Socket.IO server
 # and all WebSocket connections will fail.
 app_with_sio = socketio.ASGIApp(sio, other_asgi_app=app)
+
+@app.on_event("shutdown")
+async def shutdown_openhands_client() -> None:
+    await openhands_client.close()
