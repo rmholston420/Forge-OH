@@ -1,5 +1,4 @@
 """Loop Guard — detects repetitive agent action cycles and suggests escalation."""
-import hashlib
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque
@@ -18,15 +17,15 @@ class LoopGuard:
         self.threshold = threshold
 
     def fingerprint(self, fp: ActionFingerprint) -> str:
-        key = f"{fp.operation_class}:{fp.target}:{fp.approach}"
-        return hashlib.md5(key.encode()).hexdigest()  # noqa: S324
+        # Raw colon-joined key — no hash needed. The key space is small and
+        # deterministic; hashing adds collision risk with zero benefit here.
+        return f"{fp.operation_class}:{fp.target}:{fp.approach}"
 
     def is_looping(self, fp: ActionFingerprint) -> bool:
         """Return True when the same fingerprint has been seen `threshold` times total.
 
-        Fix: append FIRST, then count. The previous implementation counted before
-        appending, meaning it triggered on the (threshold+1)th occurrence instead
-        of the threshold-th.
+        Append FIRST, then count — ensures detection triggers on the threshold-th
+        occurrence, not the (threshold+1)-th.
         """
         h = self.fingerprint(fp)
         self.history.append(h)          # append first

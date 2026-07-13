@@ -1,10 +1,11 @@
 import secrets as _secrets
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from bff.auth_state import _TOKENS, _DEMO_USERS
+from bff.auth_state import _TOKENS, _DEMO_USERS, _expire_tokens
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,9 +25,10 @@ class LoginRequest(BaseModel):
 
 
 def _issue_token(user: dict) -> dict:
+    _expire_tokens()
     token = _secrets.token_hex(32)
-    # Store user_id string, NOT a dict — rbac.py expects a user_id here.
-    _TOKENS[token] = user["id"]
+    # Store (user_id_string, issued_at) — rbac.py expects a user_id here.
+    _TOKENS[token] = (user["id"], time.monotonic())
     return {"token": token, "user": {"email": user["email"], "role": user["role"]}}
 
 
@@ -65,15 +67,17 @@ def logout(authorization: Optional[str] = Header(default=None, alias="Authorizat
             _TOKENS.pop(token, None)
         except HTTPException:
             pass
+    _expire_tokens()
     return {"ok": True}
 
 
 @router.get("/me")
 def me(authorization: Optional[str] = Header(default=None, alias="Authorization")):
     token = _parse_token(authorization)
-    user_id = _TOKENS.get(token)
-    if not user_id:
+    entry = _TOKENS.get(token)
+    if not entry:
         raise HTTPException(status_code=401, detail="Invalid token")
+    user_id, _issued_at = entry
     user = next((u for u in _DEMO_USERS if u.id == user_id), None)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")

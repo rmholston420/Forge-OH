@@ -1,3 +1,4 @@
+import secrets as _secrets
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel
 from typing import Optional, Literal
@@ -11,6 +12,13 @@ FEATURE_ENABLED = True
 _SESSION_TTL_SECONDS = 3600
 # Sessions: session_id -> (context_dict, created_at_monotonic)
 _sessions: dict[str, tuple[dict, float]] = {}
+
+# Safe top-level fields from the LMS context body that are allowed
+# to be echoed back in the creation response. Raw body is NEVER spread.
+_SAFE_ECHO_FIELDS = frozenset({
+    "courseId", "studentId", "assignmentId", "moduleId",
+    "targetType", "contextType", "locale",
+})
 
 
 class PackageRequest(BaseModel):
@@ -61,14 +69,19 @@ def create_context(
 ):
     _guard_feature_enabled()
     _require_auth(authorization)
+    _evict_expired()  # run eviction on every write, not just reads
 
-    session_id = f"sess_rigpa_{int(time.time() * 1000000)}"
+    # Use a cryptographically random session ID — not wall-clock microseconds.
+    session_id = f"sess_rigpa_{_secrets.token_hex(16)}"
     _sessions[session_id] = (body, _now())
 
     response.status_code = 201
-    # Flat response shape: {injected, sessionId, ...context_fields}
-    # test_lms.py asserts body["injected"] is True and body["sessionId"] at top level.
-    return {"injected": True, "sessionId": session_id, **body}
+    # Only echo back a safe allow-listed subset of body fields.
+    # Never spread the raw body dict — callers must not be able to
+    # smuggle secret-like field names (e.g. "token", "password") into
+    # the response envelope.
+    safe_echo = {k: body[k] for k in _SAFE_ECHO_FIELDS if k in body}
+    return {"injected": True, "sessionId": session_id, **safe_echo}
 
 
 @router.get("/context/{session_id}")

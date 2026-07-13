@@ -13,6 +13,7 @@ from pathlib import Path
 @dataclass
 class ConflictReport:
     has_conflicts: bool
+    check_available: bool = True  # False when git is absent or timed out
     conflicting_files: list[str] = field(default_factory=list)
     auto_resolved: list[str] = field(default_factory=list)
     requires_human: list[str] = field(default_factory=list)
@@ -34,19 +35,27 @@ class ConflictChecker:
                 timeout=30,
             )
             if result.returncode == 0:
-                return ConflictReport(has_conflicts=False, summary="Clean merge")
+                return ConflictReport(has_conflicts=False, check_available=True, summary="Clean merge")
 
             conflicting = self._parse_conflicts(result.stdout)
             return ConflictReport(
                 has_conflicts=True,
+                check_available=True,
                 conflicting_files=conflicting,
                 requires_human=conflicting,
                 summary=f"{len(conflicting)} file(s) with conflicts require human review.",
             )
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        except subprocess.TimeoutExpired:
             return ConflictReport(
                 has_conflicts=False,
-                summary=f"Conflict check unavailable: {e}",
+                check_available=False,
+                summary="Conflict check timed out — result is inconclusive.",
+            )
+        except FileNotFoundError:
+            return ConflictReport(
+                has_conflicts=False,
+                check_available=False,
+                summary="git not found in this environment — conflict check unavailable.",
             )
 
     def _parse_conflicts(self, output: str) -> list[str]:
@@ -60,6 +69,8 @@ class ConflictChecker:
 
     def format_pr_description(self, report: ConflictReport) -> str:
         """Format conflict report for injection into PR description."""
+        if not report.check_available:
+            return "⚠️ Conflict check unavailable — verify manually before merging."
         if not report.has_conflicts:
             return "✅ No merge conflicts detected."
         lines = [

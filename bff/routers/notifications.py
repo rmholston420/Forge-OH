@@ -60,9 +60,13 @@ def mark_all_read():
 
 @router.delete("/{notification_id}")
 def dismiss(notification_id: str):
-    global _NOTIFICATIONS
+    # Mutate in-place rather than rebinding the module-level list with `global`.
+    # Rebinding _NOTIFICATIONS would create a new list object, leaving any
+    # code that captured the original reference pointing at stale data.
     before = len(_NOTIFICATIONS)
-    _NOTIFICATIONS = [n for n in _NOTIFICATIONS if n.id != notification_id]
-    if len(_NOTIFICATIONS) == before:
+    survivors = [n for n in _NOTIFICATIONS if n.id != notification_id]
+    if len(survivors) == before:
         raise HTTPException(status_code=404, detail="Notification not found")
+    _NOTIFICATIONS.clear()
+    _NOTIFICATIONS.extend(survivors)
     return {"ok": True}
