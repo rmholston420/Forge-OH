@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingsKeys } from '@/lib/query/query-keys';
-import { fetchSettings, updateSettings, resetSettings } from './api';
+import { fetchSettings, updateSettings, resetSettings, fetchModelRoutingStatus } from './api';
 import type { UpdateSettingsRequest } from '@/lib/schemas/settings';
 
 export function useSettings() {
@@ -8,6 +8,14 @@ export function useSettings() {
     queryKey: settingsKeys.all,
     queryFn: fetchSettings,
     staleTime: Infinity, // user-driven, no background poll
+  });
+}
+
+export function useModelRoutingStatus() {
+  return useQuery({
+    queryKey: [...settingsKeys.all, 'model-routing'],
+    queryFn: fetchModelRoutingStatus,
+    refetchInterval: 15000,
   });
 }
 

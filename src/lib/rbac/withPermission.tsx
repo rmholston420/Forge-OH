@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { usePermissions } from './hooks';
 import type { PermissionKey } from './permissions';
+import type { Route } from 'next';
 
 /**
  * HOC that redirects to `redirectTo` if user lacks `permission`.
@@ -18,7 +19,7 @@ export function withPermission<P extends object>(
     const router  = useRouter();
 
     useEffect(() => {
-      if (!can(permission)) router.replace(redirectTo);
+      if (!can(permission)) router.replace(redirectTo as Route);
     }, [can, router]);
 
     if (!can(permission)) return null;

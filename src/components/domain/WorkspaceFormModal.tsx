@@ -51,7 +51,7 @@ export const WorkspaceFormModal: React.FC<WorkspaceFormModalProps> = ({ open, ed
 
   const onSubmit = async (data: CreateWorkspace) => {
     if (editingId) {
-      await updateMutation.mutateAsync({ id: editingId, body: data });
+      await updateMutation.mutateAsync({ id: editingId, ...data });
     } else {
       await createMutation.mutateAsync(data);
     }

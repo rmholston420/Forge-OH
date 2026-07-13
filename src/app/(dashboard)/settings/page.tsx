@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useSettings, useUpdateSettings, useResetSettings } from '@/features/settings/hooks';
+import { useSettings, useUpdateSettings, useResetSettings, useModelRoutingStatus } from '@/features/settings/hooks';
 import { useSettingsStore } from '@/features/settings/store';
 import { useAgentPresets } from '@/features/runs/hooks';
 import { AppearanceSection } from '@/components/settings/AppearanceSection';
@@ -17,6 +17,7 @@ const TABS = [
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = useSettings();
+  const { data: routingStatus, isLoading: routingLoading } = useModelRoutingStatus();
   const { data: presetsData } = useAgentPresets();
   const updateMutation = useUpdateSettings();
   const resetMutation  = useResetSettings();
@@ -104,6 +105,91 @@ export default function SettingsPage() {
         {activeTab === 'shortcuts' && (
           <KeyboardShortcutsSection settings={settings} draft={draft} onChange={handleChange} />
         )}
+        <section className="rounded-xl border border-black/10 bg-white/60 p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">Model routing</h2>
+              <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                Live backend diagnostics for Ollama-first and vLLM-backup routing.
+              </p>
+            </div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
+              {routingLoading ? 'Refreshing…' : 'Live'}
+            </div>
+          </div>
+
+          {!routingStatus ? (
+            <div className="text-sm text-neutral-600 dark:text-neutral-300">
+              Unable to load routing diagnostics.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Ollama URL</div>
+                  <div className="mt-1 text-sm font-medium break-all">{routingStatus.ollamaUrl}</div>
+                </div>
+                <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">vLLM URL</div>
+                  <div className="mt-1 text-sm font-medium break-all">{routingStatus.vllmUrl}</div>
+                </div>
+                <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Primary model</div>
+                  <div className="mt-1 text-sm font-medium break-all">{routingStatus.primaryModel}</div>
+                </div>
+                <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Fast model</div>
+                  <div className="mt-1 text-sm font-medium break-all">{routingStatus.fastModel}</div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Ollama primary health</div>
+                  <div className={`mt-1 text-sm font-semibold ${routingStatus.ollamaPrimaryHealthy ? 'text-green-600' : 'text-red-600'}`}>
+                    {routingStatus.ollamaPrimaryHealthy ? 'Healthy' : 'Unavailable'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Ollama fast health</div>
+                  <div className={`mt-1 text-sm font-semibold ${routingStatus.ollamaFastHealthy ? 'text-green-600' : 'text-red-600'}`}>
+                    {routingStatus.ollamaFastHealthy ? 'Healthy' : 'Unavailable'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">vLLM health</div>
+                  <div className={`mt-1 text-sm font-semibold ${routingStatus.vllmHealthy ? 'text-green-600' : 'text-red-600'}`}>
+                    {routingStatus.vllmHealthy ? 'Healthy' : 'Unavailable'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-black/10 text-left dark:border-white/10">
+                      <th className="px-2 py-2 font-medium">Task</th>
+                      <th className="px-2 py-2 font-medium">Context</th>
+                      <th className="px-2 py-2 font-medium">Selected</th>
+                      <th className="px-2 py-2 font-medium">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {routingStatus.probes.map((probe) => (
+                      <tr key={`${probe.taskComplexity}-${probe.contextLength}`} className="border-b border-black/5 dark:border-white/5">
+                        <td className="px-2 py-2">{probe.taskComplexity}</td>
+                        <td className="px-2 py-2">{probe.contextLength}</td>
+                        <td className="px-2 py-2 font-medium">{probe.selected ?? '—'}</td>
+                        <td className="px-2 py-2 text-red-600 dark:text-red-400">{probe.error ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </section>
+
         {activeTab === 'about' && (
           <section aria-labelledby="about-heading">
             <h2 id="about-heading">About Forge-OH</h2>

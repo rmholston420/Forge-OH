@@ -34,7 +34,7 @@ export function WorkspaceFormDrawer() {
 
   async function onSubmit(data: CreateWorkspaceRequest) {
     if (editingId) {
-      await update.mutateAsync({ id: editingId, body: data });
+      await update.mutateAsync({ id: editingId, ...data });
     } else {
       await create.mutateAsync(data);
     }

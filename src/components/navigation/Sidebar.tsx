@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
+import type { Route } from 'next';
 import { usePathname } from 'next/navigation';
 import styles from './Sidebar.module.css';
 
@@ -45,7 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed: controlledCollapsed
           return (
             <li key={item.href}>
               <Link
-                href={item.href}
+                href={item.href as Route}
                 className={[styles.navItem, active ? styles['navItem--active'] : ''].join(' ')}
                 aria-current={active ? 'page' : undefined}
                 title={collapsed ? item.label : undefined}
