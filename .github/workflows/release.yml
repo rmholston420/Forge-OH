@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+
+jobs:
+  release:
+    name: Bump version & tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+        with: { version: '9' }
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: pnpm }
+
+      - name: Configure git
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Bump version
+        id: version
+        run: |
+          NEW_VERSION=$(pnpm version ${{ github.event.inputs.bump }} --no-git-tag-version)
+          echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Commit & tag
+        run: |
+          git add package.json
+          git commit -m "chore(release): ${{ steps.version.outputs.version }}"
+          git tag ${{ steps.version.outputs.version }}
+          git push --follow-tags
+
+      - name: Trigger docker-build via repository_dispatch
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: release-build
+          client-payload: '{"version": "${{ steps.version.outputs.version }}"}'
