@@ -7,7 +7,7 @@ services:
       NODE_ENV: test
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: test-secret-for-ci-only-not-production
-      NEXT_PUBLIC_BFF_URL: http://localhost:8000
+      NEXT_PUBLIC_BFF_URL: http://localhost:8081
       NEXT_PUBLIC_MSW_ENABLED: 'true'
 
   bff:

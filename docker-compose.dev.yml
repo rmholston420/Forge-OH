@@ -15,14 +15,16 @@ services:
     environment:
       NODE_ENV: development
       NEXTAUTH_URL: http://localhost:3000
-      NEXT_PUBLIC_BFF_URL: http://localhost:8000
+      NEXT_PUBLIC_BFF_URL: http://localhost:8081
 
   bff:
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # CRITICAL: entry point must be bff.main:app_with_sio, not main:app.
+    # See bff/Dockerfile CRITICAL comment for explanation.
+    command: uvicorn bff.main:app_with_sio --host 0.0.0.0 --port 8081 --reload
     volumes:
-      - ./bff:/app
+      - ./bff:/app/bff
     ports:
-      - "8000:8000"
+      - "8081:8081"
     environment:
       DEBUG: 'true'
       DEMO_MODE: 'true'

@@ -2,14 +2,15 @@
 # Production: replace :80 with your domain and Caddy auto-provisions HTTPS
 
 :80 {
-    # API requests → BFF
-    handle /api/* {
-        reverse_proxy bff:8000
+    # Auth — NextAuth callbacks hit /api/auth/* first; keep before the
+    # general /api/* handle so Caddy matches the more specific prefix.
+    handle /api/auth/* {
+        reverse_proxy bff:8081
     }
 
-    # Auth → BFF (NextAuth callbacks hit this)
-    handle /api/auth/* {
-        reverse_proxy bff:8000
+    # All other API requests → BFF
+    handle /api/* {
+        reverse_proxy bff:8081
     }
 
     # Everything else → Next.js frontend

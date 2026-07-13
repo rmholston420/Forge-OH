@@ -16,10 +16,10 @@ COPY . .
 RUN chown -R bff:bff /app
 USER bff
 
-EXPOSE 8000
+EXPOSE 8081
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"
 
 LABEL org.opencontainers.image.source="https://github.com/rmholston420/Forge-OH"
 LABEL org.opencontainers.image.description="Forge-OH BFF (Backend For Frontend)"
@@ -35,7 +35,7 @@ LABEL org.opencontainers.image.licenses="MIT"
 #    Replace _TOKENS with Redis or JWT before increasing worker count.
 CMD ["uvicorn", "bff.main:app_with_sio", \
      "--host", "0.0.0.0", \
-     "--port", "8000", \
+     "--port", "8081", \
      "--workers", "1", \
      "--proxy-headers", \
      "--forwarded-allow-ips", "*"]
