@@ -4,7 +4,6 @@ from typing import Optional, Literal
 from uuid import uuid4
 from datetime import datetime, timezone
 
-# bff/auth.py does not exist — RBAC lives in bff/middleware/rbac.py.
 from bff.middleware.rbac import require_role
 
 router = APIRouter(prefix='/agent-presets', tags=['agent-presets'])
@@ -114,7 +113,7 @@ def create_preset(body: CreateRequest, _: str = Depends(require_role('write'))):
     p = AgentPreset(
         id=str(uuid4()), isDefault=False,
         createdAt=_now(), updatedAt=_now(),
-        **body.dict(),
+        **body.model_dump(),
     )
     _PRESETS[p.id] = p
     return p
@@ -129,7 +128,7 @@ def update_preset(
     p = _PRESETS.get(preset_id)
     if not p:
         raise HTTPException(404, 'Preset not found')
-    updated = p.copy(update={**body.dict(exclude_none=True), 'updatedAt': _now()})
+    updated = p.model_copy(update={**body.model_dump(exclude_none=True), 'updatedAt': _now()})
     _PRESETS[preset_id] = updated
     return updated
 
@@ -150,7 +149,7 @@ def duplicate_preset(preset_id: str, _: str = Depends(require_role('write'))):
     p = _PRESETS.get(preset_id)
     if not p:
         raise HTTPException(404, 'Preset not found')
-    clone = p.copy(update={
+    clone = p.model_copy(update={
         'id': str(uuid4()),
         'name': f'{p.name} (copy)',
         'isDefault': False,
@@ -167,5 +166,5 @@ def set_default(preset_id: str, _: str = Depends(require_role('write'))):
     if not p:
         raise HTTPException(404, 'Preset not found')
     for pid, preset in _PRESETS.items():
-        _PRESETS[pid] = preset.copy(update={'isDefault': pid == preset_id, 'updatedAt': _now()})
+        _PRESETS[pid] = preset.model_copy(update={'isDefault': pid == preset_id, 'updatedAt': _now()})
     return _PRESETS[preset_id]

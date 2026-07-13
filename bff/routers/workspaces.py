@@ -92,7 +92,7 @@ def create_workspace(
         id=str(uuid4()), status='provisioning',
         createdAt=_now(), updatedAt=_now(),
         runCount=0, diskUsageMb=0,
-        **body.dict(),
+        **body.model_dump(),
     )
     _WORKSPACES[ws.id] = ws
     return ws
@@ -107,7 +107,7 @@ def update_workspace(
     ws = _WORKSPACES.get(workspace_id)
     if not ws:
         raise HTTPException(404, 'Workspace not found')
-    updated = ws.copy(update={**body.dict(exclude_none=True), 'updatedAt': _now()})
+    updated = ws.model_copy(update={**body.model_dump(exclude_none=True), 'updatedAt': _now()})
     _WORKSPACES[workspace_id] = updated
     return updated
 
@@ -131,7 +131,6 @@ def reset_workspace(
     ws = _WORKSPACES.get(workspace_id)
     if not ws:
         raise HTTPException(404, 'Workspace not found')
-    # Reset clears disk usage AND run count, and returns status to idle.
-    reset = ws.copy(update={'diskUsageMb': 0, 'runCount': 0, 'status': 'idle', 'updatedAt': _now()})
+    reset = ws.model_copy(update={'diskUsageMb': 0, 'runCount': 0, 'status': 'idle', 'updatedAt': _now()})
     _WORKSPACES[workspace_id] = reset
     return reset
