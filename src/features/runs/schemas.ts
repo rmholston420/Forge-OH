@@ -8,6 +8,8 @@ export const CreateRunRequestSchema = z.object({
   agentPresetId: z.string().min(1),
   workspaceId: z.string().min(1),
   contextPrompt: z.string().optional(),
+  taskComplexity: z.enum(['simple', 'agentic']).default('agentic'),
+  contextLength: z.number().int().nonnegative().optional(),
 });
 
 export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;
