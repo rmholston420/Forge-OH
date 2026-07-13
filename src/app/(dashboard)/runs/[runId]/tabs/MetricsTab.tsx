@@ -18,7 +18,7 @@ function formatDurationMs(ms: number | null) {
   return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`;
 }
 
-export default function MetricsTab({ runId, isActive }: { runId: string; isActive: boolean }) {
+export function MetricsTab({ runId, isActive }: { runId: string; isActive: boolean }) {
   const { data: metrics, isLoading, error } = useRunMetrics(runId, isActive);
 
   if (!FEATURE_ENABLED) {
@@ -67,3 +67,5 @@ export default function MetricsTab({ runId, isActive }: { runId: string; isActiv
     </div>
   );
 }
+
+export default MetricsTab;

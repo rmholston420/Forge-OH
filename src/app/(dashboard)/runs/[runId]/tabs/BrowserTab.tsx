@@ -7,7 +7,7 @@ import { Banner } from '@/components/core/Banner';
 
 const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_BROWSER_ENABLED !== 'false';
 
-export default function BrowserTab({ runId, isActive }: { runId: string; isActive: boolean }) {
+export function BrowserTab({ runId, isActive }: { runId: string; isActive: boolean }) {
   const { data: frames = [], isLoading, error } = useBrowserFrames(runId, isActive);
 
   if (!FEATURE_ENABLED) {
@@ -20,3 +20,7 @@ export default function BrowserTab({ runId, isActive }: { runId: string; isActiv
 
   return <BrowserViewer frames={frames} isActive={isActive} />;
 }
+
+export { default as BrowserTab } from './BrowserTab';
+
+export default BrowserTab;

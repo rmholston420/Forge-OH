@@ -15,7 +15,7 @@ function getAllSpanIds(span: import('@/lib/schemas/trace').Span | undefined): st
   return [span.spanId ?? '', ...span.children.flatMap(getAllSpanIds)];
 }
 
-export default function SecurityTab({ runId }: { runId: string }) {
+export function SecurityTab({ runId }: { runId: string }) {
   const { data: trace, isLoading, error } = useTrace(runId || '');
   const { selectedSpanId, expandAll, collapseAll } = useTraceStore();
 
@@ -96,3 +96,5 @@ export default function SecurityTab({ runId }: { runId: string }) {
     </div>
   );
 }
+
+export default SecurityTab;

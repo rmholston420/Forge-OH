@@ -52,3 +52,5 @@ export function TraceTab({ runId }: Props) {
     </div>
   );
 }
+
+export default TraceTab;
