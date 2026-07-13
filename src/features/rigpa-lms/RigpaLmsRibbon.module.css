@@ -1,0 +1,153 @@
+/**
+ * RigpaLmsRibbon styles — design-token only, no hardcoded values.
+ * Iframe-safe: height fixed at var(--layout-topbar-height) minus 2px border.
+ * Sits above the main content in plugin mode, below the topbar.
+ */
+.ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: 36px;
+  padding: 0 var(--space-4);
+  background: color-mix(in oklab, var(--color-accent-primary) 10%, var(--color-bg-surface));
+  border-bottom: 1px solid var(--color-border-accent);
+  font-size: var(--font-size-meta);
+  font-family: var(--font-ui);
+  color: var(--color-text-secondary);
+  /* iframe-safe: no fixed/sticky — parent scroll context handles it */
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+/* Left: course breadcrumb */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.courseId {
+  color: var(--color-text-accent);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.moduleId,
+.lessonId {
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+.sep {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* Center: task type + audience */
+.center {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.taskBadge {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+  color: var(--color-text-accent);
+  font-size: var(--font-size-meta);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Task-type color variants */
+.taskBadge[data-task='code-review'] {
+  background: color-mix(in oklab, var(--color-state-warning) 15%, transparent);
+  color: var(--color-text-warning);
+}
+
+.taskBadge[data-task='assessment'] {
+  background: color-mix(in oklab, var(--color-state-error) 12%, transparent);
+  color: var(--color-text-error);
+}
+
+.taskBadge[data-task='refactor'] {
+  background: color-mix(in oklab, var(--color-state-paused) 12%, transparent);
+  color: var(--color-state-paused);
+}
+
+.audienceChip {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-default);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-meta);
+  white-space: nowrap;
+}
+
+.audienceChip[data-audience='beginner'] { color: var(--color-text-success); }
+.audienceChip[data-audience='advanced'] { color: var(--color-text-accent); }
+
+/* Right: actions */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.packageResult {
+  font-size: var(--font-size-meta);
+  color: var(--color-text-success);
+  white-space: nowrap;
+}
+
+.packageBtn {
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-primary);
+  color: #fff;
+  font-size: var(--font-size-meta);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background var(--motion-fast) var(--motion-easing);
+  white-space: nowrap;
+  min-height: 24px;
+  /* touch target via padding — actual element is in a 36px ribbon */
+}
+
+.packageBtn:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.packageBtn:active:not(:disabled) {
+  background: var(--color-accent-active);
+}
+
+.packageBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.packageBtn:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .packageBtn { transition: none; }
+}
