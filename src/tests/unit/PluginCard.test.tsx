@@ -1,33 +1,44 @@
+import { render, screen, fireEvent } from '@testing-library/react';
+import { PluginCard } from '@/components/domain/plugin-card';
+import type { Plugin } from '@/features/mcp/schemas';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { PluginCard } from '@/components/domain/PluginCard';
 
-const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-const plugin = {
-  id: 'p-1', name: 'github-mcp', version: '1.2.0',
-  description: 'GitHub integration', author: null,
-  transport: 'stdio' as const, status: 'enabled' as const,
-  capabilities: ['tools' as const], command: 'npx @github/mcp-server',
-  url: null, envVars: {}, toolCount: 12,
-  installedAt: '2026-07-12T00:00:00Z', lastHeartbeatAt: null,
+const BASE: Plugin = {
+  id: 'plugin-1',
+  name: 'Test Plugin',
+  version: '1.0.0',
+  status: 'enabled',
+  description: 'A test plugin',
+  author: 'Rigpa',
+  installedAt: new Date().toISOString(),
 };
 
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-);
-
 describe('PluginCard', () => {
-  it('renders plugin name and version', () => {
-    render(<PluginCard plugin={plugin} />, { wrapper });
-    expect(screen.getByText('github-mcp')).toBeTruthy();
-    expect(screen.getByText('v1.2.0')).toBeTruthy();
+  it('renders name, version badge, and status text', () => {
+    render(<PluginCard plugin={BASE} onToggle={vi.fn()} onConfigure={vi.fn()} />);
+    expect(screen.getByText('Test Plugin')).toBeTruthy();
+    expect(screen.getByText('v1.0.0')).toBeTruthy();
+    expect(screen.getByText('Enabled')).toBeTruthy();
   });
 
-  it('renders toggle in pressed state for enabled plugin', () => {
-    render(<PluginCard plugin={plugin} />, { wrapper });
-    const toggle = screen.getByRole('button', { name: /Disable/ });
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+  it('hides Configure button when no configSchema', () => {
+    render(<PluginCard plugin={BASE} onToggle={vi.fn()} onConfigure={vi.fn()} />);
+    expect(screen.queryByText('Configure')).toBeNull();
+  });
+
+  it('shows Configure button when configSchema present', () => {
+    const withConfig: Plugin = {
+      ...BASE,
+      configSchema: { key: { type: 'string', label: 'Key', required: true, default: '' } },
+    };
+    render(<PluginCard plugin={withConfig} onToggle={vi.fn()} onConfigure={vi.fn()} />);
+    expect(screen.getByText('Configure')).toBeTruthy();
+  });
+
+  it('calls onToggle when checkbox toggled', () => {
+    const onToggle = vi.fn();
+    render(<PluginCard plugin={BASE} onToggle={onToggle} onConfigure={vi.fn()} />);
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(onToggle).toHaveBeenCalledWith('plugin-1', false);
   });
 });
