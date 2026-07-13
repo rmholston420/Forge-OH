@@ -1,17 +1,16 @@
 # Forge-OH BFF dependencies
-# Keep versions pinned; update intentionally.
+# Pinned to versions that are actually available in this environment.
+# Keep OTEL unpinned here because openhands-sdk pulls a compatible set.
 
 # Web framework
 fastapi==0.115.5
-uvicorn[standard]==0.32.1
-pydantic==2.10.3
+pydantic==2.12.5
 pydantic-settings==2.6.1
 
 # OpenHands SDK
-# Version 1.29.3 is the canonical pinned version for this project.
-openhands-ai==1.29.3
+openhands-sdk==1.29.3
 
-# HTTP client (for proxying requests to OpenHands SDK)
+# HTTP client
 httpx==0.28.1
 
 # WebSocket / Socket.IO
@@ -22,15 +21,17 @@ aiohttp==3.11.10
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
-# Database (episodic memory store)
-aiosqlite==0.20.0
+# Database
+aiosqlite==0.22.1
 
-# Observability
-opentelemetry-sdk==1.29.0
-opentelemetry-exporter-otlp-proto-http==1.29.0
-opentelemetry-instrumentation-fastapi==0.50b0
-
-# Dev / test (not installed in production)
+# Dev / test
 # pytest==8.3.4
 # pytest-asyncio==0.24.0
-# httpx  (already above, used in tests too)
+
+# Synced from working .venv on local machine
+uvicorn==0.39.0
+vllm==0.25.0
+opentelemetry-exporter-otlp==1.43.0
+opentelemetry-exporter-otlp-proto-grpc==1.39.1
+opentelemetry-exporter-otlp-proto-http==1.39.1
+prometheus-fastapi-instrumentator==8.0.2
