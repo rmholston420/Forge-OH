@@ -1,30 +1,33 @@
-import { apiClient } from '@/lib/api/client';
-import {
-  SecretRefListSchema,
-  SecretRefSchema,
-  RotateSecretResponseSchema,
-} from './schemas';
-import type { SecretRef, CreateSecretRequest, RotateSecretResponse } from './schemas';
+import type { Secret, CreateSecretRequest } from './schemas';
 
-export async function fetchSecrets(): Promise<SecretRef[]> {
-  const data = await apiClient.get('/secrets');
-  return SecretRefListSchema.parse(data);
+const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+
+export async function fetchSecrets(scope?: string): Promise<Secret[]> {
+  const url = scope ? `${BASE}/secrets?scope=${scope}` : `${BASE}/secrets`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch secrets');
+  return res.json();
 }
 
-/**
- * Creates a secret. The `value` field is sent to BFF and NEVER
- * returned or stored in any client-side state after the request completes.
- */
-export async function createSecret(payload: CreateSecretRequest): Promise<SecretRef> {
-  const data = await apiClient.post('/secrets', payload);
-  return SecretRefSchema.parse(data);
+export async function createSecret(body: CreateSecretRequest): Promise<Secret> {
+  const res = await fetch(`${BASE}/secrets`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Failed to create secret');
+  return res.json();
 }
 
-export async function rotateSecret(id: string, newValue: string): Promise<RotateSecretResponse> {
-  const data = await apiClient.post(`/secrets/${id}/rotate`, { value: newValue });
-  return RotateSecretResponseSchema.parse(data);
+export async function rotateSecret(id: string, newValue: string): Promise<Secret> {
+  const res = await fetch(`${BASE}/secrets/${id}/rotate`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newValue }),
+  });
+  if (!res.ok) throw new Error('Failed to rotate secret');
+  return res.json();
 }
 
 export async function deleteSecret(id: string): Promise<void> {
-  await apiClient.delete(`/secrets/${id}`);
+  const res = await fetch(`${BASE}/secrets/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete secret');
 }

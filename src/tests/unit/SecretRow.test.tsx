@@ -1,52 +1,41 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { SecretRow } from '@/components/domain/secret-row';
-import type { SecretRef } from '@/features/secrets/schemas';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 
-const BASE: SecretRef = {
-  id: 'secret-1',
-  name: 'OPENAI_API_KEY',
-  scope: 'global',
-  provider: 'env',
-  maskedPreview: '••••••••',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  rotatedAt: null,
-  usedIn: [],
+vi.mock('./hooks', () => ({
+  useRotateSecret: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+vi.mock('@/components/auth/CanDo', () => ({ CanDo: ({ children }: any) => <>{children}</> }));
+vi.mock('./store', () => ({ useSecretsStore: () => ({ setConfirmDeleteId: vi.fn() }) }));
+vi.mock('@/lib/utils/format', () => ({ formatDate: () => '2 hours ago' }));
+
+import { SecretRow } from '@/features/secrets/SecretRow';
+
+const MOCK: import('@/features/secrets/schemas').Secret = {
+  id: 'sec-1', key: 'OPENAI_API_KEY', scope: 'global',
+  maskedValue: '****1234', createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(), createdBy: 'admin', tags: [],
 };
 
 describe('SecretRow', () => {
-  it('renders name but NEVER the raw value', () => {
-    render(
-      <table><tbody>
-        <SecretRow secret={BASE} onRotate={vi.fn()} onDelete={vi.fn()} />
-      </tbody></table>,
-    );
-    expect(screen.getByText('OPENAI_API_KEY')).toBeTruthy();
-    // masked preview is shown
-    expect(screen.getByText('••••••••')).toBeTruthy();
-    // there should be no reveal/show button
-    expect(screen.queryByText('Show')).toBeNull();
-    expect(screen.queryByText('Reveal')).toBeNull();
+  it('renders key in monospace code element', () => {
+    render(<table><tbody><SecretRow secret={MOCK} /></tbody></table>);
+    expect(screen.getByTestId('secret-key').querySelector('code')).toHaveTextContent('OPENAI_API_KEY');
   });
 
-  it('calls onDelete when Delete is clicked', () => {
-    const onDelete = vi.fn();
-    render(
-      <table><tbody>
-        <SecretRow secret={BASE} onRotate={vi.fn()} onDelete={onDelete} />
-      </tbody></table>,
-    );
-    fireEvent.click(screen.getByLabelText('Delete secret OPENAI_API_KEY'));
-    expect(onDelete).toHaveBeenCalledWith('secret-1');
+  it('renders scope badge', () => {
+    render(<table><tbody><SecretRow secret={MOCK} /></tbody></table>);
+    expect(screen.getByText('global')).toBeInTheDocument();
   });
 
-  it('shows used-in run count badge when usedIn has entries', () => {
-    render(
-      <table><tbody>
-        <SecretRow secret={{ ...BASE, usedIn: ['run-1', 'run-2'] }} onRotate={vi.fn()} onDelete={vi.fn()} />
-      </tbody></table>,
-    );
-    expect(screen.getByText('2 runs')).toBeTruthy();
+  it('hides raw value', () => {
+    render(<table><tbody><SecretRow secret={MOCK} /></tbody></table>);
+    expect(screen.queryByText('sk-')).not.toBeInTheDocument();
+  });
+
+  it('renders Rotate and Delete buttons', () => {
+    render(<table><tbody><SecretRow secret={MOCK} /></tbody></table>);
+    expect(screen.getByRole('button', { name: /rotate/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
   });
 });

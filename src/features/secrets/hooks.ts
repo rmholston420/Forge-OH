@@ -1,22 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/lib/query/query-keys';
-import { fetchSecrets, createSecret, rotateSecret, deleteSecret } from './api';
+import * as api from './api';
+import type { CreateSecretRequest } from './schemas';
 
-export function useSecrets() {
+const SECRETS_KEY = ['secrets'] as const;
+
+export function useSecrets(scope?: string) {
   return useQuery({
-    queryKey: queryKeys.secrets.list(),
-    queryFn: fetchSecrets,
-    // Secrets change rarely — poll less aggressively
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    queryKey: scope ? [...SECRETS_KEY, scope] : SECRETS_KEY,
+    queryFn: () => api.fetchSecrets(scope),
+    refetchInterval: 30_000,
   });
 }
 
 export function useCreateSecret() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: createSecret,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.secrets.list() }),
+    mutationFn: (body: CreateSecretRequest) => api.createSecret(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
   });
 }
 
@@ -24,15 +24,15 @@ export function useRotateSecret() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, newValue }: { id: string; newValue: string }) =>
-      rotateSecret(id, newValue),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.secrets.list() }),
+      api.rotateSecret(id, newValue),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
   });
 }
 
 export function useDeleteSecret() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => deleteSecret(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.secrets.list() }),
+    mutationFn: (id: string) => api.deleteSecret(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
   });
 }
