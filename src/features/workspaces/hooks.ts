@@ -1,47 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/lib/query/query-keys';
-import {
-  fetchWorkspaces,
-  fetchWorkspace,
-  resetWorkspace,
-  duplicateWorkspace,
-  deleteWorkspace,
-} from './api';
+import * as api from './api';
+import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from './schemas';
+
+const WS_KEY = ['workspaces'] as const;
+const wsKey = (id: string) => ['workspaces', id] as const;
 
 export function useWorkspaces() {
-  return useQuery({
-    queryKey: queryKeys.workspaces.list(),
-    queryFn: fetchWorkspaces,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-  });
+  return useQuery({ queryKey: WS_KEY, queryFn: api.fetchWorkspaces,
+    refetchInterval: 30_000 });
 }
 
-export function useWorkspace(id: string | null) {
-  return useQuery({
-    queryKey: queryKeys.workspaces.detail(id ?? ''),
-    queryFn: () => fetchWorkspace(id!),
-    enabled: !!id,
-    staleTime: 15_000,
-  });
+export function useWorkspace(id: string) {
+  return useQuery({ queryKey: wsKey(id), queryFn: () => api.fetchWorkspace(id),
+    enabled: !!id });
 }
 
-export function useResetWorkspace() {
+export function useCreateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => resetWorkspace(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.workspaces.list() });
-    },
+    mutationFn: (body: CreateWorkspaceRequest) => api.createWorkspace(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: WS_KEY }),
   });
 }
 
-export function useDuplicateWorkspace() {
+export function useUpdateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => duplicateWorkspace(id, name),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.workspaces.list() });
+    mutationFn: ({ id, body }: { id: string; body: UpdateWorkspaceRequest }) =>
+      api.updateWorkspace(id, body),
+    onSuccess: (ws) => {
+      qc.invalidateQueries({ queryKey: WS_KEY });
+      qc.setQueryData(wsKey(ws.id), ws);
     },
   });
 }
@@ -49,9 +38,18 @@ export function useDuplicateWorkspace() {
 export function useDeleteWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => deleteWorkspace(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.workspaces.list() });
+    mutationFn: (id: string) => api.deleteWorkspace(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: WS_KEY }),
+  });
+}
+
+export function useResetWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.resetWorkspace(id),
+    onSuccess: (ws) => {
+      qc.invalidateQueries({ queryKey: WS_KEY });
+      qc.setQueryData(wsKey(ws.id), ws);
     },
   });
 }

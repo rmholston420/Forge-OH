@@ -1,133 +1,95 @@
-from __future__ import annotations
-
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional, Literal
+from uuid import uuid4
 from datetime import datetime, timezone
-from typing import Literal
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, HttpUrl
+router = APIRouter(prefix='/workspaces', tags=['workspaces'])
 
-router = APIRouter(prefix="/workspaces", tags=["workspaces"])
+class EnvVar(BaseModel):
+    key:    str
+    value:  str
+    masked: bool = True
 
-
-class WorkspaceModel(BaseModel):
-    id: str
-    name: str
-    type: Literal["local", "docker", "remote-api"]
-    health: Literal["healthy", "warning", "error", "disconnected"]
-    agent_server_url: str | None = None
-    isolation_mode: Literal["shared", "isolated", "strict"] = "isolated"
-    run_count: int = 0
-    active_run_id: str | None = None
-    last_seen_at: str | None = None
-    created_at: str
-    updated_at: str
-    meta: dict = {}
-
+class Workspace(BaseModel):
+    id:            str
+    name:          str
+    description:   Optional[str] = None
+    type:          Literal['local', 'docker', 'e2b', 'modal']
+    status:        Literal['idle', 'active', 'error', 'provisioning']
+    createdAt:     str
+    updatedAt:     str
+    runCount:      int
+    diskUsageMb:   float
+    diskLimitMb:   float = 2048
+    envVars:       list[EnvVar] = []
+    agentPresetId: Optional[str] = None
 
 class CreateWorkspaceRequest(BaseModel):
-    name: str
-    type: Literal["local", "docker", "remote-api"]
-    agent_server_url: str | None = None
-    isolation_mode: Literal["shared", "isolated", "strict"] = "isolated"
+    name:          str
+    description:   Optional[str] = None
+    type:          Literal['local', 'docker', 'e2b', 'modal'] = 'local'
+    envVars:       list[EnvVar] = []
+    agentPresetId: Optional[str] = None
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-class ResetWorkspaceResponse(BaseModel):
-    workspace_id: str
-    status: Literal["reset"]
-    reset_at: str
-
-
-class DuplicateRequest(BaseModel):
-    name: str
-
-
-# ---------------------------------------------------------------------------
-# In-memory store (replace with OpenHands workspace adapter in production)
-# ---------------------------------------------------------------------------
-_WORKSPACES: dict[str, WorkspaceModel] = {
-    "ws-local-001": WorkspaceModel(
-        id="ws-local-001",
-        name="Local Dev",
-        type="local",
-        health="healthy",
-        isolation_mode="isolated",
-        run_count=12,
-        last_seen_at=datetime.now(timezone.utc).isoformat(),
-        created_at="2026-06-01T00:00:00Z",
-        updated_at=datetime.now(timezone.utc).isoformat(),
+_WORKSPACES: dict[str, Workspace] = {
+    'ws-1': Workspace(
+        id='ws-1', name='Default Local', type='local', status='idle',
+        createdAt=_now(), updatedAt=_now(), runCount=12,
+        diskUsageMb=340, diskLimitMb=2048,
+        description='Default local workspace for quick runs',
     ),
-    "ws-docker-001": WorkspaceModel(
-        id="ws-docker-001",
-        name="Docker Sandbox",
-        type="docker",
-        health="warning",
-        isolation_mode="strict",
-        run_count=3,
-        created_at="2026-06-15T00:00:00Z",
-        updated_at=datetime.now(timezone.utc).isoformat(),
+    'ws-2': Workspace(
+        id='ws-2', name='Docker Sandbox', type='docker', status='idle',
+        createdAt=_now(), updatedAt=_now(), runCount=5,
+        diskUsageMb=1200, diskLimitMb=2048,
+        description='Isolated Docker environment',
     ),
 }
 
-
-@router.get("/", response_model=list[WorkspaceModel])
-async def list_workspaces() -> list[WorkspaceModel]:
+@router.get('', response_model=list[Workspace])
+def list_workspaces():
     return list(_WORKSPACES.values())
 
-
-@router.get("/{workspace_id}", response_model=WorkspaceModel)
-async def get_workspace(workspace_id: str) -> WorkspaceModel:
+@router.get('/{workspace_id}', response_model=Workspace)
+def get_workspace(workspace_id: str):
     ws = _WORKSPACES.get(workspace_id)
-    if not ws:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    if not ws: raise HTTPException(404, 'Workspace not found')
     return ws
 
-
-@router.post("/", response_model=WorkspaceModel, status_code=status.HTTP_201_CREATED)
-async def create_workspace(payload: CreateWorkspaceRequest) -> WorkspaceModel:
-    import uuid
-    new_id = f"ws-{payload.type}-{uuid.uuid4().hex[:8]}"
-    now = datetime.now(timezone.utc).isoformat()
-    ws = WorkspaceModel(
-        id=new_id,
-        name=payload.name,
-        type=payload.type,
-        health="healthy",
-        agent_server_url=str(payload.agent_server_url) if payload.agent_server_url else None,
-        isolation_mode=payload.isolation_mode,
-        created_at=now,
-        updated_at=now,
+@router.post('', response_model=Workspace)
+def create_workspace(body: CreateWorkspaceRequest):
+    ws = Workspace(
+        id=str(uuid4()), status='provisioning',
+        createdAt=_now(), updatedAt=_now(),
+        runCount=0, diskUsageMb=0,
+        **body.dict(),
     )
-    _WORKSPACES[new_id] = ws
+    _WORKSPACES[ws.id] = ws
     return ws
 
-
-@router.post("/{workspace_id}/reset", response_model=ResetWorkspaceResponse)
-async def reset_workspace(workspace_id: str) -> ResetWorkspaceResponse:
+@router.patch('/{workspace_id}', response_model=Workspace)
+def update_workspace(workspace_id: str, body: CreateWorkspaceRequest):
     ws = _WORKSPACES.get(workspace_id)
-    if not ws:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
-    now = datetime.now(timezone.utc).isoformat()
-    _WORKSPACES[workspace_id] = ws.model_copy(
-        update={"active_run_id": None, "health": "healthy", "updated_at": now}
-    )
-    return ResetWorkspaceResponse(workspace_id=workspace_id, status="reset", reset_at=now)
+    if not ws: raise HTTPException(404, 'Workspace not found')
+    updated = ws.copy(update={**body.dict(exclude_unset=True), 'updatedAt': _now()})
+    _WORKSPACES[workspace_id] = updated
+    return updated
 
-
-@router.post("/{workspace_id}/duplicate", response_model=WorkspaceModel)
-async def duplicate_workspace(workspace_id: str, body: DuplicateRequest) -> WorkspaceModel:
-    ws = _WORKSPACES.get(workspace_id)
-    if not ws:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
-    import uuid
-    new_id = f"ws-{ws.type}-{uuid.uuid4().hex[:8]}"
-    now = datetime.now(timezone.utc).isoformat()
-    dup = ws.model_copy(update={"id": new_id, "name": body.name, "run_count": 0, "created_at": now, "updated_at": now})
-    _WORKSPACES[new_id] = dup
-    return dup
-
-
-@router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_workspace(workspace_id: str) -> None:
+@router.delete('/{workspace_id}')
+def delete_workspace(workspace_id: str):
     if workspace_id not in _WORKSPACES:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        raise HTTPException(404, 'Workspace not found')
     del _WORKSPACES[workspace_id]
+    return {'ok': True}
+
+@router.post('/{workspace_id}/reset', response_model=Workspace)
+def reset_workspace(workspace_id: str):
+    ws = _WORKSPACES.get(workspace_id)
+    if not ws: raise HTTPException(404, 'Workspace not found')
+    reset = ws.copy(update={'diskUsageMb': 0, 'status': 'idle', 'updatedAt': _now()})
+    _WORKSPACES[workspace_id] = reset
+    return reset

@@ -1,51 +1,52 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { WorkspaceCard } from '@/components/domain/workspace-card';
-import type { Workspace } from '@/features/workspaces/schemas';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 
-const BASE: Workspace = {
-  id: 'ws-1',
-  name: 'My Workspace',
-  type: 'docker',
-  health: 'healthy',
-  isolationMode: 'isolated',
-  runCount: 5,
-  activeRunId: null,
-  lastSeenAt: new Date().toISOString(),
+vi.mock('./hooks', () => ({
+  useResetWorkspace:  () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteWorkspace: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+vi.mock('@/components/auth/CanDo', () => ({
+  CanDo: ({ children }: any) => <>{children}</>,
+}));
+vi.mock('./store', () => ({
+  useWorkspacesStore: () => ({
+    openEditDrawer: vi.fn(), openConfirmDelete: vi.fn(),
+  }),
+}));
+
+import { WorkspaceCard } from '@/features/workspaces/WorkspaceCard';
+
+const MOCK_WS = {
+  id: 'ws-1', name: 'Test WS', type: 'docker' as const,
+  status: 'idle' as const, runCount: 5,
+  diskUsageMb: 512, diskLimitMb: 2048,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
+  envVars: [],
 };
 
 describe('WorkspaceCard', () => {
-  it('renders name and type badge', () => {
-    render(<WorkspaceCard workspace={BASE} />);
-    expect(screen.getByText('My Workspace')).toBeTruthy();
-    expect(screen.getByText('Docker')).toBeTruthy();
+  it('renders workspace name and type badge', () => {
+    render(<WorkspaceCard workspace={MOCK_WS} />);
+    expect(screen.getByText('Test WS')).toBeInTheDocument();
+    expect(screen.getByText('docker')).toBeInTheDocument();
   });
 
-  it('shows Healthy badge with text label', () => {
-    render(<WorkspaceCard workspace={BASE} />);
-    expect(screen.getByText('Healthy')).toBeTruthy();
+  it('shows disk usage progress', () => {
+    render(<WorkspaceCard workspace={MOCK_WS} />);
+    const bar = screen.getByRole('progressbar');
+    expect(bar).toHaveAttribute('value', '25'); // 512/2048 = 25%
   });
 
-  it('calls onSelect when clicked', () => {
-    const onSelect = vi.fn();
-    render(<WorkspaceCard workspace={BASE} onSelect={onSelect} />);
-    fireEvent.click(screen.getByRole('article'));
-    expect(onSelect).toHaveBeenCalledWith('ws-1');
+  it('shows Edit, Reset, Delete buttons', () => {
+    render(<WorkspaceCard workspace={MOCK_WS} />);
+    expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
   });
 
-  it('does not propagate reset click to card select', () => {
-    const onSelect = vi.fn();
-    const onReset = vi.fn();
-    render(<WorkspaceCard workspace={BASE} onSelect={onSelect} onReset={onReset} />);
-    fireEvent.click(screen.getByLabelText('Reset workspace My Workspace'));
-    expect(onReset).toHaveBeenCalledWith('ws-1');
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it('shows active run dot when activeRunId is set', () => {
-    render(<WorkspaceCard workspace={{ ...BASE, activeRunId: 'run-42' }} />);
-    expect(screen.getByLabelText('Active run')).toBeTruthy();
+  it('disables Reset when workspace is active', () => {
+    render(<WorkspaceCard workspace={{ ...MOCK_WS, status: 'active' }} />);
+    expect(screen.getByRole('button', { name: /reset/i })).toBeDisabled();
   });
 });
