@@ -3,7 +3,9 @@ from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from uuid import uuid4
 from datetime import datetime, timezone
-from bff.auth import require_role
+
+# bff/auth.py does not exist — RBAC lives in bff/middleware/rbac.py.
+from bff.middleware.rbac import require_role
 
 router = APIRouter(prefix='/agent-presets', tags=['agent-presets'])
 

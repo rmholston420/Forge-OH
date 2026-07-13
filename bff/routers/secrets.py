@@ -4,12 +4,12 @@ bff/routers/secrets.py
 Secrets router — interim contract for Forge-OH vertical slice.
 
 TODO(foh-phase2):
-- Design a clean, consistent secrets API for Forge-OH
 - Replace in-memory _STORE with a real secrets backend (Vault, AWS Secrets Manager, etc.)
-- Decide on workspace scoping and persistence beyond in-memory
-- All mutating endpoints already require auth; verify JWT strategy here.
+- Decide on workspace scoping and persistence beyond in-memory.
+- Migrate manual _require_auth helpers to Depends(require_role(...)) once
+  the LMS router is also migrated (keeps both consistent).
 """
-from typing import Dict, Literal, Optional, List, Any
+from typing import Dict, Literal, Optional, List
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -32,9 +32,9 @@ class SecretRecord(BaseModel):
 # TODO(foh-phase2): replace with non-sensitive placeholder constants once a
 # real secrets backend is in place. Do NOT substitute real credentials here.
 _STORE: Dict[str, SecretRecord] = {
-    "sec-1": SecretRecord(id="sec-1", key="OPENAI_API_KEY", rawValue="REPLACE_ME_OPENAI", scope="global", tags=[]),
-    "sec-2": SecretRecord(id="sec-2", key="GITHUB_TOKEN", rawValue="REPLACE_ME_GITHUB", scope="global", tags=[]),
-    "sec-3": SecretRecord(id="sec-3", key="WORKSPACE_SECRET", rawValue="REPLACE_ME_WORKSPACE", scope="workspace", tags=[]),
+    "sec-1": SecretRecord(id="sec-1", key="OPENAI_API_KEY",    rawValue="REPLACE_ME_OPENAI",     scope="global",    tags=[]),
+    "sec-2": SecretRecord(id="sec-2", key="GITHUB_TOKEN",      rawValue="REPLACE_ME_GITHUB",     scope="global",    tags=[]),
+    "sec-3": SecretRecord(id="sec-3", key="WORKSPACE_SECRET",  rawValue="REPLACE_ME_WORKSPACE",  scope="workspace", tags=[]),
 }
 
 
@@ -42,9 +42,19 @@ def _mask(value: str) -> str:
     return "****" if len(value) < 4 else "****" + value[-4:]
 
 
+def _to_public(record: SecretRecord) -> dict:
+    return {
+        "id": record.id,
+        "key": record.key,
+        "scope": record.scope,
+        "tags": list(record.tags),
+        "maskedValue": _mask(record.rawValue),
+    }
+
+
 def _parse_token(authorization: Optional[str]) -> str:
     if not authorization:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise HTTPException(status_code=401, detail="Invalid auth header")
@@ -56,16 +66,6 @@ def _require_auth(authorization: Optional[str]) -> str:
     if token not in _TOKENS:
         raise HTTPException(status_code=401, detail="Invalid token")
     return token
-
-
-def _to_public(record: SecretRecord) -> dict[str, Any]:
-    return {
-        "id": record.id,
-        "key": record.key,
-        "scope": record.scope,
-        "tags": list(record.tags),
-        "maskedValue": _mask(record.rawValue),
-    }
 
 
 def _find_store_id_by_key(key: str) -> Optional[str]:
@@ -102,6 +102,9 @@ def create_secret(
     if not key or not value or not scope:
         raise HTTPException(status_code=422, detail="Missing required fields")
 
+    if scope not in ("global", "workspace", "run"):
+        raise HTTPException(status_code=422, detail=f"Invalid scope: {scope!r}")
+
     if _find_store_id_by_key(key):
         raise HTTPException(status_code=409, detail="Secret already exists")
 
@@ -127,7 +130,8 @@ def rotate_secret(
         raise HTTPException(status_code=422, detail="Missing newValue")
 
     _STORE[secret_id] = _STORE[secret_id].model_copy(update={"rawValue": new_value})
-    return _to_public(_STORE[secret_id])
+    # Wrap in {data: ...} envelope, consistent with all other secrets endpoints.
+    return {"data": _to_public(_STORE[secret_id])}
 
 
 @router.delete("/{secret_id}")
