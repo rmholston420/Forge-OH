@@ -1,4 +1,4 @@
-"""Runs router — Phase 1 with plan + run control stubs."""
+"""Runs router — Phase 2 — adds /files endpoints."""
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
@@ -15,13 +15,11 @@ class CreateRunRequest(BaseModel):
 
 @router.get("/runs")
 async def list_runs() -> dict:
-    """GET /api/runs — list runs."""
     return {"data": [], "stub": True}
 
 
 @router.post("/runs")
 async def create_run(body: CreateRunRequest) -> dict:
-    """POST /api/runs — create run."""
     return {"data": {
         "id": "run-new-001",
         "title": body.title,
@@ -49,8 +47,19 @@ async def get_run_events(run_id: str) -> dict:
 
 @router.get("/runs/{run_id}/plan")
 async def get_run_plan(run_id: str) -> dict:
-    """GET /api/runs/:id/plan — plan nodes. Slice 1C."""
     return {"data": [], "stub": True}
+
+
+@router.get("/runs/{run_id}/files")
+async def get_run_files(run_id: str) -> dict:
+    """GET /api/runs/:id/files — file change summary list."""
+    return {"data": [], "stub": True}
+
+
+@router.get("/runs/{run_id}/files/{file_path:path}")
+async def get_run_file_diff(run_id: str, file_path: str) -> dict:
+    """GET /api/runs/:id/files/:path — full diff for one file."""
+    return {"data": None, "stub": True, "path": file_path}
 
 
 @router.get("/runs/{run_id}/artifacts")

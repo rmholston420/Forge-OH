@@ -1,0 +1,66 @@
+.wrapper {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.count { font-size: var(--font-size-meta); color: var(--color-text-secondary); font-weight: 500; }
+
+.stats { display: flex; gap: var(--space-3); font-size: var(--font-size-meta); font-family: var(--font-mono); }
+
+.adds { color: var(--color-state-success); }
+.dels { color: var(--color-state-error); }
+
+.list { padding: var(--space-2); max-height: 480px; overflow-y: auto; }
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  text-align: left;
+  transition: background-color var(--motion-fast) var(--motion-easing);
+}
+.item:hover { background: var(--color-bg-surface-alt); }
+.item--active { background: var(--color-accent-soft); }
+.item--active:hover { background: var(--color-accent-soft); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.badge--added    { background: rgba(53,196,124,0.18); color: var(--color-state-success); }
+.badge--modified { background: rgba(92,147,243,0.18); color: #5c93f3; }
+.badge--deleted  { background: rgba(240,97,107,0.18); color: var(--color-state-error); }
+.badge--renamed  { background: rgba(242,184,75,0.18); color: var(--color-state-warning); }
+.badge--untracked{ background: var(--color-bg-surface-alt); color: var(--color-text-muted); }
+
+.path {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.linestats { display: flex; gap: var(--space-2); font-size: 11px; font-family: var(--font-mono); flex-shrink: 0; }
