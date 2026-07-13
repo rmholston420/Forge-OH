@@ -2,12 +2,29 @@
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from unittest.mock import patch
 
 from bff.routers import runs
 
 app = FastAPI()
 app.include_router(runs.router, prefix="/api")
 client = TestClient(app)
+
+
+# ---------------------------------------------------------------------------
+# Helper: authenticated client (bypass RBAC for lifecycle action tests)
+# ---------------------------------------------------------------------------
+
+def _auth_client():
+    """Returns a TestClient with a pre-seeded auth token for write-role tests."""
+    from bff.auth_state import _TOKENS, _DEMO_USERS
+    token = "test-dev-token"
+    # seed a developer token so require_role("write") passes
+    _TOKENS[token] = "2"  # id=2 is role=developer
+    return TestClient(app, headers={"Authorization": f"Bearer {token}"})
+
+
+auth_client = _auth_client()
 
 
 # ---------------------------------------------------------------------------
@@ -41,33 +58,37 @@ CREATE_PAYLOAD = {
 
 class TestCreateRun:
     def test_returns_200(self):
-        r = client.post("/api/runs", json=CREATE_PAYLOAD)
+        r = auth_client.post("/api/runs", json=CREATE_PAYLOAD)
         assert r.status_code == 200
 
     def test_id_present(self):
-        body = client.post("/api/runs", json=CREATE_PAYLOAD).json()
+        body = auth_client.post("/api/runs", json=CREATE_PAYLOAD).json()
         assert body["data"]["id"] == "run-new-001"
 
     def test_title_echoed(self):
-        body = client.post("/api/runs", json=CREATE_PAYLOAD).json()
+        body = auth_client.post("/api/runs", json=CREATE_PAYLOAD).json()
         assert body["data"]["title"] == "My Run"
 
     def test_initial_status_is_queued(self):
-        body = client.post("/api/runs", json=CREATE_PAYLOAD).json()
+        body = auth_client.post("/api/runs", json=CREATE_PAYLOAD).json()
         assert body["data"]["status"] == "queued"
 
     def test_workspace_id_echoed(self):
-        body = client.post("/api/runs", json=CREATE_PAYLOAD).json()
+        body = auth_client.post("/api/runs", json=CREATE_PAYLOAD).json()
         assert body["data"]["workspaceId"] == "ws-001"
 
     def test_optional_context_prompt_accepted(self):
         payload = {**CREATE_PAYLOAD, "contextPrompt": "Do the thing"}
-        r = client.post("/api/runs", json=payload)
+        r = auth_client.post("/api/runs", json=payload)
         assert r.status_code == 200
 
     def test_missing_required_field_returns_422(self):
-        r = client.post("/api/runs", json={"title": "No preset"})
+        r = auth_client.post("/api/runs", json={"title": "No preset"})
         assert r.status_code == 422
+
+    def test_unauthenticated_returns_401(self):
+        r = client.post("/api/runs", json=CREATE_PAYLOAD)
+        assert r.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -122,24 +143,28 @@ class TestRunFileDiff:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("action,expected_status", [
-    ("pause",  "paused"),
-    ("resume", "running"),
-    ("stop",   "failed"),
-    ("approve","running"),
-    ("reject", "paused"),
+    ("pause",   "paused"),
+    ("resume",  "running"),
+    ("stop",    "stopped"),
+    ("approve", "running"),
+    ("reject",  "paused"),
 ])
 class TestRunLifecycleActions:
     def test_ok_flag(self, action, expected_status):
-        r = client.post(f"/api/runs/run-001/{action}")
+        r = auth_client.post(f"/api/runs/run-001/{action}")
         assert r.json()["ok"] is True
 
     def test_status_value(self, action, expected_status):
-        body = client.post(f"/api/runs/run-001/{action}").json()
+        body = auth_client.post(f"/api/runs/run-001/{action}").json()
         assert body["status"] == expected_status
 
     def test_run_id_echoed(self, action, expected_status):
-        body = client.post(f"/api/runs/run-xzy/{action}").json()
+        body = auth_client.post(f"/api/runs/run-xzy/{action}").json()
         assert body["run_id"] == "run-xzy"
+
+    def test_unauthenticated_returns_401(self, action, expected_status):
+        r = client.post(f"/api/runs/run-001/{action}")
+        assert r.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -148,12 +173,16 @@ class TestRunLifecycleActions:
 
 class TestForkRun:
     def test_returns_ok(self):
-        body = client.post("/api/runs/run-abc/fork").json()
+        body = auth_client.post("/api/runs/run-abc/fork").json()
         assert body["ok"] is True
 
     def test_forked_id_contains_base_id(self):
-        body = client.post("/api/runs/run-abc/fork").json()
+        body = auth_client.post("/api/runs/run-abc/fork").json()
         assert "run-abc" in body["forked_id"]
+
+    def test_unauthenticated_returns_401(self):
+        r = client.post("/api/runs/run-abc/fork")
+        assert r.status_code == 401
 
 
 # ---------------------------------------------------------------------------

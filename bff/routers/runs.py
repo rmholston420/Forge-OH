@@ -1,7 +1,9 @@
 """Runs router — Phase 2 — adds /files, /fork, and /compare endpoints."""
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from typing import Optional
+
+from bff.middleware.rbac import require_role
 
 router = APIRouter()
 
@@ -19,7 +21,10 @@ async def list_runs() -> dict:
 
 
 @router.post("/runs")
-async def create_run(body: CreateRunRequest) -> dict:
+async def create_run(
+    body: CreateRunRequest,
+    _: None = Depends(require_role("write")),
+) -> dict:
     return {"data": {
         "id": "run-new-001",
         "title": body.title,
@@ -108,32 +113,50 @@ async def get_run_traces(run_id: str) -> dict:
 
 
 @router.post("/runs/{run_id}/pause")
-async def pause_run(run_id: str) -> dict:
+async def pause_run(
+    run_id: str,
+    _: None = Depends(require_role("write")),
+) -> dict:
     return {"ok": True, "run_id": run_id, "status": "paused"}
 
 
 @router.post("/runs/{run_id}/resume")
-async def resume_run(run_id: str) -> dict:
+async def resume_run(
+    run_id: str,
+    _: None = Depends(require_role("write")),
+) -> dict:
     return {"ok": True, "run_id": run_id, "status": "running"}
 
 
 @router.post("/runs/{run_id}/stop")
-async def stop_run(run_id: str) -> dict:
-    return {"ok": True, "run_id": run_id, "status": "failed"}
+async def stop_run(
+    run_id: str,
+    _: None = Depends(require_role("write")),
+) -> dict:
+    return {"ok": True, "run_id": run_id, "status": "stopped"}
 
 
 @router.post("/runs/{run_id}/approve")
-async def approve_run(run_id: str) -> dict:
+async def approve_run(
+    run_id: str,
+    _: None = Depends(require_role("write")),
+) -> dict:
     return {"ok": True, "run_id": run_id, "status": "running"}
 
 
 @router.post("/runs/{run_id}/reject")
-async def reject_run(run_id: str) -> dict:
+async def reject_run(
+    run_id: str,
+    _: None = Depends(require_role("write")),
+) -> dict:
     return {"ok": True, "run_id": run_id, "status": "paused"}
 
 
 @router.post("/runs/{run_id}/fork")
-async def fork_run(run_id: str) -> dict:
+async def fork_run(
+    run_id: str,
+    _: None = Depends(require_role("write")),
+) -> dict:
     """
     POST /api/runs/:id/fork
 

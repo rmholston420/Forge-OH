@@ -64,9 +64,7 @@ def create_context(
     _sessions[session_id] = (body, _now())
 
     response.status_code = 201 if token == "valid-token" else 200
-    result = {"sessionId": session_id, "injected": True, **body}
-    result["data"] = {"sessionId": session_id, **body}
-    return result
+    return {"data": {"sessionId": session_id, "injected": True, **body}}
 
 
 @router.get("/context/{session_id}")
@@ -83,9 +81,7 @@ def get_context(
         raise HTTPException(status_code=404, detail="Unknown session")
 
     payload, _created_at = entry
-    result = {"sessionId": session_id, **payload}
-    result["data"] = {"sessionId": session_id, **payload}
-    return result
+    return {"data": {"sessionId": session_id, **payload}}
 
 
 @router.post("/package")

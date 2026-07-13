@@ -1,18 +1,17 @@
-"""Secrets router — interim contract for Forge-OH vertical slice.
+"""
+bff/routers/secrets.py
 
-This version unifies core tests and router tests around a single in-memory
-secrets store with hybrid behavior (unauthenticated legacy list/create/delete
-by id, authenticated flows for rawValue and delete-by-key).
+Secrets router — interim contract for Forge-OH vertical slice.
 
 TODO(foh-phase2):
 - Design a clean, consistent secrets API for Forge-OH
-- Decide which operations require auth and standardize response envelopes
-- Revisit scope/workspace handling and persistence beyond in-memory
-
+- Replace in-memory _STORE with a real secrets backend (Vault, AWS Secrets Manager, etc.)
+- Decide on workspace scoping and persistence beyond in-memory
+- All mutating endpoints already require auth; verify JWT strategy here.
 """
 from typing import Dict, Literal, Optional, List, Any
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from bff.auth_state import _TOKENS
@@ -30,10 +29,12 @@ class SecretRecord(BaseModel):
     tags: List[str] = Field(default_factory=list)
 
 
+# TODO(foh-phase2): replace with non-sensitive placeholder constants once a
+# real secrets backend is in place. Do NOT substitute real credentials here.
 _STORE: Dict[str, SecretRecord] = {
-    "sec-1": SecretRecord(id="sec-1", key="OPENAI_API_KEY", rawValue="sk-test-openai-1234", scope="global", tags=[]),
-    "sec-2": SecretRecord(id="sec-2", key="GITHUB_TOKEN", rawValue="ghp-test-github-5678", scope="global", tags=[]),
-    "sec-3": SecretRecord(id="sec-3", key="WORKSPACE_SECRET", rawValue="workspace-secret-9999", scope="workspace", tags=[]),
+    "sec-1": SecretRecord(id="sec-1", key="OPENAI_API_KEY", rawValue="REPLACE_ME_OPENAI", scope="global", tags=[]),
+    "sec-2": SecretRecord(id="sec-2", key="GITHUB_TOKEN", rawValue="REPLACE_ME_GITHUB", scope="global", tags=[]),
+    "sec-3": SecretRecord(id="sec-3", key="WORKSPACE_SECRET", rawValue="REPLACE_ME_WORKSPACE", scope="workspace", tags=[]),
 }
 
 
@@ -79,11 +80,9 @@ def list_secrets(
     scope: Optional[Scope] = None,
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
+    _require_auth(authorization)
     items = [_to_public(rec) for rec in _STORE.values() if not scope or rec.scope == scope]
-    if authorization:
-        _require_auth(authorization)
-        return {"data": items}
-    return items
+    return {"data": items}
 
 
 @router.post("")
@@ -91,6 +90,8 @@ def create_secret(
     body: dict,
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
+    _require_auth(authorization)
+
     key = body.get("key")
     scope = body.get("scope")
     tags = body.get("tags", [])
@@ -101,22 +102,13 @@ def create_secret(
     if not key or not value or not scope:
         raise HTTPException(status_code=422, detail="Missing required fields")
 
-    if raw_value is not None:
-        _require_auth(authorization)
-    elif authorization:
-        _require_auth(authorization)
-
     if _find_store_id_by_key(key):
         raise HTTPException(status_code=409, detail="Secret already exists")
 
     new_id = f"sec-{len(_STORE) + 1}"
     rec = SecretRecord(id=new_id, key=key, rawValue=value, scope=scope, tags=tags)
     _STORE[new_id] = rec
-
-    public = _to_public(rec)
-    if raw_value is not None or authorization:
-        return {"data": public}
-    return public
+    return {"data": _to_public(rec)}
 
 
 @router.put("/{secret_id}/rotate")
@@ -125,8 +117,7 @@ def rotate_secret(
     body: dict,
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
-    if authorization:
-        _require_auth(authorization)
+    _require_auth(authorization)
 
     if secret_id not in _STORE:
         raise HTTPException(status_code=404, detail="Secret not found")
@@ -144,11 +135,7 @@ def delete_secret(
     secret_id: str,
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
-    deleting_by_key = not secret_id.startswith("sec-")
-    if deleting_by_key:
-        _require_auth(authorization)
-    elif authorization:
-        _require_auth(authorization)
+    _require_auth(authorization)
 
     store_id = secret_id if secret_id in _STORE else _find_store_id_by_key(secret_id)
     if not store_id:

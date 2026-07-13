@@ -14,9 +14,9 @@ export interface RunDetailHeaderProps {
 }
 
 export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({ run, onPause, onStop, onFork, onApprove }) => {
-  const isRunning = run.status === 'running' || (false || run.status === 'pending');
+  const isRunning = run.status === 'running' || run.status === 'pending';
   const isPaused = run.status === 'paused';
-  const isAwaiting = run.status === 'awaiting_approval';
+  const isAwaiting = run.status === 'awaiting_approval' || run.status === 'pending_approval';
 
   return (
     <div className={styles.header}>

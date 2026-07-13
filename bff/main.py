@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from bff.routers import (
     agent_presets,
@@ -16,6 +17,16 @@ from bff.routers import (
 )
 
 app = FastAPI()
+
+# TODO(foh-phase2): restrict allow_origins to the actual frontend origin
+# before any production deployment.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(agent_presets.router, prefix="/api")

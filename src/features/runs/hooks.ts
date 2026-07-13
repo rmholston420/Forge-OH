@@ -9,6 +9,7 @@ export function useRuns() {
     queryKey: QUERY_KEYS.runs.list(),
     queryFn: fetchRuns,
     refetchInterval: 5000,
+    staleTime: 4000,
   });
 }
 
