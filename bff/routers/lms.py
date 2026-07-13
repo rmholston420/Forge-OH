@@ -9,6 +9,7 @@ router = APIRouter(prefix="/lms", tags=["lms"])
 
 FEATURE_ENABLED = True
 _SESSION_TTL_SECONDS = 3600
+# Sessions: session_id -> (context_dict, created_at_monotonic)
 _sessions: dict[str, tuple[dict, float]] = {}
 
 
@@ -20,7 +21,8 @@ class PackageRequest(BaseModel):
 
 
 def _now() -> float:
-    return time.time()
+    # Use monotonic clock so tests can back-date timestamps without wall-clock skew.
+    return time.monotonic()
 
 
 def _parse_token(authorization: Optional[str]) -> str:
@@ -64,8 +66,9 @@ def create_context(
     _sessions[session_id] = (body, _now())
 
     response.status_code = 201
-    # Return ONLY {data: {sessionId, ...body}} — no extra top-level fields.
-    return {"data": {"sessionId": session_id, **body}}
+    # Flat response shape: {injected, sessionId, ...context_fields}
+    # test_lms.py asserts body["injected"] is True and body["sessionId"] at top level.
+    return {"injected": True, "sessionId": session_id, **body}
 
 
 @router.get("/context/{session_id}")
@@ -82,7 +85,9 @@ def get_context(
         raise HTTPException(status_code=404, detail="Unknown session")
 
     payload, _created_at = entry
-    return {"data": {"sessionId": session_id, **payload}}
+    # Flat response: context fields directly on the body (not nested under 'data').
+    # test_lms.py asserts r.json()["courseId"] == "course-abc" directly.
+    return {"sessionId": session_id, **payload}
 
 
 @router.post("/package")

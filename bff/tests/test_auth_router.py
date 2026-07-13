@@ -20,7 +20,8 @@ class TestDemoLogin:
 
     def test_user_role_returned(self):
         body = client.post("/api/auth/demo-login", json={"username": "admin", "password": "password"}).json()
-        assert body["user"]["role"] in ("admin", "editor", "viewer")
+        # Valid roles in this system are admin, developer, viewer (not 'editor').
+        assert body["user"]["role"] in ("admin", "developer", "viewer")
 
     def test_invalid_password_returns_401(self):
         r = client.post("/api/auth/demo-login", json={"username": "admin", "password": "wrong"})
@@ -50,5 +51,4 @@ class TestLogout:
         token = self._login()
         client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
         r = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
-        # Should not raise — idempotent 200 or 401 both acceptable, just not 500
         assert r.status_code != 500

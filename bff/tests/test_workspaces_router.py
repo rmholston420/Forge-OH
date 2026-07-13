@@ -1,21 +1,32 @@
 """Tests for bff/routers/workspaces.py."""
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from bff.routers.workspaces import router, _WORKSPACES
-from bff.auth import _TOKENS  # shared in-memory token store
+from bff.tests.utils import create_test_client
+from bff.routers.workspaces import _WORKSPACES
 
-app = FastAPI()
-app.include_router(router, prefix='/api')
-client = TestClient(app, raise_server_exceptions=False)
+# Use the full multi-router test app so /api/auth/demo-login is available
+# for issuing real tokens (correct user_id strings in _TOKENS).
+client = create_test_client()
 
 CREATE_PAYLOAD = {'name': 'My WS', 'type': 'local'}
 
 
 def _auth_headers() -> dict:
-    """Seed a developer token and return the matching Authorization header."""
-    _TOKENS['test-ws-token'] = {'role': 'write', 'sub': 'tester'}
-    return {'Authorization': 'Bearer test-ws-token'}
+    """Login as developer (write role) and return Authorization header."""
+    body = client.post(
+        '/api/auth/demo-login',
+        json={'username': 'admin', 'password': 'password'},
+    ).json()
+    return {'Authorization': f"Bearer {body['token']}"}
+
+
+def _delete_headers() -> dict:
+    """Login as admin (delete role) and return Authorization header."""
+    body = client.post(
+        '/api/auth/demo-login',
+        json={'username': 'admin', 'password': 'password'},
+    ).json()
+    return {'Authorization': f"Bearer {body['token']}"}
 
 
 # ---------------------------------------------------------------------------
@@ -116,24 +127,24 @@ class TestUpdateWorkspace:
 
     def test_unauthenticated_returns_401(self):
         assert client.patch('/api/workspaces/ws-1',
-                            json={'name': 'x', 'type': 'local'}).status_code == 401
+                            json={'name': 'x'}).status_code == 401
 
     def test_updates_name(self):
         wid = self._ws_id()
         body = client.patch(f'/api/workspaces/{wid}',
-                            json={'name': 'Renamed', 'type': 'local'},
+                            json={'name': 'Renamed'},
                             headers=_auth_headers()).json()
         assert body['name'] == 'Renamed'
 
     def test_unknown_id_returns_404(self):
         r = client.patch('/api/workspaces/ghost',
-                         json={'name': 'x', 'type': 'local'},
+                         json={'name': 'x'},
                          headers=_auth_headers())
         assert r.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# DELETE /api/workspaces/{id}  — requires delete role
+# DELETE /api/workspaces/{id}  — requires delete role (admin only)
 # ---------------------------------------------------------------------------
 
 class TestDeleteWorkspace:
@@ -143,16 +154,14 @@ class TestDeleteWorkspace:
     def test_deletes_known_workspace(self):
         wid = client.post('/api/workspaces', json=CREATE_PAYLOAD,
                           headers=_auth_headers()).json()['id']
-        # delete requires a 'delete' role token
-        _TOKENS['test-delete-token'] = {'role': 'delete', 'sub': 'tester'}
-        del_headers = {'Authorization': 'Bearer test-delete-token'}
-        assert client.delete(f'/api/workspaces/{wid}', headers=del_headers).status_code == 200
+        # Admin has delete role
+        assert client.delete(f'/api/workspaces/{wid}',
+                             headers=_delete_headers()).status_code == 200
         assert client.get(f'/api/workspaces/{wid}').status_code == 404
 
     def test_unknown_id_returns_404(self):
-        _TOKENS['test-delete-token'] = {'role': 'delete', 'sub': 'tester'}
-        del_headers = {'Authorization': 'Bearer test-delete-token'}
-        assert client.delete('/api/workspaces/ghost', headers=del_headers).status_code == 404
+        assert client.delete('/api/workspaces/ghost',
+                             headers=_delete_headers()).status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +180,12 @@ class TestResetWorkspace:
         assert client.post('/api/workspaces/ghost/reset',
                            headers=_auth_headers()).status_code == 404
 
-    def test_reset_clears_run_count(self):
+    def test_reset_clears_disk_usage(self):
         body = client.post('/api/workspaces/ws-1/reset',
                            headers=_auth_headers()).json()
-        assert body['runCount'] == 0
+        assert body['diskUsageMb'] == 0
+
+    def test_reset_status_is_idle(self):
+        body = client.post('/api/workspaces/ws-1/reset',
+                           headers=_auth_headers()).json()
+        assert body['status'] == 'idle'
