@@ -7,7 +7,12 @@ pydantic>=2.12.5,<3.0
 pydantic-settings>=2.4.0
 uvicorn[standard]>=0.34
 python-socketio>=5.11
-openhands==cloud-1.46.0
+
+# OpenHands — cloud-1.46.0 is not a valid PyPI version string (hyphens are not
+# permitted in PEP 440 versions). Install directly from the GitHub release tag.
+# Replace the URL below if the canonical release changes.
+openhands @ git+https://github.com/All-Hands-AI/OpenHands.git@cloud-1.46.0
+
 ollama>=0.31.2
 vllm>=0.25.0
 
@@ -18,3 +23,9 @@ websockets>=13.0
 
 # Storage
 redis>=5.0.0
+
+# Async SQLite — required for episodic_memory.py.
+# The synchronous sqlite3 module blocks the asyncio event loop.
+# EpisodicMemory should be migrated to use aiosqlite.connect() or
+# asyncio.to_thread() wrappers. This package is the prerequisite.
+aiosqlite>=0.20.0
