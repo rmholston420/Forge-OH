@@ -4,12 +4,14 @@ from typing import Literal, Optional
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+
 class KeyboardShortcuts(BaseModel):
     newRun: str = "Shift+R"
     commandPalette: str = "Ctrl+K"
     focusSearch: str = "Ctrl+/"
     pauseRun: str = "Shift+P"
     approveStep: str = "Shift+A"
+
 
 class SettingsResponse(BaseModel):
     theme: Literal["system", "light", "dark"] = "system"
@@ -22,6 +24,7 @@ class SettingsResponse(BaseModel):
     streamingEnabled: bool = True
     keyboardShortcuts: KeyboardShortcuts = KeyboardShortcuts()
 
+
 class SettingsPatch(BaseModel):
     theme: Optional[Literal["system", "light", "dark"]] = None
     accentColor: Optional[Literal["teal", "blue", "purple", "orange", "gold", "green"]] = None
@@ -33,13 +36,20 @@ class SettingsPatch(BaseModel):
     streamingEnabled: Optional[bool] = None
     keyboardShortcuts: Optional[KeyboardShortcuts] = None
 
+
 _SETTINGS = SettingsResponse()
 
-@router.get("/", response_model=SettingsResponse)
+
+# NOTE: routes use "" (empty string) not "/" to avoid FastAPI registering
+# /api/settings/ with a trailing slash, which would cause 307 redirects
+# for clients that request /api/settings (no slash).
+
+@router.get("", response_model=SettingsResponse)
 def get_settings():
     return _SETTINGS
 
-@router.patch("/", response_model=SettingsResponse)
+
+@router.patch("", response_model=SettingsResponse)
 def update_settings(patch: SettingsPatch):
     global _SETTINGS
     data = _SETTINGS.model_dump()
@@ -47,6 +57,7 @@ def update_settings(patch: SettingsPatch):
         data[field] = value
     _SETTINGS = SettingsResponse(**data)
     return _SETTINGS
+
 
 @router.post("/reset", response_model=SettingsResponse)
 def reset_settings():
