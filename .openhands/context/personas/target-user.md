@@ -1,43 +1,43 @@
-# Target User Persona — Forge-OH
+# Target User Persona: The Supervising Engineer
 
-## Primary: The Supervising Developer
+## Primary Persona: The Operator
 
-**Name**: Alex  
+**Name**: Maya  
 **Role**: Senior software engineer or technical lead  
-**Context**: Working on a complex, multi-file codebase with AI assistance
+**Context**: Working on a complex, multi-day software project with an autonomous agent doing the heavy lifting
 
-**Goals**:
-- Delegate well-scoped programming tasks to an autonomous agent
-- Maintain clear visibility into what the agent is doing at all times
-- Intervene quickly when the agent goes off-course or loops
-- Review and approve file changes before they land in the codebase
-- Export clean artifacts (patches, reports) for PR review
+### Goals
+- Launch agent runs without writing prompt boilerplate every time
+- Stay informed about what the agent is doing without watching every event
+- Catch loops, bad decisions, or risky changes before they compound
+- Review and approve file diffs before they're committed
+- Export artifacts (patches, reports) for review or handoff
 
-**Pain points with existing tools**:
-- Agent tools are either too opaque (black box execution) or too verbose (raw JSON logs)
-- No clear way to pause, inspect, and redirect a running agent
-- Approval flows are buried or missing
-- No persistent memory across sessions — agent re-learns the same context every time
+### Pain Points
+- Agent loops are invisible until they've wasted 30+ minutes of compute
+- Event timelines are information dumps — hard to find what actually matters
+- No way to inject project-specific constraints ("don't touch the auth layer")
+- Multi-session tasks lose context — the agent re-discovers facts it already knew
 
-**What Forge-OH gives Alex**:
-- Summary-first event stream: understands what happened without reading raw logs
-- Plan rail: knows exactly which step the agent is on and what's next
-- Approval banners: unmissable, actionable, never buried
-- Loop guard: automatic escalation before the agent wastes 20 iterations
-- Episodic memory: agent remembers past decisions, failed approaches, and project conventions
+### How Forge-OH Helps
+- Loop guard surfaces repeated action patterns and escalates before wasted compute
+- Summary-first event cards show what matters without expanding every raw event
+- Context loader injects ADRs and conventions before each planning step
+- Episodic memory persists key facts and decisions across sessions
 
-## Secondary: The LMS Student (Rigpa-LMS Context)
+## Secondary Persona: The Learner (Rigpa-LMS Context)
 
-**Name**: Sam  
-**Role**: Student in a software engineering or AI course  
-**Context**: Working on course projects with an embedded AI coding assistant
+**Name**: Kenji  
+**Role**: Student in a Rigpa-LMS coding course  
+**Context**: Using Forge-OH as a pedagogical coding copilot embedded in the LMS
 
-**Goals**:
-- Get meaningful coding help on assignments without just getting the answer
-- Understand what the AI agent did and why
-- Submit artifact bundles (patches, reports) that demonstrate learning
+### Goals
+- Understand what the agent is doing, not just accept its output
+- Build mental models of software engineering practices through agent observation
+- Get unstuck on exercises without being handed the answer
 
-**What Forge-OH gives Sam**:
-- Course ribbon showing current assignment context injected into every agent session
-- Artifact packaging for assignment submission
-- Learning-mode agent presets (explain-as-you-go, hint-first policies)
+### How Forge-OH (Rigpa Layer) Helps
+- Course ribbon shows learning objective context for each agent task
+- Artifact packaging wraps agent output in reflection prompts
+- Approval gates give learners decision points rather than passive observation
+- Agent preset library includes "teaching mode" presets that explain decisions

@@ -1,25 +1,38 @@
-# ADR 002 — Frontend Never Talks Directly to OpenHands
+# ADR 002: Frontend Never Talks Directly to OpenHands
 
 **Status**: Accepted  
-**Date**: July 2026
+**Date**: 2026-07-01
 
 ## Context
 
-The OpenHands SDK exposes a rich REST and WebSocket API. It is tempting to call it directly from the frontend for simplicity, especially during early development.
+OpenHands exposes a REST + WebSocket API. The simplest integration would have the frontend call OpenHands directly. However, this creates several problems:
+
+1. No policy injection point for course context, loop-guard, or episodic memory.
+2. Raw OpenHands events are not shaped for UI consumption.
+3. Secrets and model routing decisions would be exposed to the browser.
+4. The LMS plugin layer (Phase 5C) cannot intercept or augment calls.
 
 ## Decision
 
-The frontend is **permanently** prohibited from importing, calling, or connecting directly to any OpenHands endpoint. All traffic flows through the Forge BFF.
+All traffic flows through the Forge BFF. The frontend never holds an OpenHands URL or API key. The BFF:
 
-## Rationale
+1. Authenticates with OpenHands using server-side credentials.
+2. Injects course context and ADRs before dispatching agent tasks.
+3. Enforces loop-guard and escalation policies.
+4. Normalizes OpenHands events into the Forge domain model before forwarding to the frontend.
+5. Proxies WebSocket streams through Socket.IO, translating OpenHands events to `oh_event` messages.
 
-1. **Policy injection**: The BFF is the only place that injects loop-guard enforcement, course context, episodic memory, and delegation contracts. Direct calls bypass all safety policies.
-2. **Secret isolation**: OpenHands may have access to workspace secrets. The BFF enforces that raw values never reach the frontend.
-3. **Rigpa-LMS integration**: Course context enrichment happens in the BFF. Direct calls produce context-blind agent behavior.
-4. **Audit trail**: All agent instructions must pass through the BFF audit log.
+## API Contract Boundary
 
-## Enforcement
+```
+Frontend  →  Next.js API routes (src/app/api/)  →  Forge BFF  →  OpenHands
+```
 
-- ESLint rule banning direct imports of `@all-hands-ai/openhands` in `src/`
-- CI check: `grep -r 'openhands' src/ --include='*.ts' --include='*.tsx'` must return zero results
-- All OpenHands calls are in `bff/openhands_client.py` only
+The Next.js API routes are thin proxies — they add auth headers and forward. Business logic lives only in the BFF.
+
+## Consequences
+
+- `NEXT_PUBLIC_*` env vars must never contain OpenHands credentials.
+- `openhands_client.py` is the only file in the codebase that holds the OpenHands base URL.
+- BFF routers validate all input with Pydantic before forwarding to OpenHands.
+- This architecture enables the Rigpa-LMS plugin (Phase 5C) to inject course context at the BFF layer without frontend changes.

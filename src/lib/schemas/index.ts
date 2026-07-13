@@ -1,4 +1,3 @@
-// Forge-OH Zod schema barrel — all typed API contracts in one import
 export * from './run';
 export * from './event';
 export * from './workspace';

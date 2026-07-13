@@ -1,0 +1,109 @@
+.wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-body);
+  font-family: var(--font-ui);
+}
+
+.caption {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-meta);
+  color: var(--color-text-muted);
+  caption-side: top;
+}
+
+.thead {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.th {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-meta);
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tbody .row:not(:last-child) {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.td {
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+}
+
+.rowClickable {
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-easing);
+}
+
+.rowClickable:hover {
+  background: var(--color-bg-surface-alt);
+}
+
+.rowClickable:active {
+  background: var(--color-bg-surface-elevated);
+}
+
+.rowSelected {
+  background: var(--color-accent-soft);
+}
+
+.rowSelected:hover {
+  background: var(--color-accent-soft);
+}
+
+.emptyCell {
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+
+.emptyDefault {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+}
+
+.skeleton {
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-surface-alt) 25%,
+    var(--color-bg-surface-elevated) 50%,
+    var(--color-bg-surface-alt) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

@@ -1,34 +1,30 @@
 import { z } from 'zod';
 
-// Raw secret values NEVER appear in the UI or API responses.
-// Only SecretRef metadata is returned.
-export const SecretTypeSchema = z.enum([
-  'api_key',
-  'oauth_token',
-  'ssh_key',
-  'env_var',
-  'certificate',
-  'other',
-]);
-
+// SecretRef: metadata only — raw values NEVER in the UI
 export const SecretRefSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: SecretTypeSchema,
   description: z.string().optional(),
-  lastRotatedAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
-  // Raw value is intentionally absent — never included in API responses
+  updatedAt: z.string().datetime(),
+  // Never includes the actual secret value
+  // 'masked' indicates a value is set; 'unset' means no value stored
+  valueStatus: z.enum(['masked', 'unset']),
+  usedByWorkspaces: z.array(z.string()).optional(),
+  usedByRuns: z.number().optional(),
 });
 
 export type SecretRef = z.infer<typeof SecretRefSchema>;
 
-export const SecretRefListSchema = z.array(SecretRefSchema);
-export type SecretRefList = z.infer<typeof SecretRefListSchema>;
+export const SecretListResponseSchema = z.object({
+  secrets: z.array(SecretRefSchema),
+  total: z.number(),
+});
+
+export type SecretListResponse = z.infer<typeof SecretListResponseSchema>;
 
 export const CreateSecretRequestSchema = z.object({
-  name: z.string().min(1),
-  type: SecretTypeSchema,
+  name: z.string().min(1).regex(/^[A-Z0-9_]+$/, 'Secret names must be UPPER_SNAKE_CASE'),
   value: z.string().min(1),
   description: z.string().optional(),
 });

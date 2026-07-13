@@ -1,0 +1,93 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-full);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+/* Sizes */
+.size-sm {
+  padding: 2px var(--space-2);
+  font-size: var(--font-size-meta);
+}
+
+.size-md {
+  padding: 3px var(--space-3);
+  font-size: var(--font-size-body);
+}
+
+/* Status variants — using Forge design token colors */
+.idle {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-tertiary);
+}
+
+.running {
+  background: var(--color-accent-soft);
+  color: var(--color-state-running);
+}
+
+.streaming {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-primary);
+}
+
+.queued {
+  background: rgba(194, 139, 255, 0.12);
+  color: var(--color-state-paused);
+}
+
+.paused {
+  background: rgba(194, 139, 255, 0.12);
+  color: var(--color-state-paused);
+}
+
+.awaitingApproval {
+  background: rgba(242, 184, 75, 0.14);
+  color: var(--color-state-warning);
+}
+
+.succeeded {
+  background: rgba(53, 196, 124, 0.12);
+  color: var(--color-state-success);
+}
+
+.failed {
+  background: rgba(240, 97, 107, 0.12);
+  color: var(--color-state-error);
+}
+
+.blocked {
+  background: rgba(240, 97, 107, 0.08);
+  color: var(--color-state-error);
+}
+
+/* Dot indicator */
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.dotPulse {
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dotPulse {
+    animation: none;
+  }
+}

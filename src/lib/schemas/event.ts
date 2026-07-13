@@ -2,38 +2,48 @@ import { z } from 'zod';
 
 export const EventTypeSchema = z.enum([
   'message',
-  'tool_call',
-  'tool_result',
-  'file_edit',
-  'command_run',
-  'browser_action',
+  'action',
+  'observation',
   'plan_update',
+  'file_change',
+  'command_start',
+  'command_end',
+  'browser_action',
+  'browser_observation',
   'approval_required',
-  'status_change',
+  'approval_granted',
+  'approval_rejected',
   'error',
-  'run_failed',
+  'run_started',
+  'run_paused',
+  'run_resumed',
+  'run_stopped',
   'run_succeeded',
-]);
+  'run_failed',
+  'status',
+]).or(z.string());
+
+export type EventType = z.infer<typeof EventTypeSchema>;
 
 export const ToolEventSchema = z.object({
-  id: z.string(),
+  id: z.union([z.string(), z.number()]),
   eventId: z.union([z.string(), z.number()]).optional(),
   type: EventTypeSchema,
-  runId: z.string(),
-  timestamp: z.string().datetime(),
+  timestamp: z.string(),
+  runId: z.string().optional(),
   source: z.string().optional(),
   summary: z.string().optional(),
   payload: z.record(z.unknown()).optional(),
+  rawPayload: z.record(z.unknown()).optional(),
   raw: z.unknown().optional(),
 });
 
 export type ToolEvent = z.infer<typeof ToolEventSchema>;
 
-export const EventListSchema = z.object({
+export const EventListResponseSchema = z.object({
   events: z.array(ToolEventSchema),
-  total: z.number().int().nonnegative(),
-  hasMore: z.boolean(),
+  total: z.number().optional(),
   latestEventId: z.union([z.string(), z.number()]).optional(),
 });
 
-export type EventList = z.infer<typeof EventListSchema>;
+export type EventListResponse = z.infer<typeof EventListResponseSchema>;

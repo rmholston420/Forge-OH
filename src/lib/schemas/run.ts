@@ -14,15 +14,13 @@ export const RunStatusSchema = z.enum([
 
 export type RunStatus = z.infer<typeof RunStatusSchema>;
 
-export const WorkspaceTypeSchema = z.enum(['local', 'docker', 'remote_api']);
-
 export const RunSummarySchema = z.object({
   id: z.string(),
   title: z.string(),
   status: RunStatusSchema,
   agentPresetName: z.string(),
   workspaceId: z.string(),
-  workspaceType: WorkspaceTypeSchema,
+  workspaceType: z.enum(['local', 'docker', 'remote_api']),
   activeTool: z.string().nullable(),
   updatedAt: z.string().datetime(),
   createdAt: z.string().datetime(),
@@ -34,18 +32,29 @@ export type RunSummary = z.infer<typeof RunSummarySchema>;
 
 export const RunDetailSchema = RunSummarySchema.extend({
   taskPrompt: z.string(),
-  model: z.string(),
-  eventCount: z.number().int().nonnegative(),
-  artifactCount: z.number().int().nonnegative(),
-  planNodeCount: z.number().int().nonnegative(),
+  modelName: z.string().optional(),
+  contextTokens: z.number().optional(),
+  totalEvents: z.number().optional(),
+  totalArtifacts: z.number().optional(),
+  totalCommands: z.number().optional(),
 });
 
 export type RunDetail = z.infer<typeof RunDetailSchema>;
+
+export const RunListResponseSchema = z.object({
+  runs: z.array(RunSummarySchema),
+  total: z.number(),
+  page: z.number().optional(),
+  pageSize: z.number().optional(),
+});
+
+export type RunListResponse = z.infer<typeof RunListResponseSchema>;
 
 export const CreateRunRequestSchema = z.object({
   taskPrompt: z.string().min(1),
   agentPresetId: z.string(),
   workspaceId: z.string(),
+  title: z.string().optional(),
 });
 
 export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;

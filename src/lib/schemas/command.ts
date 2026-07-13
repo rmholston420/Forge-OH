@@ -1,29 +1,29 @@
 import { z } from 'zod';
 
 export const CommandRiskLevelSchema = z.enum(['low', 'medium', 'high', 'critical']);
+export type CommandRiskLevel = z.infer<typeof CommandRiskLevelSchema>;
 
 export const CommandExecutionSchema = z.object({
   id: z.string(),
-  runId: z.string(),
+  runId: z.string().optional(),
   command: z.string(),
   cwd: z.string().optional(),
-  exitCode: z.number().int().nullable(),
-  durationMs: z.number().nonnegative().nullable(),
+  exitCode: z.number().nullable(),
+  durationMs: z.number().nullable(),
   riskLevel: CommandRiskLevelSchema,
   stdoutPreview: z.string().optional(),
   stderrPreview: z.string().optional(),
-  // Full output fetched separately via /api/runs/:id/commands/:commandId/output
-  // to avoid bloating list responses
-  startedAt: z.string().datetime(),
-  finishedAt: z.string().datetime().nullable().optional(),
-  secretsMasked: z.boolean().optional(),
+  // Output may be truncated — fetch full output via /api/runs/:id/commands/:commandId/output
+  outputTruncated: z.boolean().optional(),
+  startTime: z.string(),
+  endTime: z.string().nullable(),
 });
 
 export type CommandExecution = z.infer<typeof CommandExecutionSchema>;
 
-export const CommandListSchema = z.object({
+export const CommandListResponseSchema = z.object({
   commands: z.array(CommandExecutionSchema),
-  total: z.number().int().nonnegative(),
+  total: z.number(),
 });
 
-export type CommandList = z.infer<typeof CommandListSchema>;
+export type CommandListResponse = z.infer<typeof CommandListResponseSchema>;

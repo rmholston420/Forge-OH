@@ -1,25 +1,38 @@
-# ADR 001 — Use Ollama as Primary LLM Backend
+# ADR 001: Use Ollama as Primary Model Backend
 
 **Status**: Accepted  
-**Date**: July 2026
+**Date**: 2026-07-01
 
 ## Context
 
-Forge-OH operates in potentially air-gapped environments on local hardware (RTX 5070, 16 GB VRAM). Cloud LLM APIs introduce latency, cost, and privacy concerns for code that may be proprietary.
+Forge-OH runs on a workstation with an NVIDIA RTX 5070 (16 GB VRAM). The operator is privacy-conscious and prefers air-gapped, local inference where possible. Cloud APIs introduce latency, cost, and data exposure risk.
 
 ## Decision
 
-All model routing uses Ollama as the primary backend, with vLLM as a local fallback. Cloud models are optional and disabled by default.
+All model inference routes through Ollama (local) first. vLLM (local, port 8000) is the fallback when Ollama is unavailable or when context exceeds the KV cache budget. Cloud APIs are not used unless explicitly opted in per-request.
 
-**Model tiers:**
-- **Primary (agentic):** Devstral Small 24B @ Q4_K_M via Ollama (~16 GB VRAM)
-- **Fast (scripting):** Qwen3 14B @ Q4_K_M via Ollama (~9 GB VRAM)
-- **Fallback:** vLLM at `localhost:8001` with configurable model via `VLLM_FALLBACK_MODEL`
-- **IDE autocomplete:** Codestral 22B @ Q4_K_M via Ollama
+## Model Assignments
+
+| Task | Model | Backend |
+|------|-------|---------|
+| Agentic workflows, multi-file refactoring | Devstral Small 24B (Q4_K_M) | Ollama |
+| Fast scripting, quick summaries | Qwen3 14B (Q4_K_M) | Ollama |
+| IDE autocomplete (FIM) | Codestral 22B (Q4_K_M) | Ollama |
+| Overflow / vLLM fallback | configurable | vLLM |
+
+## KV Cache Budget
+
+- Set `PARAMETER num_ctx 32768` in all Ollama Modelfiles.
+- Devstral 24B at Q4_K_M uses ~16 GB — KV cache headroom near zero at long context.
+- For sessions expected to exceed 16K tokens, route to Qwen3 14B (9 GB weights, ~7 GB free for KV).
+- `DEVSTRAL_CTX_LIMIT = 28_000` is the soft limit in `model_router.py`.
+
+## Quantization Floor
+
+**Never go below Q4_K_M.** Q3_K_S introduces syntax errors in generated code.
 
 ## Consequences
 
-- Model routing is entirely BFF-side — the frontend never selects models
-- `DEVSTRAL_CTX_LIMIT = 28_000` is enforced; sessions exceeding this route to Qwen3
-- Never go below Q4_K_M quantization — Q3_K_S introduces syntax errors in generated code
-- The `VLLM_FALLBACK_MODEL` env var must be set to match whatever model is loaded in vLLM
+- All model routing logic lives in `bff/services/model_router.py`.
+- The frontend never selects models — routing is a BFF responsibility.
+- Env vars: `DEVSTRAL_MODEL`, `FAST_MODEL`, `VLLM_BASE_URL`, `VLLM_FALLBACK_MODEL`.

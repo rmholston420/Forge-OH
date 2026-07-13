@@ -1,0 +1,85 @@
+import type { RunSummary, RunDetail } from '../../../lib/schemas/run';
+
+const now = new Date().toISOString();
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+export const runsFixture: { runs: RunSummary[]; total: number } = {
+  total: 5,
+  runs: [
+    {
+      id: 'run-001',
+      title: 'Refactor authentication middleware',
+      status: 'running',
+      agentPresetName: 'Devstral Agentic',
+      workspaceId: 'ws-docker-1',
+      workspaceType: 'docker',
+      activeTool: 'edit_file',
+      updatedAt: now,
+      createdAt: ago(12 * 60 * 1000),
+      elapsedMs: 12 * 60 * 1000,
+      estimatedCostUsd: 0.04,
+    },
+    {
+      id: 'run-002',
+      title: 'Add Zod validation to BFF routes',
+      status: 'awaiting_approval',
+      agentPresetName: 'Devstral Agentic',
+      workspaceId: 'ws-docker-1',
+      workspaceType: 'docker',
+      activeTool: null,
+      updatedAt: ago(2 * 60 * 1000),
+      createdAt: ago(25 * 60 * 1000),
+      elapsedMs: 23 * 60 * 1000,
+      estimatedCostUsd: 0.07,
+    },
+    {
+      id: 'run-003',
+      title: 'Write unit tests for loop_guard.py',
+      status: 'succeeded',
+      agentPresetName: 'Qwen3 Fast',
+      workspaceId: 'ws-local-1',
+      workspaceType: 'local',
+      activeTool: null,
+      updatedAt: ago(45 * 60 * 1000),
+      createdAt: ago(60 * 60 * 1000),
+      elapsedMs: 15 * 60 * 1000,
+      estimatedCostUsd: 0.02,
+    },
+    {
+      id: 'run-004',
+      title: 'Fix Socket.IO reconnect storm bug',
+      status: 'failed',
+      agentPresetName: 'Devstral Agentic',
+      workspaceId: 'ws-docker-2',
+      workspaceType: 'docker',
+      activeTool: null,
+      updatedAt: ago(2 * 60 * 60 * 1000),
+      createdAt: ago(3 * 60 * 60 * 1000),
+      elapsedMs: 60 * 60 * 1000,
+      estimatedCostUsd: 0.11,
+    },
+    {
+      id: 'run-005',
+      title: 'Scaffold Rigpa-LMS feature slice',
+      status: 'queued',
+      agentPresetName: 'Devstral Agentic',
+      workspaceId: 'ws-docker-1',
+      workspaceType: 'docker',
+      activeTool: null,
+      updatedAt: now,
+      createdAt: now,
+      elapsedMs: null,
+      estimatedCostUsd: null,
+    },
+  ],
+};
+
+export const runDetailFixture: RunDetail = {
+  ...runsFixture.runs[0],
+  taskPrompt: 'Refactor the authentication middleware to use the new Pydantic v2 model validator syntax. Ensure all existing tests still pass.',
+  modelName: 'devstral-small:24b',
+  contextTokens: 14200,
+  totalEvents: 47,
+  totalArtifacts: 3,
+  totalCommands: 8,
+};

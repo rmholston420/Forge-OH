@@ -1,20 +1,30 @@
 import { z } from 'zod';
 
-export const WorkspaceHealthSchema = z.enum(['healthy', 'warning', 'error', 'disconnected']);
+export const WorkspaceTypeSchema = z.enum(['local', 'docker', 'remote_api']);
+export type WorkspaceType = z.infer<typeof WorkspaceTypeSchema>;
+
+export const WorkspaceHealthSchema = z.enum(['healthy', 'degraded', 'offline', 'unknown']);
+export type WorkspaceHealth = z.infer<typeof WorkspaceHealthSchema>;
 
 export const WorkspaceSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(['local', 'docker', 'remote_api']),
+  type: WorkspaceTypeSchema,
   health: WorkspaceHealthSchema,
-  agentServerUrl: z.string().url().optional(),
-  isolationMode: z.enum(['none', 'container', 'vm']).optional(),
+  description: z.string().optional(),
+  dockerImage: z.string().optional(),
+  remoteUrl: z.string().url().optional(),
+  localPath: z.string().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  meta: z.record(z.unknown()).optional(),
+  isDefault: z.boolean().optional(),
 });
 
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
-export const WorkspaceListSchema = z.array(WorkspaceSchema);
-export type WorkspaceList = z.infer<typeof WorkspaceListSchema>;
+export const WorkspaceListResponseSchema = z.object({
+  workspaces: z.array(WorkspaceSchema),
+  total: z.number(),
+});
+
+export type WorkspaceListResponse = z.infer<typeof WorkspaceListResponseSchema>;
