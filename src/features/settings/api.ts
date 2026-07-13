@@ -1,6 +1,6 @@
 import type { Settings, UpdateSettingsRequest } from '@/lib/schemas/settings';
 
-const BASE = `${process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081'}/api/settings`;
+const BASE = `${process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081'}/api/settings/`;
 
 export async function fetchSettings(): Promise<Settings> {
   const res = await fetch(BASE);
@@ -19,7 +19,7 @@ export async function updateSettings(patch: UpdateSettingsRequest): Promise<Sett
 }
 
 export async function resetSettings(): Promise<Settings> {
-  const res = await fetch(`${BASE}/reset`, { method: 'POST' });
+  const res = await fetch(`${BASE}reset`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to reset settings');
   return res.json();
 }
