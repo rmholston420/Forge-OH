@@ -4,28 +4,29 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from bff.auth_state import _TOKENS
+from bff.auth_state import _TOKENS, _DEMO_USERS
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-
+# email/username -> {email, role, password, id}
 _USERS = {
-    "admin@forge.dev": {"email": "admin@forge.dev", "role": "admin", "password": "password123"},
-    "dev@forge.dev": {"email": "dev@forge.dev", "role": "developer", "password": "password123"},
-    "viewer@forge.dev": {"email": "viewer@forge.dev", "role": "viewer", "password": "password123"},
-    "admin": {"email": "admin@forge.dev", "role": "admin", "password": "password"},
+    "admin@forge.dev": {"id": "1", "email": "admin@forge.dev",  "role": "admin",     "password": "password123"},
+    "dev@forge.dev":   {"id": "2", "email": "dev@forge.dev",    "role": "developer", "password": "password123"},
+    "viewer@forge.dev":{"id": "3", "email": "viewer@forge.dev", "role": "viewer",    "password": "password123"},
+    "admin":           {"id": "1", "email": "admin@forge.dev",  "role": "admin",     "password": "password"},
 }
 
 
 class LoginRequest(BaseModel):
-    email: Optional[str] = None
+    email:    Optional[str] = None
     username: Optional[str] = None
     password: str
 
 
 def _issue_token(user: dict) -> dict:
     token = _secrets.token_hex(32)
-    _TOKENS[token] = {"email": user["email"], "role": user["role"]}
+    # Store user_id string, NOT a dict — rbac.py expects a user_id here.
+    _TOKENS[token] = user["id"]
     return {"token": token, "user": {"email": user["email"], "role": user["role"]}}
 
 
@@ -70,7 +71,10 @@ def logout(authorization: Optional[str] = Header(default=None, alias="Authorizat
 @router.get("/me")
 def me(authorization: Optional[str] = Header(default=None, alias="Authorization")):
     token = _parse_token(authorization)
-    user = _TOKENS.get(token)
-    if not user:
+    user_id = _TOKENS.get(token)
+    if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
-    return user
+    user = next((u for u in _DEMO_USERS if u.id == user_id), None)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return {"email": user.email, "role": user.role}

@@ -3,69 +3,81 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from bff.routers.agent_presets import router, _PRESETS
+from bff.routers import auth as auth_router
 
 app = FastAPI()
+app.include_router(auth_router.router, prefix="/api")
 app.include_router(router, prefix="/api")
-client = TestClient(app)
+
+anon_client = TestClient(app, raise_server_exceptions=False)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+def _auth_headers() -> dict:
+    body = anon_client.post(
+        "/api/auth/demo-login",
+        json={"username": "admin", "password": "password"},
+    ).json()
+    return {"Authorization": f"Bearer {body['token']}"}
+
 
 def _create(name: str = "Test Preset", **kwargs) -> dict:
     payload = {"name": name, **kwargs}
-    return client.post("/api/agent-presets", json=payload).json()
+    return anon_client.post("/api/agent-presets", json=payload, headers=_auth_headers()).json()
 
 
 # ---------------------------------------------------------------------------
-# GET /api/agent-presets
+# GET /api/agent-presets  — no auth required
 # ---------------------------------------------------------------------------
 
 class TestListPresets:
     def test_returns_200(self):
-        assert client.get("/api/agent-presets").status_code == 200
+        assert anon_client.get("/api/agent-presets").status_code == 200
 
     def test_returns_list(self):
-        body = client.get("/api/agent-presets").json()
+        body = anon_client.get("/api/agent-presets").json()
         assert isinstance(body, list)
 
     def test_seed_data_present(self):
-        body = client.get("/api/agent-presets").json()
+        body = anon_client.get("/api/agent-presets").json()
         assert len(body) >= 2
 
     def test_items_have_id(self):
-        body = client.get("/api/agent-presets").json()
+        body = anon_client.get("/api/agent-presets").json()
         assert all("id" in p for p in body)
 
 
 # ---------------------------------------------------------------------------
-# GET /api/agent-presets/{id}
+# GET /api/agent-presets/{id}  — no auth required
 # ---------------------------------------------------------------------------
 
 class TestGetPreset:
     def test_known_id_returns_200(self):
-        assert client.get("/api/agent-presets/ap-1").status_code == 200
+        assert anon_client.get("/api/agent-presets/ap-1").status_code == 200
 
     def test_unknown_id_returns_404(self):
-        assert client.get("/api/agent-presets/does-not-exist").status_code == 404
+        assert anon_client.get("/api/agent-presets/does-not-exist").status_code == 404
 
     def test_returned_preset_has_correct_id(self):
-        body = client.get("/api/agent-presets/ap-1").json()
+        body = anon_client.get("/api/agent-presets/ap-1").json()
         assert body["id"] == "ap-1"
 
     def test_default_preset_flag(self):
-        body = client.get("/api/agent-presets/ap-1").json()
+        body = anon_client.get("/api/agent-presets/ap-1").json()
         assert body["isDefault"] is True
 
 
 # ---------------------------------------------------------------------------
-# POST /api/agent-presets
+# POST /api/agent-presets  — requires write role
 # ---------------------------------------------------------------------------
 
 class TestCreatePreset:
-    def test_returns_200(self):
-        r = client.post("/api/agent-presets", json={"name": "New Preset"})
+    def test_unauthenticated_returns_401(self):
+        r = anon_client.post("/api/agent-presets", json={"name": "No Auth"})
+        assert r.status_code == 401
+
+    def test_returns_200_with_auth(self):
+        r = anon_client.post("/api/agent-presets", json={"name": "New Preset"},
+                             headers=_auth_headers())
         assert r.status_code == 200
 
     def test_id_is_assigned(self):
@@ -85,11 +97,13 @@ class TestCreatePreset:
         assert body["model"] == "gpt-4o"
 
     def test_invalid_model_returns_422(self):
-        r = client.post("/api/agent-presets", json={"name": "Bad", "model": "gpt-99"})
+        r = anon_client.post("/api/agent-presets", json={"name": "Bad", "model": "gpt-99"},
+                             headers=_auth_headers())
         assert r.status_code == 422
 
     def test_missing_name_returns_422(self):
-        r = client.post("/api/agent-presets", json={"model": "gpt-4o"})
+        r = anon_client.post("/api/agent-presets", json={"model": "gpt-4o"},
+                             headers=_auth_headers())
         assert r.status_code == 422
 
     def test_preset_persisted_in_store(self):
@@ -98,91 +112,117 @@ class TestCreatePreset:
 
 
 # ---------------------------------------------------------------------------
-# PATCH /api/agent-presets/{id}
+# PATCH /api/agent-presets/{id}  — requires write role
 # ---------------------------------------------------------------------------
 
 class TestUpdatePreset:
+    def test_unauthenticated_returns_401(self):
+        r = anon_client.patch("/api/agent-presets/ap-1", json={"name": "x"})
+        assert r.status_code == 401
+
     def test_updates_name(self):
         pid = _create("Before Update")["id"]
-        body = client.patch(f"/api/agent-presets/{pid}", json={"name": "After Update"}).json()
+        body = anon_client.patch(f"/api/agent-presets/{pid}", json={"name": "After Update"},
+                                 headers=_auth_headers()).json()
         assert body["name"] == "After Update"
 
     def test_unknown_id_returns_404(self):
-        r = client.patch("/api/agent-presets/ghost", json={"name": "x"})
+        r = anon_client.patch("/api/agent-presets/ghost", json={"name": "x"},
+                              headers=_auth_headers())
         assert r.status_code == 404
 
     def test_updated_at_changes(self):
         pid = _create("Timing Check")["id"]
         before = _PRESETS[pid].updatedAt
-        client.patch(f"/api/agent-presets/{pid}", json={"name": "Updated"})
+        anon_client.patch(f"/api/agent-presets/{pid}", json={"name": "Updated"},
+                          headers=_auth_headers())
         after = _PRESETS[pid].updatedAt
-        # updatedAt must be refreshed (may be equal if very fast; at minimum not earlier)
         assert after >= before
 
 
 # ---------------------------------------------------------------------------
-# DELETE /api/agent-presets/{id}
+# DELETE /api/agent-presets/{id}  — requires write role
 # ---------------------------------------------------------------------------
 
 class TestDeletePreset:
+    def test_unauthenticated_returns_401(self):
+        r = anon_client.delete("/api/agent-presets/ap-1")
+        assert r.status_code == 401
+
     def test_deletes_non_default(self):
         pid = _create("Delete Me")["id"]
-        r = client.delete(f"/api/agent-presets/{pid}")
+        r = anon_client.delete(f"/api/agent-presets/{pid}", headers=_auth_headers())
         assert r.json()["ok"] is True
         assert pid not in _PRESETS
 
     def test_cannot_delete_default(self):
-        r = client.delete("/api/agent-presets/ap-1")
+        r = anon_client.delete("/api/agent-presets/ap-1", headers=_auth_headers())
         assert r.status_code == 400
 
     def test_unknown_id_returns_404(self):
-        assert client.delete("/api/agent-presets/ghost").status_code == 404
+        assert anon_client.delete("/api/agent-presets/ghost",
+                                  headers=_auth_headers()).status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# POST /api/agent-presets/{id}/duplicate
+# POST /api/agent-presets/{id}/duplicate  — requires write role
 # ---------------------------------------------------------------------------
 
 class TestDuplicatePreset:
+    def test_unauthenticated_returns_401(self):
+        r = anon_client.post("/api/agent-presets/ap-1/duplicate")
+        assert r.status_code == 401
+
     def test_returns_200(self):
-        assert client.post("/api/agent-presets/ap-1/duplicate").status_code == 200
+        assert anon_client.post("/api/agent-presets/ap-1/duplicate",
+                                headers=_auth_headers()).status_code == 200
 
     def test_clone_has_new_id(self):
-        clone = client.post("/api/agent-presets/ap-1/duplicate").json()
+        clone = anon_client.post("/api/agent-presets/ap-1/duplicate",
+                                 headers=_auth_headers()).json()
         assert clone["id"] != "ap-1"
 
     def test_clone_name_has_copy_suffix(self):
-        clone = client.post("/api/agent-presets/ap-1/duplicate").json()
+        clone = anon_client.post("/api/agent-presets/ap-1/duplicate",
+                                 headers=_auth_headers()).json()
         assert "copy" in clone["name"].lower()
 
     def test_clone_is_not_default(self):
-        clone = client.post("/api/agent-presets/ap-1/duplicate").json()
+        clone = anon_client.post("/api/agent-presets/ap-1/duplicate",
+                                 headers=_auth_headers()).json()
         assert clone["isDefault"] is False
 
     def test_unknown_id_returns_404(self):
-        assert client.post("/api/agent-presets/ghost/duplicate").status_code == 404
+        assert anon_client.post("/api/agent-presets/ghost/duplicate",
+                                headers=_auth_headers()).status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# POST /api/agent-presets/{id}/set-default
+# POST /api/agent-presets/{id}/set-default  — requires write role
 # ---------------------------------------------------------------------------
 
 class TestSetDefault:
+    def test_unauthenticated_returns_401(self):
+        r = anon_client.post("/api/agent-presets/ap-2/set-default")
+        assert r.status_code == 401
+
     def test_sets_target_as_default(self):
-        body = client.post("/api/agent-presets/ap-2/set-default").json()
+        body = anon_client.post("/api/agent-presets/ap-2/set-default",
+                                headers=_auth_headers()).json()
         assert body["isDefault"] is True
         assert body["id"] == "ap-2"
 
     def test_previous_default_cleared(self):
-        client.post("/api/agent-presets/ap-2/set-default")
-        ap1 = client.get("/api/agent-presets/ap-1").json()
+        anon_client.post("/api/agent-presets/ap-2/set-default", headers=_auth_headers())
+        ap1 = anon_client.get("/api/agent-presets/ap-1").json()
         assert ap1["isDefault"] is False
 
     def test_only_one_default_exists(self):
-        client.post("/api/agent-presets/ap-1/set-default")
-        all_presets = client.get("/api/agent-presets").json()
+        anon_client.post("/api/agent-presets/ap-1/set-default", headers=_auth_headers())
+        all_presets = anon_client.get("/api/agent-presets").json()
         defaults = [p for p in all_presets if p["isDefault"]]
         assert len(defaults) == 1
 
     def test_unknown_id_returns_404(self):
-        assert client.post("/api/agent-presets/ghost/set-default").status_code == 404
+        assert anon_client.post("/api/agent-presets/ghost/set-default",
+                                headers=_auth_headers()).status_code == 404

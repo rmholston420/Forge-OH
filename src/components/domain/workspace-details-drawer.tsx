@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import type { Workspace } from '@/features/workspaces/schemas';
 import { WorkspaceHealthBadge } from './workspace-health-badge';
 
@@ -6,9 +6,9 @@ interface WorkspaceDetailsDrawerProps {
   workspace: Workspace | undefined;
   open: boolean;
   onClose: () => void;
+  /** Called when the user initiates a reset (opens the confirm dialog). */
   onReset: (id: string) => void;
-  onConfirmReset: boolean;
-  onCancelReset: () => void;
+  /** Called when the user confirms the reset action. */
   onDoReset: () => void;
 }
 
@@ -17,20 +17,27 @@ export function WorkspaceDetailsDrawer({
   open,
   onClose,
   onReset,
-  onConfirmReset,
-  onCancelReset,
   onDoReset,
 }: WorkspaceDetailsDrawerProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  // Confirmation state is drawer-local — callers don't need to manage it.
+  const [confirmReset, setConfirmReset] = useState(false);
 
   if (!open || !workspace) return null;
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    // File upload handling — wire to BFF /workspaces/{id}/files
     const files = Array.from(e.dataTransfer.files);
+    // TODO(foh-phase2): wire to POST /api/workspaces/{id}/files
     // eslint-disable-next-line no-console
     console.log('[WorkspaceDetailsDrawer] drop', files);
+  };
+
+  const handleResetClick = () => setConfirmReset(true);
+  const handleCancelReset = () => setConfirmReset(false);
+  const handleDoReset = () => {
+    setConfirmReset(false);
+    onDoReset();
   };
 
   return (
@@ -97,14 +104,14 @@ export function WorkspaceDetailsDrawer({
 
           <section className="drawer__section drawer__section--danger">
             <h3 className="drawer__section-title">Danger Zone</h3>
-            {onConfirmReset ? (
+            {confirmReset ? (
               <div className="confirm-dialog">
                 <p>Reset will stop all active runs and clear workspace state. Continue?</p>
                 <div className="confirm-dialog__actions">
-                  <button className="btn btn-destructive" onClick={onDoReset}>
+                  <button className="btn btn-destructive" onClick={handleDoReset}>
                     Yes, reset
                   </button>
-                  <button className="btn btn-secondary" onClick={onCancelReset}>
+                  <button className="btn btn-secondary" onClick={handleCancelReset}>
                     Cancel
                   </button>
                 </div>
@@ -112,7 +119,7 @@ export function WorkspaceDetailsDrawer({
             ) : (
               <button
                 className="btn btn-destructive"
-                onClick={() => onReset(workspace.id)}
+                onClick={handleResetClick}
               >
                 Reset Workspace
               </button>

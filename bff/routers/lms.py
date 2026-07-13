@@ -58,13 +58,14 @@ def create_context(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ):
     _guard_feature_enabled()
-    token = _require_auth(authorization)
+    _require_auth(authorization)
 
     session_id = f"sess_rigpa_{int(time.time() * 1000000)}"
     _sessions[session_id] = (body, _now())
 
-    response.status_code = 201 if token == "valid-token" else 200
-    return {"data": {"sessionId": session_id, "injected": True, **body}}
+    response.status_code = 201
+    # Return ONLY {data: {sessionId, ...body}} — no extra top-level fields.
+    return {"data": {"sessionId": session_id, **body}}
 
 
 @router.get("/context/{session_id}")

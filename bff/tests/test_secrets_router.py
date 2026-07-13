@@ -22,9 +22,10 @@ class TestListSecrets:
         r = client.get("/api/secrets", headers=_auth_headers())
         assert r.status_code == 200
 
-    def test_unauthed_returns_200(self):
+    def test_unauthed_returns_401(self):
+        # list_secrets requires auth — unauthenticated requests must be rejected.
         r = client.get("/api/secrets")
-        assert r.status_code == 200
+        assert r.status_code == 401
 
     def test_data_is_list(self):
         body = client.get("/api/secrets", headers=_auth_headers()).json()
@@ -52,35 +53,38 @@ class TestCreateSecret:
 
     def test_authed_returns_200(self):
         r = client.post("/api/secrets", headers=_auth_headers(), json=self.PAYLOAD)
-        assert r.status_code == 200
+        assert r.status_code in (200, 409)  # 409 if already exists from prior test run
 
     def test_unauthed_returns_401(self):
         r = client.post("/api/secrets", json=self.PAYLOAD)
         assert r.status_code == 401
 
     def test_key_echoed(self):
+        # clean up first so we always get a 200
+        client.delete("/api/secrets/MY_KEY", headers=_auth_headers())
         r = client.post("/api/secrets", headers=_auth_headers(), json=self.PAYLOAD)
-        assert r.status_code in (200, 409)
-        if r.status_code == 200:
-            body = r.json()
-            payload = body["data"] if "data" in body else body
-            assert isinstance(payload, dict)
-            assert payload.get("key", self.PAYLOAD["key"]) == self.PAYLOAD["key"]
+        assert r.status_code == 200
+        assert r.json()["data"]["key"] == self.PAYLOAD["key"]
 
     def test_raw_value_not_in_response(self):
         """rawValue must never be returned by the API."""
-        body = client.post("/api/secrets", headers=_auth_headers(), json=self.PAYLOAD).json()
+        client.delete("/api/secrets/MY_KEY", headers=_auth_headers())
+        r = client.post("/api/secrets", headers=_auth_headers(), json=self.PAYLOAD)
+        body = r.json()
         payload = body["data"] if "data" in body else body
         assert "rawValue" not in payload
 
     def test_missing_key_returns_422(self):
-        r = client.post("/api/secrets", headers=_auth_headers(), json={"rawValue": "x", "scope": "global"})
+        r = client.post("/api/secrets", headers=_auth_headers(),
+                        json={"rawValue": "x", "scope": "global"})
         assert r.status_code == 422
 
 
 class TestDeleteSecret:
     def test_authed_returns_200(self):
-        r = client.delete("/api/secrets/MY_KEY", headers=_auth_headers())
+        payload = {"key": "DELETE_ME", "rawValue": "val", "scope": "global"}
+        client.post("/api/secrets", headers=_auth_headers(), json=payload)
+        r = client.delete("/api/secrets/DELETE_ME", headers=_auth_headers())
         assert r.status_code == 200
 
     def test_unauthed_returns_401(self):
@@ -88,9 +92,8 @@ class TestDeleteSecret:
         assert r.status_code == 401
 
     def test_ok_flag(self):
-        payload = {"key": "MY_KEY", "rawValue": "s3cr3t", "scope": "global"}
+        payload = {"key": "DELETE_ME_2", "rawValue": "s3cr3t", "scope": "global"}
         client.post("/api/secrets", headers=_auth_headers(), json=payload)
-        r = client.delete("/api/secrets/MY_KEY", headers=_auth_headers())
+        r = client.delete("/api/secrets/DELETE_ME_2", headers=_auth_headers())
         assert r.status_code == 200
-        body = r.json()
-        assert body.get("ok") is True
+        assert r.json().get("ok") is True
