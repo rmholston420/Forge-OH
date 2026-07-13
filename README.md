@@ -42,10 +42,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-> Note: Install Phase 2 deps:
-> ```bash
-> npm install monaco-editor @xterm/xterm @xterm/addon-fit
-> ```
+> Phase 2 deps: `npm install monaco-editor @xterm/xterm @xterm/addon-fit`
 
 ### BFF
 
@@ -66,10 +63,7 @@ npm run storybook
 ### Tests
 
 ```bash
-# Unit + integration
 npm test
-
-# E2E (requires dev server running)
 npm run test:e2e
 ```
 
@@ -80,8 +74,8 @@ npm run test:e2e
 | **Phase 0** | ✅ Done | App shell, tokens, core components, MSW mocks, Storybook, E2E smoke |
 | **Phase 1** | ✅ Done | Run supervision MVP — runs list, new run composer, run detail + streaming, plan rail, approval banner |
 | **Phase 2** | ✅ Done | Code review (Monaco diff), terminal emulator (xterm.js), artifact viewer |
-| **Phase 3** | 🚧 Next | Workspaces, MCP, plugins, secrets |
-| **Phase 4** | ⏳ Planned | Browser automation, observability, trace explorer |
+| **Phase 3** | ✅ Done | Workspaces, MCP plugin registry, secrets vault |
+| **Phase 4** | 🚧 Next | Browser automation, observability, trace explorer |
 | **Phase 5** | ⏳ Planned | Approvals, fork/compare, Rigpa-LMS integration, hardening |
 
 ## Five First-Class Objects
