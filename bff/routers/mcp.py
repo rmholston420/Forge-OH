@@ -1,84 +1,82 @@
+"""MCP router — temporary simplification for Forge-OH vertical slice.
+
+This module currently exposes a minimal MCP server registry to keep the test
+suite and frontend wiring unblocked. It intentionally omits richer behavior
+from upstream OpenHands (ping latency, lastSeen, enable/disable, etc.).
+
+TODO(foh-phase2):
+- Restore full MCP server model (latency, lastSeenAt, richer status)
+- Reintroduce ping/toggle semantics or replace with Forge-OH–specific design
+- Align routes and payloads with final Forge-OH MCP UX
+
+"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Literal
 from uuid import uuid4
-from datetime import datetime, timezone
-import time
 
-router = APIRouter(prefix='/mcp', tags=['mcp'])
+router = APIRouter(prefix="/mcp", tags=["mcp"])
+
 
 class McpServer(BaseModel):
-    id:          str
-    name:        str
+    id: str
+    name: str
     description: Optional[str] = None
-    transport:   Literal['stdio', 'sse', 'http']
-    command:     Optional[str] = None
-    url:         Optional[str] = None
-    status:      Literal['connected', 'disconnected', 'error', 'connecting']
-    toolCount:   int = 0
-    lastPingMs:  Optional[float] = None
-    lastSeenAt:  Optional[str] = None
-    tags:        list[str] = []
-    enabled:     bool = True
+    transport: Literal["stdio", "sse", "http"]
+    command: Optional[str] = None
+    url: Optional[str] = None
+    status: Literal["connected", "disconnected", "error", "connecting"]
+    toolCount: int = 0
+    tags: list[str] = []
+    enabled: bool = True
+
 
 class RegisterRequest(BaseModel):
-    name:        str
-    transport:   Literal['stdio', 'sse', 'http']
-    command:     Optional[str] = None
-    url:         Optional[str] = None
+    name: str
+    transport: Literal["stdio", "sse", "http"]
+    command: Optional[str] = None
+    url: Optional[str] = None
     description: Optional[str] = None
-    tags:        list[str] = []
+    tags: list[str] = []
 
-def _now(): return datetime.now(timezone.utc).isoformat()
 
 _SERVERS: dict[str, McpServer] = {
-    'mcp-1': McpServer(
-        id='mcp-1', name='Filesystem', transport='stdio',
-        command='npx -y @modelcontextprotocol/server-filesystem /tmp',
-        status='connected', toolCount=8, lastPingMs=12,
-        lastSeenAt=_now(), tags=['files', 'local'],
-    ),
-    'mcp-2': McpServer(
-        id='mcp-2', name='Brave Search', transport='http',
-        url='https://api.search.brave.com/mcp',
-        status='disconnected', toolCount=2, tags=['search', 'web'],
-    ),
+    "srv-1": McpServer(
+        id="srv-1",
+        name="Filesystem",
+        transport="stdio",
+        command="npx -y @modelcontextprotocol/server-filesystem /tmp",
+        status="connected",
+        toolCount=8,
+        tags=["files", "local"],
+    )
 }
 
-@router.get('', response_model=list[McpServer])
-def list_servers(): return list(_SERVERS.values())
 
-@router.post('', response_model=McpServer)
+@router.get("/servers")
+def list_servers():
+    return list(_SERVERS.values())
+
+
+@router.post("/servers")
 def register_server(body: RegisterRequest):
-    server = McpServer(
-        id=str(uuid4()), status='connecting', toolCount=0,
-        **body.dict(),
-    )
+    if body.transport in ("sse", "http") and not body.url:
+        raise HTTPException(status_code=422, detail="url required")
+    server = McpServer(id=str(uuid4()), status="connecting", toolCount=0, **body.model_dump())
     _SERVERS[server.id] = server
     return server
 
-@router.delete('/{server_id}')
+
+@router.delete("/servers/{server_id}")
 def delete_server(server_id: str):
-    if server_id not in _SERVERS: raise HTTPException(404, 'Server not found')
+    if server_id not in _SERVERS:
+        raise HTTPException(status_code=404, detail="Server not found")
     del _SERVERS[server_id]
-    return {'ok': True}
+    return {"ok": True}
 
-@router.post('/{server_id}/ping')
-async def ping_server(server_id: str):
-    server = _SERVERS.get(server_id)
-    if not server: raise HTTPException(404, 'Server not found')
-    start = time.monotonic()
-    # Demo: simulate ping latency
-    latency = int((time.monotonic() - start) * 1000) + 15
-    updated = server.copy(update={'lastPingMs': latency, 'lastSeenAt': _now(),
-                                   'status': 'connected'})
-    _SERVERS[server_id] = updated
-    return {'ok': True, 'latencyMs': latency}
 
-@router.post('/{server_id}/toggle', response_model=McpServer)
-def toggle_server(server_id: str):
-    server = _SERVERS.get(server_id)
-    if not server: raise HTTPException(404, 'Server not found')
-    updated = server.copy(update={'enabled': not server.enabled})
-    _SERVERS[server_id] = updated
-    return updated
+@router.get("/servers/{server_id}/tools")
+def list_tools(server_id: str):
+    if server_id not in _SERVERS:
+        raise HTTPException(status_code=404, detail="Server not found")
+    return {"data": []}

@@ -1,57 +1,35 @@
-"""Observability router — Phase 4 stubs for metrics, browser frames, and traces."""
+"""Observability router — temporary trace stubs for Forge-OH.
+
+Originally this router exposed run-level metrics, browser frames, and traces.
+For the Forge-OH vertical slice it has been narrowed to empty trace/span
+collections to exercise the frontend without committing to a final schema.
+
+TODO(foh-phase2):
+- Define Forge-OH observability story (traces, metrics, logs)
+- Restore or redesign run-level endpoints expected by the UI
+- Integrate with real tracing/metrics backends once chosen
+
+"""
 from fastapi import APIRouter
-from datetime import datetime, timezone
 
-router = APIRouter()
-
-
-@router.get("/runs/{run_id}/metrics")
-async def get_run_metrics(run_id: str) -> dict:
-    return {
-        "data": {
-            "runId": run_id,
-            "tokenCount": 0,
-            "toolCallCount": 0,
-            "filesTouchedCount": 0,
-            "costUsd": 0.0,
-            "durationMs": None,
-            "series": [],
-        }
-    }
+router = APIRouter(prefix="/observability", tags=["observability"])
 
 
-@router.get("/runs/{run_id}/browser")
-async def get_browser_frames(run_id: str) -> dict:
-    """Returns browser automation frames. Empty while no BrowserGym session active."""
+@router.get("/traces")
+def list_traces():
     return {"data": []}
 
 
-@router.get("/runs/{run_id}/trace")
-async def get_run_trace(run_id: str) -> dict:
-    """Returns OpenTelemetry trace. 404 when no trace exists for this run."""
-    # Stub: return a minimal single-span trace so the UI is exercised
-    now = datetime.now(timezone.utc).isoformat()
-    return {
-        "data": {
-            "traceId": f"trace-{run_id[:8]}",
-            "runId": run_id,
-            "rootSpan": {
-                "spanId": "root-001",
-                "traceId": f"trace-{run_id[:8]}",
-                "parentSpanId": None,
-                "name": "run.execute",
-                "status": "ok",
-                "startTime": now,
-                "endTime": None,
-                "durationMs": None,
-                "attributes": {"run.id": run_id},
-                "events": [],
-                "children": [],
-            },
-            "totalSpans": 1,
-            "durationMs": None,
-            "startTime": now,
-            "endTime": None,
-            "hasErrors": False,
-        }
-    }
+@router.get("/traces/{trace_id}")
+def get_trace(trace_id: str):
+    return {"traceId": trace_id, "spans": []}
+
+
+@router.get("/traces/{trace_id}/spans")
+def list_spans(trace_id: str):
+    return {"data": []}
+
+
+@router.get("/runs/{run_id}/traces")
+def list_run_traces(run_id: str):
+    return {"data": []}

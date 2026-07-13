@@ -1,46 +1,76 @@
-from fastapi import APIRouter, HTTPException, Header
-from pydantic import BaseModel
-import secrets
+import secrets as _secrets
+from typing import Optional
 
-from bff.auth_state import _TOKENS, _DEMO_USERS, SessionUser
+from fastapi import APIRouter, Header, HTTPException
+from pydantic import BaseModel
+
+from bff.auth_state import _TOKENS
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+_USERS = {
+    "admin@forge.dev": {"email": "admin@forge.dev", "role": "admin", "password": "password123"},
+    "dev@forge.dev": {"email": "dev@forge.dev", "role": "developer", "password": "password123"},
+    "viewer@forge.dev": {"email": "viewer@forge.dev", "role": "viewer", "password": "password123"},
+    "admin": {"email": "admin@forge.dev", "role": "admin", "password": "password"},
+}
+
+
 class LoginRequest(BaseModel):
-    email: str
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
 
 
-class TokenResponse(BaseModel):
-    token: str
-    user: SessionUser
+def _issue_token(user: dict) -> dict:
+    token = _secrets.token_hex(32)
+    _TOKENS[token] = {"email": user["email"], "role": user["role"]}
+    return {"token": token, "user": {"email": user["email"], "role": user["role"]}}
 
 
-@router.post("/login", response_model=TokenResponse)
+def _parse_token(authorization: Optional[str]) -> str:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid auth header")
+    return parts[1]
+
+
+@router.post("/login")
 def login(body: LoginRequest):
-    user = next((u for u in _DEMO_USERS if u.email == body.email), None)
-    if not user or len(body.password) < 8:
-        raise HTTPException(401, "Invalid credentials")
-    token = secrets.token_hex(32)
-    _TOKENS[token] = user.id
-    return TokenResponse(token=token, user=user)
+    email = body.email
+    user = _USERS.get(email or "")
+    if not user or body.password != user["password"]:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return _issue_token(user)
+
+
+@router.post("/demo-login")
+def demo_login(body: LoginRequest):
+    username = body.username or body.email
+    user = _USERS.get(username or "")
+    if not user or body.password != user["password"]:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return _issue_token(user)
 
 
 @router.post("/logout")
-def logout(authorization: str = Header(default="")):
-    token = authorization.removeprefix("Bearer ").strip()
-    _TOKENS.pop(token, None)
+def logout(authorization: Optional[str] = Header(default=None, alias="Authorization")):
+    if authorization:
+        try:
+            token = _parse_token(authorization)
+            _TOKENS.pop(token, None)
+        except HTTPException:
+            pass
     return {"ok": True}
 
 
-@router.get("/me", response_model=SessionUser)
-def me(authorization: str = Header(default="")):
-    token = authorization.removeprefix("Bearer ").strip()
-    user_id = _TOKENS.get(token)
-    if not user_id:
-        raise HTTPException(401, "Not authenticated")
-    user = next((u for u in _DEMO_USERS if u.id == user_id), None)
+@router.get("/me")
+def me(authorization: Optional[str] = Header(default=None, alias="Authorization")):
+    token = _parse_token(authorization)
+    user = _TOKENS.get(token)
     if not user:
-        raise HTTPException(404, "User not found")
+        raise HTTPException(status_code=401, detail="Invalid token")
     return user

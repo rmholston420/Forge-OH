@@ -1,10 +1,21 @@
-from fastapi import APIRouter
+"""Notifications router — simplified for Forge-OH vertical slice.
+
+This implementation starts with an empty in-memory list and basic read/dismiss
+semantics. The earlier OpenHands version seeded demo notifications and may
+have different behaviors.
+
+TODO(foh-phase2):
+- Decide on real notification sources (runs, workspaces, plugins)
+- Replace in-memory list with a proper store or event feed
+- Revisit API shape (filters, pagination, unread counts)
+
+"""
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Literal, Optional
-from uuid import uuid4
-from datetime import datetime, timezone
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
 
 class NotificationOut(BaseModel):
     id: str
@@ -15,39 +26,36 @@ class NotificationOut(BaseModel):
     read: bool = False
     createdAt: str
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
-_NOTIFICATIONS: list[NotificationOut] = [
-    NotificationOut(id=str(uuid4()), type="success", title="Run completed",
-        body="Agent finished task in 42s.", read=False, createdAt=_now()),
-    NotificationOut(id=str(uuid4()), type="warning", title="Workspace warning",
-        body="Docker workspace nearing CPU limit.", read=False, createdAt=_now()),
-    NotificationOut(id=str(uuid4()), type="run_event", title="Approval required",
-        body="Run is waiting for your approval to proceed.", read=False, createdAt=_now()),
-]
+_NOTIFICATIONS: list[NotificationOut] = []
 
-@router.get("/", response_model=list[NotificationOut])
+
+@router.get("")
 def get_notifications():
     return _NOTIFICATIONS
 
-@router.patch("/{notification_id}/read", response_model=NotificationOut)
+
+@router.post("/{notification_id}/read")
 def mark_read(notification_id: str):
     for n in _NOTIFICATIONS:
         if n.id == notification_id:
             n.read = True
             return n
-    from fastapi import HTTPException
-    raise HTTPException(404, "Notification not found")
+    raise HTTPException(status_code=404, detail="Notification not found")
+
 
 @router.post("/read-all")
 def mark_all_read():
     for n in _NOTIFICATIONS:
         n.read = True
-    return {"ok": True}
+    return {"ok": True, "count": len(_NOTIFICATIONS)}
+
 
 @router.delete("/{notification_id}")
 def dismiss(notification_id: str):
     global _NOTIFICATIONS
+    before = len(_NOTIFICATIONS)
     _NOTIFICATIONS = [n for n in _NOTIFICATIONS if n.id != notification_id]
+    if len(_NOTIFICATIONS) == before:
+        raise HTTPException(status_code=404, detail="Notification not found")
     return {"ok": True}

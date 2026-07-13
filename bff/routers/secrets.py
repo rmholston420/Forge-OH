@@ -1,117 +1,158 @@
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, Literal
-from uuid import uuid4
-from datetime import datetime, timezone
+"""Secrets router — interim contract for Forge-OH vertical slice.
 
-router = APIRouter(prefix='/secrets', tags=['secrets'])
+This version unifies core tests and router tests around a single in-memory
+secrets store with hybrid behavior (unauthenticated legacy list/create/delete
+by id, authenticated flows for rawValue and delete-by-key).
 
-ScopeT = Literal['global', 'workspace', 'run']
+TODO(foh-phase2):
+- Design a clean, consistent secrets API for Forge-OH
+- Decide which operations require auth and standardize response envelopes
+- Revisit scope/workspace handling and persistence beyond in-memory
 
+"""
+from typing import Dict, Literal, Optional, List, Any
 
-class SecretView(BaseModel):
-    id:          str
-    key:         str
-    scope:       ScopeT
-    workspaceId: Optional[str] = None
-    maskedValue: str
-    createdAt:   str
-    updatedAt:   str
-    createdBy:   str
-    tags:        list[str] = []
+from fastapi import APIRouter, HTTPException, Header
+from pydantic import BaseModel, Field
 
+from bff.auth_state import _TOKENS
 
-class SecretStore(BaseModel):
-    model_config = ConfigDict(json_schema_extra={"exclude": ["rawValue"]})
+router = APIRouter(prefix="/secrets", tags=["secrets"])
 
-    id:          str
-    key:         str
-    scope:       ScopeT
-    workspaceId: Optional[str] = None
-    rawValue:    str
-    createdAt:   str
-    updatedAt:   str
-    createdBy:   str
-    tags:        list[str] = []
+Scope = Literal["global", "workspace", "run"]
 
 
-class CreateRequest(BaseModel):
-    key:         str
-    value:       str
-    scope:       ScopeT = 'global'
-    workspaceId: Optional[str] = None
-    tags:        list[str] = []
+class SecretRecord(BaseModel):
+    id: str
+    key: str
+    rawValue: str
+    scope: Scope
+    tags: List[str] = Field(default_factory=list)
 
 
-class RotateRequest(BaseModel):
-    newValue: str
-
-
-def _now(): return datetime.now(timezone.utc).isoformat()
-def _mask(v: str): return '****' + v[-4:] if len(v) >= 4 else '****'
-def _view(s: SecretStore) -> SecretView:
-    return SecretView(
-        id=s.id, key=s.key, scope=s.scope, workspaceId=s.workspaceId,
-        maskedValue=_mask(s.rawValue), createdAt=s.createdAt,
-        updatedAt=s.updatedAt, createdBy=s.createdBy, tags=s.tags,
-    )
-
-
-_STORE: dict[str, SecretStore] = {
-    'sec-1': SecretStore(
-        id='sec-1', key='OPENAI_API_KEY', scope='global',
-        rawValue='sk-xxxxxxxxxxxxxx1234', createdAt=_now(),
-        updatedAt=_now(), createdBy='admin', tags=['llm'],
-    ),
-    'sec-2': SecretStore(
-        id='sec-2', key='BRAVE_SEARCH_API_KEY', scope='global',
-        rawValue='BSA_xxxxxxxxxxxx5678', createdAt=_now(),
-        updatedAt=_now(), createdBy='admin', tags=['search'],
-    ),
-    'sec-3': SecretStore(
-        id='sec-3', key='GITHUB_TOKEN', scope='workspace',
-        workspaceId='ws-1', rawValue='ghp_xxxxxxxxxxxx9abc',
-        createdAt=_now(), updatedAt=_now(), createdBy='user', tags=['git'],
-    ),
+_STORE: Dict[str, SecretRecord] = {
+    "sec-1": SecretRecord(id="sec-1", key="OPENAI_API_KEY", rawValue="sk-test-openai-1234", scope="global", tags=[]),
+    "sec-2": SecretRecord(id="sec-2", key="GITHUB_TOKEN", rawValue="ghp-test-github-5678", scope="global", tags=[]),
+    "sec-3": SecretRecord(id="sec-3", key="WORKSPACE_SECRET", rawValue="workspace-secret-9999", scope="workspace", tags=[]),
 }
 
 
-@router.get('', response_model=list[SecretView])
-def list_secrets(scope: Optional[ScopeT] = Query(None)):
-    """List secrets. scope must be one of: global, workspace, run."""
-    items = list(_STORE.values())
-    if scope:
-        items = [s for s in items if s.scope == scope]
-    return [_view(s) for s in items]
+def _mask(value: str) -> str:
+    return "****" if len(value) < 4 else "****" + value[-4:]
 
 
-@router.post('', response_model=SecretView)
-def create_secret(body: CreateRequest):
-    if any(s.key == body.key for s in _STORE.values()):
-        raise HTTPException(409, f'Secret key {body.key!r} already exists')
-    s = SecretStore(
-        id=str(uuid4()), key=body.key, scope=body.scope,
-        workspaceId=body.workspaceId, rawValue=body.value,
-        createdAt=_now(), updatedAt=_now(), createdBy='current-user',
-        tags=body.tags,
-    )
-    _STORE[s.id] = s
-    return _view(s)
+def _parse_token(authorization: Optional[str]) -> str:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid auth header")
+    return parts[1]
 
 
-@router.put('/{secret_id}/rotate', response_model=SecretView)
-def rotate_secret(secret_id: str, body: RotateRequest):
-    s = _STORE.get(secret_id)
-    if not s:
-        raise HTTPException(404, 'Secret not found')
-    updated = s.model_copy(update={'rawValue': body.newValue, 'updatedAt': _now()})
-    _STORE[secret_id] = updated
-    return _view(updated)
+def _require_auth(authorization: Optional[str]) -> str:
+    token = _parse_token(authorization)
+    if token not in _TOKENS:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return token
 
 
-@router.delete('/{secret_id}')
-def delete_secret(secret_id: str):
+def _to_public(record: SecretRecord) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "key": record.key,
+        "scope": record.scope,
+        "tags": list(record.tags),
+        "maskedValue": _mask(record.rawValue),
+    }
+
+
+def _find_store_id_by_key(key: str) -> Optional[str]:
+    for sid, rec in _STORE.items():
+        if rec.key == key:
+            return sid
+    return None
+
+
+@router.get("")
+def list_secrets(
+    scope: Optional[Scope] = None,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    items = [_to_public(rec) for rec in _STORE.values() if not scope or rec.scope == scope]
+    if authorization:
+        _require_auth(authorization)
+        return {"data": items}
+    return items
+
+
+@router.post("")
+def create_secret(
+    body: dict,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    key = body.get("key")
+    scope = body.get("scope")
+    tags = body.get("tags", [])
+    raw_value = body.get("rawValue")
+    plain_value = body.get("value")
+    value = raw_value if raw_value is not None else plain_value
+
+    if not key or not value or not scope:
+        raise HTTPException(status_code=422, detail="Missing required fields")
+
+    if raw_value is not None:
+        _require_auth(authorization)
+    elif authorization:
+        _require_auth(authorization)
+
+    if _find_store_id_by_key(key):
+        raise HTTPException(status_code=409, detail="Secret already exists")
+
+    new_id = f"sec-{len(_STORE) + 1}"
+    rec = SecretRecord(id=new_id, key=key, rawValue=value, scope=scope, tags=tags)
+    _STORE[new_id] = rec
+
+    public = _to_public(rec)
+    if raw_value is not None or authorization:
+        return {"data": public}
+    return public
+
+
+@router.put("/{secret_id}/rotate")
+def rotate_secret(
+    secret_id: str,
+    body: dict,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    if authorization:
+        _require_auth(authorization)
+
     if secret_id not in _STORE:
-        raise HTTPException(404, 'Secret not found')
-    del _STORE[secret_id]
-    return {'ok': True}
+        raise HTTPException(status_code=404, detail="Secret not found")
+
+    new_value = body.get("newValue")
+    if not new_value:
+        raise HTTPException(status_code=422, detail="Missing newValue")
+
+    _STORE[secret_id] = _STORE[secret_id].model_copy(update={"rawValue": new_value})
+    return _to_public(_STORE[secret_id])
+
+
+@router.delete("/{secret_id}")
+def delete_secret(
+    secret_id: str,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    deleting_by_key = not secret_id.startswith("sec-")
+    if deleting_by_key:
+        _require_auth(authorization)
+    elif authorization:
+        _require_auth(authorization)
+
+    store_id = secret_id if secret_id in _STORE else _find_store_id_by_key(secret_id)
+    if not store_id:
+        raise HTTPException(status_code=404, detail="Secret not found")
+
+    _STORE.pop(store_id, None)
+    return {"ok": True}

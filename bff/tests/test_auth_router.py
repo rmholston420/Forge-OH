@@ -1,13 +1,8 @@
 """Unit tests for bff/routers/auth.py."""
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
-from bff.routers import auth
+from bff.tests.utils import create_test_client
 from bff.auth_state import _TOKENS
 
-app = FastAPI()
-app.include_router(auth.router, prefix="/api")
-client = TestClient(app)
+client = create_test_client()
 
 
 class TestDemoLogin:
