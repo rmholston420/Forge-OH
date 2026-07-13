@@ -1,52 +1,35 @@
-import { apiClient } from '@/lib/api/client';
-import {
-  MCPServerListSchema,
-  MCPServerSchema,
-  PluginListSchema,
-  PluginSchema,
-  PingResponseSchema,
-} from './schemas';
-import type { MCPServer, Plugin, PingResponse } from './schemas';
+import type { McpServer, RegisterMcpServerRequest } from './schemas';
 
-// MCP Servers
-export async function fetchMCPServers(): Promise<MCPServer[]> {
-  const data = await apiClient.get('/mcp');
-  return MCPServerListSchema.parse(data);
+const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+
+export async function fetchMcpServers(): Promise<McpServer[]> {
+  const res = await fetch(`${BASE}/mcp`);
+  if (!res.ok) throw new Error('Failed to fetch MCP servers');
+  return res.json();
 }
 
-export async function toggleMCPServer(
-  id: string,
-  enable: boolean,
-): Promise<MCPServer> {
-  const data = await apiClient.post(`/mcp/${id}/${enable ? 'enable' : 'disable'}`, {});
-  return MCPServerSchema.parse(data);
+export async function registerMcpServer(body: RegisterMcpServerRequest): Promise<McpServer> {
+  const res = await fetch(`${BASE}/mcp`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Failed to register MCP server');
+  return res.json();
 }
 
-export async function pingMCPServer(id: string): Promise<PingResponse> {
-  const data = await apiClient.post(`/mcp/${id}/ping`, {});
-  return PingResponseSchema.parse(data);
+export async function deleteMcpServer(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/mcp/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete MCP server');
 }
 
-// Plugins
-export async function fetchPlugins(): Promise<Plugin[]> {
-  const data = await apiClient.get('/plugins');
-  return PluginListSchema.parse(data);
+export async function pingMcpServer(id: string): Promise<{ ok: boolean; latencyMs: number }> {
+  const res = await fetch(`${BASE}/mcp/${id}/ping`, { method: 'POST' });
+  if (!res.ok) throw new Error('Ping failed');
+  return res.json();
 }
 
-export async function enablePlugin(id: string): Promise<Plugin> {
-  const data = await apiClient.post(`/plugins/${id}/enable`, {});
-  return PluginSchema.parse(data);
-}
-
-export async function disablePlugin(id: string): Promise<Plugin> {
-  const data = await apiClient.post(`/plugins/${id}/disable`, {});
-  return PluginSchema.parse(data);
-}
-
-export async function savePluginConfig(
-  id: string,
-  config: Record<string, unknown>,
-): Promise<Plugin> {
-  const data = await apiClient.post(`/plugins/${id}/config`, config);
-  return PluginSchema.parse(data);
+export async function toggleMcpServer(id: string): Promise<McpServer> {
+  const res = await fetch(`${BASE}/mcp/${id}/toggle`, { method: 'POST' });
+  if (!res.ok) throw new Error('Toggle failed');
+  return res.json();
 }

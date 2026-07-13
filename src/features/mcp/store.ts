@@ -1,34 +1,24 @@
 import { create } from 'zustand';
+import type { McpStatus } from './schemas';
 
-interface MCPUIState {
-  selectedServerId: string | null;
-  pingInFlight: Set<string>;
-  selectedPluginId: string | null;
-  configDrawerOpen: boolean;
-  activeTab: 'mcp' | 'plugins';
+interface McpStore {
+  registerDrawerOpen: boolean;
+  statusFilter:       McpStatus | 'all';
+  confirmDeleteId:    string | null;
 
-  setSelectedServerId: (id: string | null) => void;
-  setPingInFlight: (id: string, value: boolean) => void;
-  openPluginConfig: (id: string) => void;
-  closePluginConfig: () => void;
-  setActiveTab: (tab: 'mcp' | 'plugins') => void;
+  openRegisterDrawer:  () => void;
+  closeRegisterDrawer: () => void;
+  setStatusFilter:     (s: McpStatus | 'all') => void;
+  setConfirmDeleteId:  (id: string | null) => void;
 }
 
-export const useMCPStore = create<MCPUIState>((set) => ({
-  selectedServerId: null,
-  pingInFlight: new Set(),
-  selectedPluginId: null,
-  configDrawerOpen: false,
-  activeTab: 'mcp',
+export const useMcpStore = create<McpStore>((set) => ({
+  registerDrawerOpen: false,
+  statusFilter:       'all',
+  confirmDeleteId:    null,
 
-  setSelectedServerId: (id) => set({ selectedServerId: id }),
-  setPingInFlight: (id, value) =>
-    set((state) => {
-      const next = new Set(state.pingInFlight);
-      value ? next.add(id) : next.delete(id);
-      return { pingInFlight: next };
-    }),
-  openPluginConfig: (id) => set({ selectedPluginId: id, configDrawerOpen: true }),
-  closePluginConfig: () => set({ configDrawerOpen: false, selectedPluginId: null }),
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  openRegisterDrawer:  () => set({ registerDrawerOpen: true }),
+  closeRegisterDrawer: () => set({ registerDrawerOpen: false }),
+  setStatusFilter:     (s) => set({ statusFilter: s }),
+  setConfirmDeleteId:  (id) => set({ confirmDeleteId: id }),
 }));
