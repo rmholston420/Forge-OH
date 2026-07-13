@@ -45,3 +45,5 @@ yarn-error.log*
 *.tsbuildinfo
 
 .coverage
+next-env.d.ts
+.ai-backups/
