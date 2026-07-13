@@ -1,0 +1,35 @@
+# Development override — hot reload, no caddy, direct ports
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  frontend:
+    build:
+      target: deps        # Use deps stage for faster rebuilds
+    command: pnpm dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_BFF_URL: http://localhost:8000
+
+  bff:
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./bff:/app
+    ports:
+      - "8000:8000"
+    environment:
+      DEBUG: 'true'
+      DEMO_MODE: 'true'
+
+  caddy:
+    profiles: ["!dev"]   # Exclude caddy in dev
+
+  redis:
+    ports:
+      - "6379:6379"      # Expose redis locally in dev

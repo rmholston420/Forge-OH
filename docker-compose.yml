@@ -1,0 +1,97 @@
+# Production compose
+# Usage: docker compose --env-file .env up -d --build
+
+services:
+  frontend:
+    image: ghcr.io/rmholston420/forge-oh-frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXTAUTH_URL:    ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXT_PUBLIC_BFF_URL: ${NEXT_PUBLIC_BFF_URL:-http://bff:8000}
+      GITHUB_CLIENT_ID:     ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    networks: [forge-network]
+    depends_on:
+      bff:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:   { cpus: '1.0', memory: 512M }
+        reservations: { cpus: '0.25', memory: 128M }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  bff:
+    image: ghcr.io/rmholston420/forge-oh-bff:latest
+    build:
+      context: ./bff
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      RIGPA_PLUGIN_URL: ${RIGPA_PLUGIN_URL:-}
+      DEMO_MODE:        ${DEMO_MODE:-false}
+      REDIS_URL:        redis://redis:6379
+    networks: [forge-network]
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:   { cpus: '0.5', memory: 256M }
+        reservations: { cpus: '0.1', memory: 64M }
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks: [forge-network]
+    deploy:
+      resources:
+        limits: { cpus: '0.25', memory: 64M }
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [forge-network]
+    depends_on: [frontend, bff]
+    deploy:
+      resources:
+        limits: { cpus: '0.25', memory: 64M }
+
+volumes:
+  redis_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  forge-network:
+    driver: bridge

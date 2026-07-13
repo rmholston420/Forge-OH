@@ -1,0 +1,38 @@
+# Forge-OH reverse proxy
+# Production: replace :80 with your domain and Caddy auto-provisions HTTPS
+
+:80 {
+    # API requests → BFF
+    handle /api/* {
+        reverse_proxy bff:8000
+    }
+
+    # Auth → BFF (NextAuth callbacks hit this)
+    handle /api/auth/* {
+        reverse_proxy bff:8000
+    }
+
+    # Everything else → Next.js frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    # Compression
+    encode zstd gzip
+
+    # Access log
+    log {
+        output stdout
+        format json
+    }
+
+    # Security headers
+    header {
+        X-Content-Type-Options    nosniff
+        X-Frame-Options           DENY
+        X-XSS-Protection          "1; mode=block"
+        Referrer-Policy           strict-origin-when-cross-origin
+        Permissions-Policy        "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+}
