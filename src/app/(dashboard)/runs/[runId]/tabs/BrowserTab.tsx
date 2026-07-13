@@ -21,6 +21,4 @@ export function BrowserTab({ runId, isActive }: { runId: string; isActive: boole
   return <BrowserViewer frames={frames} isActive={isActive} />;
 }
 
-export { default as BrowserTab } from './BrowserTab';
-
 export default BrowserTab;
