@@ -13,10 +13,16 @@ export interface RunDetailHeaderProps {
   onApprove?: () => void;
 }
 
+function formatSelectedModel(value?: string | null) {
+  if (!value) return null;
+  return value.replace(/^ollama\//, 'Ollama: ').replace(/^vllm\//, 'vLLM: ');
+}
+
 export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({ run, onPause, onStop, onFork, onApprove }) => {
   const isRunning = run.status === 'running' || run.status === 'pending';
   const isPaused = run.status === 'paused';
   const isAwaiting = run.status === 'awaiting_approval' || run.status === 'pending_approval';
+  const selectedModelLabel = formatSelectedModel(run.selectedModel ?? run.routing?.selected ?? null);
 
   return (
     <div className={styles.header}>
@@ -30,6 +36,11 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({ run, onPause, 
           <span className={styles.chip}>
             <span aria-hidden="true">🤖</span> {String(run.agentPresetName ?? 'Default')}
           </span>
+          {selectedModelLabel && (
+            <span className={styles.chip}>
+              <span aria-hidden="true">🧠</span> {selectedModelLabel}
+            </span>
+          )}
           {Boolean(run.activeTool) && (
             <span className={[styles.chip, styles.chipActive].join(' ')}>
               <span aria-hidden="true">⚡</span> {String(run.activeTool ?? '')}
