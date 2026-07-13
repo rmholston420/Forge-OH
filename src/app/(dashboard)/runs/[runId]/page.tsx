@@ -11,10 +11,10 @@ import { Banner } from '@/components/core/Banner';
 import { Skeleton } from '@/components/core/Skeleton';
 import { EmptyState } from '@/components/core/EmptyState';
 import { Tabs } from '@/components/core/Tabs';
-import { BrowserTab } from './tabs/BrowserTab';
-import { MetricsTab } from './tabs/MetricsTab';
-import { SecurityTab } from './tabs/SecurityTab';
-import { TraceTab } from './tabs/TraceTab';
+import BrowserTab from './tabs/BrowserTab';
+import MetricsTab from './tabs/MetricsTab';
+import SecurityTab from './tabs/SecurityTab';
+import TraceTab from './tabs/TraceTab';
 import styles from './run-detail.module.css';
 
 // Tab definitions must stay in sync with:
