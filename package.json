@@ -1,0 +1,45 @@
+{
+  "name": "forge-oh",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "next": "16.2.10",
+    "zustand": "^5.0.14",
+    "@tanstack/react-query": "^5.99.1",
+    "@tanstack/react-query-devtools": "^5.99.1",
+    "socket.io-client": "^4.8.3",
+    "monaco-editor": "^0.55.1",
+    "@xterm/xterm": "^5.5.0",
+    "recharts": "^3.9.2",
+    "zod": "^4.3.0",
+    "msw": "^2.7.0",
+    "clsx": "^2.1.1"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.10",
+    "@playwright/test": "^1.61.0",
+    "storybook": "^10.4.6",
+    "@storybook/nextjs": "^10.4.6",
+    "@storybook/addon-essentials": "^10.4.6",
+    "@storybook/addon-a11y": "^10.4.6",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.2.10",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@vitejs/plugin-react": "^4.3.0",
+    "jsdom": "^25.0.0"
+  }
+}
