@@ -1,0 +1,65 @@
+.row {
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-easing);
+}
+.row:hover { background: var(--color-bg-surface-alt); }
+.row--selected { background: var(--color-accent-soft); }
+
+.nameCell {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  max-width: 320px;
+}
+
+.expandBtn {
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--color-text-secondary);
+  background: none; border: none; cursor: pointer; flex-shrink: 0;
+}
+
+.spanName {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.statusBadge {
+  display: inline-block;
+  font-size: 10px; font-weight: 600;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.statusBadge--ok    { background: var(--color-state-success-subtle); color: var(--color-state-success); }
+.statusBadge--error { background: var(--color-state-error-subtle); color: var(--color-state-error); }
+.statusBadge--unset { background: var(--color-bg-surface-inset); color: var(--color-text-secondary); }
+
+.durationCell {
+  font-size: var(--font-size-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  padding: var(--space-2) var(--space-3);
+}
+
+.waterfallCell { padding: var(--space-2) var(--space-3); width: 40%; }
+
+.waterfallTrack {
+  position: relative;
+  height: 12px;
+  background: var(--color-bg-surface-inset);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.waterfallBar {
+  position: absolute;
+  top: 0; bottom: 0;
+  background: var(--color-accent-emphasis);
+  border-radius: var(--radius-full);
+  min-width: 2px;
+}
+.waterfallBar--error { background: var(--color-state-error); }
