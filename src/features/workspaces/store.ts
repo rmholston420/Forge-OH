@@ -1,20 +1,28 @@
 import { create } from 'zustand';
-import type { WorkspaceType } from '@/lib/schemas/workspace';
+import type { WorkspaceHealth } from './schemas';
 
-interface WorkspacesStore {
-  typeFilter: WorkspaceType | 'all';
-  composerOpen: boolean;
-  editingId: string | null;
-  setTypeFilter: (t: WorkspaceType | 'all') => void;
-  openComposer: (editingId?: string) => void;
-  closeComposer: () => void;
+interface WorkspacesUIState {
+  selectedWorkspaceId: string | null;
+  drawerOpen: boolean;
+  healthFilter: WorkspaceHealth | 'all';
+  confirmResetId: string | null;
+
+  setSelectedWorkspaceId: (id: string | null) => void;
+  openDrawer: (id: string) => void;
+  closeDrawer: () => void;
+  setHealthFilter: (f: WorkspaceHealth | 'all') => void;
+  setConfirmResetId: (id: string | null) => void;
 }
 
-export const useWorkspacesStore = create<WorkspacesStore>((set) => ({
-  typeFilter: 'all',
-  composerOpen: false,
-  editingId: null,
-  setTypeFilter: (typeFilter) => set({ typeFilter }),
-  openComposer: (editingId = null) => set({ composerOpen: true, editingId: editingId ?? null }),
-  closeComposer: () => set({ composerOpen: false, editingId: null }),
+export const useWorkspacesStore = create<WorkspacesUIState>((set) => ({
+  selectedWorkspaceId: null,
+  drawerOpen: false,
+  healthFilter: 'all',
+  confirmResetId: null,
+
+  setSelectedWorkspaceId: (id) => set({ selectedWorkspaceId: id }),
+  openDrawer: (id) => set({ selectedWorkspaceId: id, drawerOpen: true }),
+  closeDrawer: () => set({ drawerOpen: false }),
+  setHealthFilter: (f) => set({ healthFilter: f }),
+  setConfirmResetId: (id) => set({ confirmResetId: id }),
 }));

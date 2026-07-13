@@ -1,47 +1,57 @@
-'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query/query-keys';
 import {
-  fetchWorkspaces, fetchWorkspace, createWorkspace,
-  updateWorkspace, deleteWorkspace, testWorkspaceConnection,
+  fetchWorkspaces,
+  fetchWorkspace,
+  resetWorkspace,
+  duplicateWorkspace,
+  deleteWorkspace,
 } from './api';
 
 export function useWorkspaces() {
-  return useQuery({ queryKey: ['workspaces'], queryFn: fetchWorkspaces });
-}
-
-export function useWorkspace(id: string) {
   return useQuery({
-    queryKey: ['workspaces', id],
-    queryFn: () => fetchWorkspace(id),
+    queryKey: queryKeys.workspaces.list(),
+    queryFn: fetchWorkspaces,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+export function useWorkspace(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.workspaces.detail(id ?? ''),
+    queryFn: () => fetchWorkspace(id!),
     enabled: !!id,
+    staleTime: 15_000,
   });
 }
 
-export function useCreateWorkspace() {
+export function useResetWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: createWorkspace,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspaces'] }),
+    mutationFn: (id: string) => resetWorkspace(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.workspaces.list() });
+    },
   });
 }
 
-export function useUpdateWorkspace() {
+export function useDuplicateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Parameters<typeof updateWorkspace>[1] }) =>
-      updateWorkspace(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspaces'] }),
+    mutationFn: ({ id, name }: { id: string; name: string }) => duplicateWorkspace(id, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.workspaces.list() });
+    },
   });
 }
 
 export function useDeleteWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: deleteWorkspace,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspaces'] }),
+    mutationFn: (id: string) => deleteWorkspace(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.workspaces.list() });
+    },
   });
-}
-
-export function useTestWorkspaceConnection() {
-  return useMutation({ mutationFn: testWorkspaceConnection });
 }

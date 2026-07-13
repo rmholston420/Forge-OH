@@ -1,50 +1,32 @@
-import type { Workspace, CreateWorkspace } from '@/lib/schemas/workspace';
-
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+import { apiClient } from '@/lib/api/client';
+import type { Workspace, CreateWorkspaceRequest, ResetWorkspaceResponse } from './schemas';
+import { WorkspaceListSchema, WorkspaceSchema, ResetWorkspaceResponseSchema } from './schemas';
 
 export async function fetchWorkspaces(): Promise<Workspace[]> {
-  const res = await fetch(`${BFF}/api/workspaces`);
-  if (!res.ok) throw new Error(`Failed to fetch workspaces: ${res.status}`);
-  const json = await res.json();
-  return json.data ?? [];
+  const data = await apiClient.get('/workspaces');
+  return WorkspaceListSchema.parse(data);
 }
 
 export async function fetchWorkspace(id: string): Promise<Workspace> {
-  const res = await fetch(`${BFF}/api/workspaces/${id}`);
-  if (!res.ok) throw new Error(`Failed to fetch workspace: ${res.status}`);
-  const json = await res.json();
-  return json.data;
+  const data = await apiClient.get(`/workspaces/${id}`);
+  return WorkspaceSchema.parse(data);
 }
 
-export async function createWorkspace(body: CreateWorkspace): Promise<Workspace> {
-  const res = await fetch(`${BFF}/api/workspaces`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Failed to create workspace: ${res.status}`);
-  const json = await res.json();
-  return json.data;
+export async function createWorkspace(payload: CreateWorkspaceRequest): Promise<Workspace> {
+  const data = await apiClient.post('/workspaces', payload);
+  return WorkspaceSchema.parse(data);
 }
 
-export async function updateWorkspace(id: string, body: Partial<CreateWorkspace>): Promise<Workspace> {
-  const res = await fetch(`${BFF}/api/workspaces/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Failed to update workspace: ${res.status}`);
-  const json = await res.json();
-  return json.data;
+export async function resetWorkspace(id: string): Promise<ResetWorkspaceResponse> {
+  const data = await apiClient.post(`/workspaces/${id}/reset`, {});
+  return ResetWorkspaceResponseSchema.parse(data);
+}
+
+export async function duplicateWorkspace(id: string, name: string): Promise<Workspace> {
+  const data = await apiClient.post(`/workspaces/${id}/duplicate`, { name });
+  return WorkspaceSchema.parse(data);
 }
 
 export async function deleteWorkspace(id: string): Promise<void> {
-  const res = await fetch(`${BFF}/api/workspaces/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`Failed to delete workspace: ${res.status}`);
-}
-
-export async function testWorkspaceConnection(id: string): Promise<{ ok: boolean; latencyMs: number | null; error: string | null }> {
-  const res = await fetch(`${BFF}/api/workspaces/${id}/test`, { method: 'POST' });
-  if (!res.ok) throw new Error(`Connection test failed: ${res.status}`);
-  return res.json();
+  await apiClient.delete(`/workspaces/${id}`);
 }
