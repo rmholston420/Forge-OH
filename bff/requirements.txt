@@ -1,31 +1,36 @@
-# Forge-OH BFF — Pinned dependency versions (July 2026)
-# Match exactly to Forge-OH-Build-Plan-Definitive.md § Pinned Stack Versions
-# Runtime: Python 3.13.x
+# Forge-OH BFF dependencies
+# Keep versions pinned; update intentionally.
 
-fastapi==0.136.2
-pydantic>=2.12.5,<3.0
-pydantic-settings>=2.4.0
-uvicorn[standard]>=0.34
-python-socketio>=5.11
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
 
-# OpenHands — cloud-1.46.0 is not a valid PyPI version string (hyphens are not
-# permitted in PEP 440 versions). Install directly from the GitHub release tag.
-# Replace the URL below if the canonical release changes.
-openhands @ git+https://github.com/All-Hands-AI/OpenHands.git@cloud-1.46.0
+# OpenHands SDK
+# Version 1.29.3 is the canonical pinned version for this project.
+openhands-ai==1.29.3
 
-ollama>=0.31.2
-vllm>=0.25.0
+# HTTP client (for proxying requests to OpenHands SDK)
+httpx==0.28.1
 
-# Supporting HTTP / transport
-httpx>=0.27.0
-python-multipart>=0.0.9
-websockets>=13.0
+# WebSocket / Socket.IO
+python-socketio==5.11.4
+aiohttp==3.11.10
 
-# Storage
-redis>=5.0.0
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
 
-# Async SQLite — required for episodic_memory.py.
-# The synchronous sqlite3 module blocks the asyncio event loop.
-# EpisodicMemory should be migrated to use aiosqlite.connect() or
-# asyncio.to_thread() wrappers. This package is the prerequisite.
-aiosqlite>=0.20.0
+# Database (episodic memory store)
+aiosqlite==0.20.0
+
+# Observability
+opentelemetry-sdk==1.29.0
+opentelemetry-exporter-otlp-proto-http==1.29.0
+opentelemetry-instrumentation-fastapi==0.50b0
+
+# Dev / test (not installed in production)
+# pytest==8.3.4
+# pytest-asyncio==0.24.0
+# httpx  (already above, used in tests too)

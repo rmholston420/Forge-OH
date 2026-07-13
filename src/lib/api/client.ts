@@ -6,9 +6,8 @@
  * All frontend → BFF communication goes through these helpers.
  * Never use raw fetch() in components or features.
  *
+ * Canonical BFF port: 8081
  * Ref: Forge-OH-Build-Plan-Definitive.md § Architecture
- *   "The frontend never talks directly to OpenHands.
- *    All traffic flows through the BFF."
  */
 import { ApiError, parseApiError } from './errors';
 import type { ApiResult } from './response';
@@ -22,11 +21,11 @@ import type { ApiResult } from './response';
  *
  * Uses NEXT_PUBLIC_BFF_URL — the same variable used by bff-client.ts and
  * MSW handlers, so dev, test, and production all share a single env var.
- * Default port 8000 matches the BFF uvicorn default.
+ * Default port 8081 is the canonical BFF port for this project.
  */
 const BFF_BASE =
   process.env.NEXT_PUBLIC_BFF_URL ??
-  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000');
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8081');
 
 // ---------------------------------------------------------------------------
 // Internal fetch wrapper

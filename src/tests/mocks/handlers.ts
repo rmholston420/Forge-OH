@@ -1,6 +1,8 @@
 /**
  * MSW request handlers — complete coverage for all BFF API routes.
  * All fixtures use deterministic seed IDs from src/tests/fixtures/seed.ts.
+ *
+ * Canonical BFF port: 8081
  */
 import { http, HttpResponse } from 'msw';
 import { SEED } from '../fixtures/seed';
@@ -16,8 +18,8 @@ import {
   mockPackageResponse,
 } from '../../features/rigpa-lms/fixtures';
 
-// NEXT_PUBLIC_BFF_URL — same env var used by bff-client.ts and lib/api/client.ts.
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+// NEXT_PUBLIC_BFF_URL — canonical BFF port is 8081.
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export const handlers = [
   // -------------------------------------------------------------------------
@@ -155,7 +157,7 @@ export const handlers = [
   ),
 
   // -------------------------------------------------------------------------
-  // Rigpa-LMS (Slice 5C) — only active when FEATURE_RIGPA_LMS_ENABLED=true
+  // Rigpa-LMS (Slice 5C)
   // -------------------------------------------------------------------------
   http.post(`${BFF}/api/lms/context`, () =>
     HttpResponse.json(mockContextInjectionResponse, { status: 201 })
