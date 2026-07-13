@@ -21,9 +21,10 @@ export async function createRun(req: CreateRunRequest): Promise<RunSummary> {
   return json.data;
 }
 
+// NOTE: agent_presets router (prefix=/agent-presets) returns a bare list,
+// not a {data:[]} envelope — so we do NOT unwrap .data here.
 export async function fetchAgentPresets(): Promise<AgentPreset[]> {
-  const res = await fetch(`${BFF}/api/agents/presets`);
+  const res = await fetch(`${BFF}/api/agent-presets`);
   if (!res.ok) throw new Error(`Failed to fetch agent presets: ${res.status}`);
-  const json = await res.json();
-  return json.data;
+  return res.json();
 }
