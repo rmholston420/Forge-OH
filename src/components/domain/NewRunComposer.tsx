@@ -44,20 +44,30 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
     },
   });
 
-  useEffect(() => {
-    if (presets.length > 0) {
-      setValue('agentPresetId', presets[0]?.id ?? '', { shouldValidate: true });
-    }
-  }, [presets, setValue]);
-
-  useEffect(() => {
-    if (workspaces.length > 0) {
-      setValue('workspaceId', workspaces[0]?.id ?? '', { shouldValidate: true });
-    }
-  }, [workspaces, setValue]);
-
+  const selectedPresetId = watch('agentPresetId');
+  const selectedWorkspaceId = watch('workspaceId');
   const titleValue = watch('title') ?? '';
   const estimatedContextLength = estimateContextLength(titleValue);
+
+  useEffect(() => {
+    if (!selectedPresetId && presets.length > 0) {
+      setValue('agentPresetId', presets[0]?.id ?? '', {
+        shouldValidate: false,
+        shouldDirty: false,
+        shouldTouch: false,
+      });
+    }
+  }, [presets, selectedPresetId, setValue]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId && workspaces.length > 0) {
+      setValue('workspaceId', workspaces[0]?.id ?? '', {
+        shouldValidate: false,
+        shouldDirty: false,
+        shouldTouch: false,
+      });
+    }
+  }, [workspaces, selectedWorkspaceId, setValue]);
 
   useEffect(() => {
     setValue('contextLength', estimatedContextLength, { shouldValidate: false, shouldDirty: false });
@@ -120,6 +130,9 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+          {errors.agentPresetId && (
+            <span className={styles.fieldError} role="alert">{errors.agentPresetId.message}</span>
+          )}
         </div>
 
         <div className={styles.field}>
@@ -131,6 +144,9 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
               <option key={w.id} value={w.id}>{w.name} ({w.type})</option>
             ))}
           </select>
+          {errors.workspaceId && (
+            <span className={styles.fieldError} role="alert">{errors.workspaceId.message}</span>
+          )}
         </div>
       </div>
 
