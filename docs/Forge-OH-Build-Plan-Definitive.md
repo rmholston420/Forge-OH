@@ -55,17 +55,17 @@ fastapi==0.136.2
 pydantic>=2.12.5,<3.0
 uvicorn[standard]>=0.34
 python-socketio>=5.11
-openhands==cloud-1.46.0
+openhands-sdk==1.29.3
 ollama>=0.31.2
 vllm>=0.25.0
 ```
 
-> ⚠️ **Known issue — `openhands` pip version string**: `cloud-1.46.0` is not a valid PyPI version identifier (hyphens are not permitted). Until a proper PyPI release exists, install via a direct GitHub release URL or a private index. Do not rely on `pip install openhands==cloud-1.46.0` succeeding in a clean environment.
+> ℹ **OpenHands SDK install note**: Forge-OH now targets `openhands-sdk==1.29.3` as the current SDK/agent-server line.
 
 **Runtime targets** :
 - Python: `3.13.x`
 - Node.js: `24.18.0` LTS
-- OpenHands: `cloud-1.46.0` (released July 10, 2026)
+- OpenHands SDK: `1.29.3` (current target)
 - Ollama: `v0.31.2` (released July 7, 2026)
 - vLLM: `v0.25.0` (released July 11, 2026)
 
@@ -107,7 +107,7 @@ Forge-OH uses a strict four-layer architecture. Each layer has a single responsi
 │  context_loader · loop_guard · episodic_memory       │
 │  conflict_checker · audit_log                        │
 ├─────────────────────────────────────────────────────┤
-│  OpenHands Agent Server (cloud-1.46.0)               │
+│  OpenHands Agent Server (via openhands-sdk 1.29.3)               │
 │  Ollama v0.31.2 (primary) · vLLM v0.25.0 (backup)   │
 │  Docker workspaces · REST/WS APIs                    │
 └─────────────────────────────────────────────────────┘
