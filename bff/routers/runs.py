@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from bff.middleware.rbac import require_role
+from bff.services.model_router import route_request, ModelUnavailableError
 
 router = APIRouter()
 
@@ -13,6 +14,8 @@ class CreateRunRequest(BaseModel):
     agentPresetId: str
     workspaceId: str
     contextPrompt: Optional[str] = None
+    taskComplexity: Optional[str] = None
+    contextLength: Optional[int] = None
 
 
 @router.get("/runs")
@@ -25,10 +28,20 @@ async def create_run(
     body: CreateRunRequest,
     _: None = Depends(require_role("write")),
 ) -> dict:
+    task_complexity = body.taskComplexity or "agentic"
+    context_length = body.contextLength if body.contextLength is not None else len(body.contextPrompt or "")
+
+    try:
+        selected_model = await route_request(task_complexity, context_length)
+        routing_error = None
+    except ModelUnavailableError as exc:
+        selected_model = None
+        routing_error = str(exc)
+
     return {"data": {
         "id": "run-new-001",
         "title": body.title,
-        "status": "queued",
+        "status": "queued" if selected_model else "blocked",
         "agentPresetName": body.agentPresetId,
         "workspaceId": body.workspaceId,
         "workspaceType": "local",
@@ -37,6 +50,13 @@ async def create_run(
         "createdAt": "2026-07-12T00:00:00Z",
         "elapsedMs": None,
         "estimatedCostUsd": None,
+        "selectedModel": selected_model,
+        "routing": {
+            "taskComplexity": task_complexity,
+            "contextLength": context_length,
+            "selected": selected_model,
+            "error": routing_error,
+        },
     }}
 
 
