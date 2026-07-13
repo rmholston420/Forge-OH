@@ -1,9 +1,10 @@
-# Forge-OH BFF dependencies
-# Pinned to versions that are actually available in this environment.
-# Keep OTEL unpinned here because openhands-sdk pulls a compatible set.
+# Forge-OH BFF runtime dependencies
+# Clean runtime set validated separately from the full local lock snapshot.
+# Full environment snapshot remains in bff/requirements.lock.
 
 # Web framework
 fastapi==0.115.5
+uvicorn==0.39.0
 pydantic==2.12.5
 pydantic-settings==2.6.1
 
@@ -24,14 +25,6 @@ passlib[bcrypt]==1.7.4
 # Database
 aiosqlite==0.22.1
 
-# Dev / test
+# Optional dev/test
 # pytest==8.3.4
 # pytest-asyncio==0.24.0
-
-# Synced from working .venv on local machine
-uvicorn==0.39.0
-vllm==0.25.0
-opentelemetry-exporter-otlp==1.43.0
-opentelemetry-exporter-otlp-proto-grpc==1.39.1
-opentelemetry-exporter-otlp-proto-http==1.39.1
-prometheus-fastapi-instrumentator==8.0.2

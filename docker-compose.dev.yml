@@ -18,9 +18,9 @@ services:
       NEXT_PUBLIC_BFF_URL: http://localhost:8081
 
   bff:
-    # CRITICAL: entry point must be bff.main:app_with_sio, not main:app.
+    # CRITICAL: entry point must be bff.main:app, not main:app.
     # See bff/Dockerfile CRITICAL comment for explanation.
-    command: uvicorn bff.main:app_with_sio --host 0.0.0.0 --port 8081 --reload
+    command: uvicorn bff.main:app --host 0.0.0.0 --port 8081 --reload
     volumes:
       - ./bff:/app/bff
     ports:

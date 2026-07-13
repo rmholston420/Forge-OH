@@ -10,7 +10,7 @@ export const PluginSchema = z.object({
   description: z.string().optional(),
   author: z.string().optional(),
   status: PluginStatusSchema,
-  configSchema: z.record(z.unknown()).optional(),
+  configSchema: z.record(z.string(), z.unknown()).optional(),
   installedAt: z.string().datetime().optional(),
   updatedAt: z.string().datetime(),
 });

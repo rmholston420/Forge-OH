@@ -46,7 +46,7 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "16.2.10",
     "jsdom": "^25.0.0",
-    "storybook": "10.4.6",
+    "storybook": "^10.4.6",
     "typescript": "^6.0.2",
     "vitest": "^4.1.10"
   }

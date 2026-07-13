@@ -5,7 +5,6 @@ import styles from './ArtifactCard.module.css';
 
 const TYPE_ICON: Record<Artifact['type'], string> = {
   patch: '📤',
-  file: '📄',
   screenshot: '🖼️',
   report: '📈',
   download: '⬇️',
@@ -53,7 +52,7 @@ export const ArtifactCard: React.FC<ArtifactCardProps> = ({ artifact, onPreview 
       )}
       <div className={styles.meta}>
         <span className={styles.name}>{artifact.name}</span>
-        <span className={styles.detail}>{artifact.mimeType} · {formatSize(artifact.sizeBytes)}</span>
+        <span className={styles.detail}>{artifact.mimeType} · {formatSize(artifact.sizeBytes ?? 0)}</span>
       </div>
       <div className={styles.actions}>
         {canPreview && (
@@ -66,7 +65,7 @@ export const ArtifactCard: React.FC<ArtifactCardProps> = ({ artifact, onPreview 
           </button>
         )}
         <a
-          href={artifact.url}
+          href={artifact.downloadUrl ?? artifact.previewUrl ?? '#'}
           download={artifact.name}
           className={styles.actionBtn}
           aria-label={`Download ${artifact.name}`}

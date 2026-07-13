@@ -13,11 +13,11 @@ export const TraceSpanSchema = z.object({
   endTime: z.string().nullable(),
   durationMs: z.number().nullable(),
   status: z.enum(['ok', 'error', 'unset']),
-  attributes: z.record(z.unknown()).optional(),
+  attributes: z.record(z.string(), z.unknown()).optional(),
   events: z.array(z.object({
     name: z.string(),
     timestamp: z.string(),
-    attributes: z.record(z.unknown()).optional(),
+    attributes: z.record(z.string(), z.unknown()).optional(),
   })).optional(),
   runId: z.string().optional(),
   inputTokens: z.number().optional(),
@@ -33,3 +33,5 @@ export const TraceListResponseSchema = z.object({
 });
 
 export type TraceListResponse = z.infer<typeof TraceListResponseSchema>;
+
+export type Span = TraceSpan;

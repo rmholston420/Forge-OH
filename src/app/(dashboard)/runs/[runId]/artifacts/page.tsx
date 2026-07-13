@@ -15,7 +15,6 @@ const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_ARTIFACTS_ENABLED !== 'f
 const TYPE_LABELS: Record<ArtifactType | 'all', string> = {
   all: 'All',
   patch: 'Patches',
-  file: 'Files',
   screenshot: 'Screenshots',
   report: 'Reports',
   download: 'Downloads',

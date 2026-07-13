@@ -51,13 +51,13 @@ These are the exact, verified, compatibility-checked versions to use. Pin them i
 ### BFF `requirements.txt`
 
 ```
-fastapi==0.136.2
-pydantic>=2.12.5,<3.0
-uvicorn[standard]>=0.34
-python-socketio>=5.11
+fastapi==0.115.5
+pydantic==2.12.5
+uvicorn==0.39.0
+python-socketio==5.11.4
 openhands-sdk==1.29.3
 ollama>=0.31.2
-vllm>=0.25.0
+vllm (installed separately; not part of bff/requirements.txt)
 ```
 
 > ℹ **OpenHands SDK install note**: Forge-OH now targets `openhands-sdk==1.29.3` as the current SDK/agent-server line.
@@ -441,7 +441,7 @@ forge-oh/
 
 **Correct startup command:**
 ```bash
-uvicorn bff.main:app_with_sio --host 0.0.0.0 --port 8001 --reload
+uvicorn bff.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
 This must be the command used in the Dockerfile, `Makefile`, and any CI/CD scripts. Never reference `bff.main:app` as a startup target.
@@ -1062,7 +1062,7 @@ Constraints:
 - Feature flag this slice with FEATURE_[SLICE_NAME]_ENABLED.
 - Model routing: Ollama devstral-small:24b primary, qwen3:14b for long context,
   vLLM fallback. Never hardcode model names in frontend.
-- BFF must be started with: uvicorn bff.main:app_with_sio (NOT bff.main:app).
+- BFF must be started with: uvicorn bff.main:app (NOT bff.main:app).
 ```
 
 ***
