@@ -15,7 +15,7 @@ export const RunCard: React.FC<RunCardProps> = ({ run }) => {
     <Link href={`/runs/${run.id}`} className={styles.card}>
       <div className={styles.main}>
         <div className={styles.titleRow}>
-          <span className={styles.title}>{run.title}</span>
+          <span className={styles.title}>{String(run.title ?? run.id)}</span>
           <StatusBadge status={run.status} />
         </div>
         <div className={styles.meta}>
@@ -23,24 +23,24 @@ export const RunCard: React.FC<RunCardProps> = ({ run }) => {
             <span aria-hidden="true">
               {run.workspaceType === 'docker' ? '📦' : run.workspaceType === 'remote_api' ? '🌐' : '💻'}
             </span>
-            {run.workspaceType}
+            {String(run.workspaceType ?? 'local')}
           </span>
           <span className={styles.chip}>
             <span aria-hidden="true">🤖</span>
-            {run.agentPresetName}
+            {String(run.agentPresetName ?? 'Default')}
           </span>
-          {run.activeTool && (
+          {Boolean(run.activeTool) && (
             <span className={styles.chipActive}>
               <span aria-hidden="true">⚡</span>
-              {run.activeTool}
+              {String(run.activeTool ?? '')}
             </span>
           )}
         </div>
       </div>
       <div className={styles.stats}>
-        <span className={styles.stat}>{formatDuration(run.elapsedMs)}</span>
-        <span className={styles.stat}>{formatCost(run.estimatedCostUsd)}</span>
-        <span className={styles.statMeta}>{formatDate(run.updatedAt)}</span>
+        <span className={styles.stat}>{formatDuration(run.elapsedMs ?? null)}</span>
+        <span className={styles.stat}>{formatCost(run.estimatedCostUsd ?? null)}</span>
+        <span className={styles.statMeta}>{formatDate(String(run.updatedAt ?? new Date().toISOString()))}</span>
       </div>
     </Link>
   );

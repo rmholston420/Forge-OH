@@ -55,10 +55,10 @@ export default function MetricsTab({ runId, isActive }: { runId: string; isActiv
       {metrics?.series && metrics.series.length > 0 && (
         <div className={styles.seriesSection}>
           <h3 className={styles.seriesHeading}>Time Series</h3>
-          {metrics.series.map((s) => (
+          {metrics.series.map((s: { name: string; points: Array<{ value: number; recordedAt: string; unit?: string }> }) => (
             <div key={s.name} className={styles.seriesRow}>
               <span className={styles.seriesName}>{s.name}</span>
-              <span className={styles.seriesUnit}>{s.unit}</span>
+              <span className={styles.seriesUnit}>{(s.points?.[0]?.unit ?? '')}</span>
               <span className={styles.seriesPoints}>{s.points.length} pts</span>
             </div>
           ))}

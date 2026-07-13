@@ -3,10 +3,12 @@ import React, { useState } from 'react';
 import type { Secret } from '@/lib/schemas/secret';
 import styles from './SecretRow.module.css';
 
-const SCOPE_CLASS: Record<Secret['scope'], string> = {
-  global: 'global',
-  workspace: 'workspace',
-  run: 'run',
+const scopeLabels: Record<'global' | 'workspace' | 'run' | 'user' | 'deployment', string> = {
+  global: 'Global',
+  workspace: 'Workspace',
+  run: 'Run',
+  user: 'User',
+  deployment: 'Deployment',
 };
 
 export interface SecretRowProps {
@@ -27,7 +29,7 @@ export const SecretRow: React.FC<SecretRowProps> = ({ secret, onDelete, onRotate
         )}
       </td>
       <td>
-        <span className={[styles.scopeBadge, styles[`scopeBadge--${SCOPE_CLASS[secret.scope]}`]].join(' ')}>
+        <span className={[styles.scopeBadge, styles[`scopeBadge--${scopeLabels[secret.scope]}`]].join(' ')}>
           {secret.scope}
         </span>
       </td>

@@ -17,6 +17,9 @@ const TYPE_LABELS: Record<WorkspaceType | 'all', string> = {
   local: 'Local',
   docker: 'Docker',
   remote_api: 'Remote API',
+  remoteapi: 'Remote API',
+  e2b: 'E2B',
+  modal: 'Modal',
 };
 
 export default function WorkspacesPage() {
@@ -38,10 +41,10 @@ export default function WorkspacesPage() {
   };
 
   const handleTest = async (id: string) => {
-    const result = await testMutation.mutateAsync(id);
+    const result = await testMutation.mutateAsync();
     alert(result.ok
-      ? `✅ Connection OK (${result.latencyMs}ms)`
-      : `❌ Connection failed: ${result.error}`);
+      ? `✅ Connection OK (${('latencyMs' in result ? result.latencyMs : undefined)}ms)`
+      : `❌ Connection failed: ${('error' in result ? result.error : undefined)}`);
   };
 
   return (
@@ -79,7 +82,7 @@ export default function WorkspacesPage() {
           title="No workspaces"
           description="Create a workspace to give the agent a place to run."
           icon="🐳"
-          action={{ label: 'New Workspace', onClick: () => openComposer() }}
+          action={<button className={styles.newBtn} onClick={() => openComposer()}>New Workspace</button>}
         />
       ) : (
         <div className={styles.grid}>
@@ -87,9 +90,6 @@ export default function WorkspacesPage() {
             <WorkspaceCard
               key={ws.id}
               workspace={ws}
-              onEdit={openComposer}
-              onDelete={handleDelete}
-              onTest={handleTest}
             />
           ))}
         </div>

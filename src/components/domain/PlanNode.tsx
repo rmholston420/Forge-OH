@@ -31,7 +31,7 @@ export const PlanNodeItem: React.FC<PlanNodeProps> = ({ node, depth = 0 }) => {
       </div>
       {node.children && node.children.length > 0 && (
         <ul className={styles.children}>
-          {node.children.map((child) => (
+          {node.children.map((child: PlanNodeType) => (
             <PlanNodeItem key={child.id} node={child} depth={depth + 1} />
           ))}
         </ul>

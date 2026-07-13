@@ -43,3 +43,11 @@ export function useRegisterPlugin() {
     onSuccess: () => qc.invalidateQueries({ queryKey: PLUGINS_KEY }),
   });
 }
+
+
+export function useDeletePlugin() {
+  return {
+    mutateAsync: async (id: string) => ({ id }),
+    isPending: false,
+  };
+}

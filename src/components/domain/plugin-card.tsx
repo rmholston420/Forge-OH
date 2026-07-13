@@ -5,6 +5,8 @@ const STATUS_CONFIG: Record<PluginStatus, { label: string; colorVar: string }> =
   enabled: { label: 'Enabled', colorVar: 'var(--color-state-success)' },
   disabled: { label: 'Disabled', colorVar: 'var(--color-text-muted)' },
   error: { label: 'Error', colorVar: 'var(--color-state-error)' },
+  installed: { label: 'Installed', colorVar: 'var(--color-text-muted)' },
+  updateavailable: { label: 'Update available', colorVar: 'var(--color-warning)' },
   installing: { label: 'Installing…', colorVar: 'var(--color-state-running)' },
 };
 
@@ -16,7 +18,7 @@ interface PluginCardProps {
 
 export function PluginCard({ plugin, onToggle, onConfigure }: PluginCardProps) {
   const { id, name, version, status, description, author, configSchema } = plugin;
-  const cfg = STATUS_CONFIG[status];
+  const cfg = STATUS_CONFIG[status ?? 'disabled'];
   const isEnabled = status === 'enabled';
   const hasConfig = !!configSchema && Object.keys(configSchema).length > 0;
 

@@ -1,36 +1,41 @@
 import { create } from 'zustand';
-import type { WorkspaceType } from './schemas';
 
-interface WorkspacesStore {
-  selectedId:        string | null;
-  filterType:        WorkspaceType | 'all';
-  drawerOpen:        boolean;
-  editingId:         string | null;
-  confirmDeleteId:   string | null;
-  confirmDeleteName: string;
+export type WorkspaceTypeFilter = 'all' | 'local' | 'docker' | 'remote_api' | 'remoteapi' | 'e2b' | 'modal';
 
-  setSelectedId:      (id: string | null) => void;
-  setFilterType:      (type: WorkspaceType | 'all') => void;
-  openCreateDrawer:   () => void;
-  openEditDrawer:     (id: string) => void;
-  closeDrawer:        () => void;
-  openConfirmDelete:  (id: string, name: string) => void;
+export interface WorkspacesStore {
+  typeFilter: WorkspaceTypeFilter;
+  filterType: WorkspaceTypeFilter;
+  composerOpen: boolean;
+  drawerOpen: boolean;
+  editingId: string | null;
+  confirmDeleteId: string | null;
+  confirmDeleteName: string | null;
+  setTypeFilter: (value: WorkspaceTypeFilter) => void;
+  setFilterType: (value: WorkspaceTypeFilter) => void;
+  openComposer: () => void;
+  closeComposer: () => void;
+  openCreateDrawer: () => void;
+  openEditDrawer: (id: string) => void;
+  closeDrawer: () => void;
+  openConfirmDelete: (id: string, name?: string | null) => void;
   closeConfirmDelete: () => void;
 }
 
 export const useWorkspacesStore = create<WorkspacesStore>((set) => ({
-  selectedId:        null,
-  filterType:        'all',
-  drawerOpen:        false,
-  editingId:         null,
-  confirmDeleteId:   null,
-  confirmDeleteName: '',
-
-  setSelectedId:      (id)   => set({ selectedId: id }),
-  setFilterType:      (type) => set({ filterType: type }),
-  openCreateDrawer:   ()     => set({ drawerOpen: true,  editingId: null }),
-  openEditDrawer:     (id)   => set({ drawerOpen: true,  editingId: id }),
-  closeDrawer:        ()     => set({ drawerOpen: false, editingId: null }),
-  openConfirmDelete:  (id, name) => set({ confirmDeleteId: id, confirmDeleteName: name }),
-  closeConfirmDelete: ()     => set({ confirmDeleteId: null, confirmDeleteName: '' }),
+  typeFilter: 'all',
+  filterType: 'all',
+  composerOpen: false,
+  drawerOpen: false,
+  editingId: null,
+  confirmDeleteId: null,
+  confirmDeleteName: null,
+  setTypeFilter: (typeFilter) => set({ typeFilter, filterType: typeFilter }),
+  setFilterType: (filterType) => set({ filterType, typeFilter: filterType }),
+  openComposer: () => set({ composerOpen: true, drawerOpen: true }),
+  closeComposer: () => set({ composerOpen: false, drawerOpen: false, editingId: null }),
+  openCreateDrawer: () => set({ composerOpen: true, drawerOpen: true, editingId: null }),
+  openEditDrawer: (editingId) => set({ composerOpen: true, drawerOpen: true, editingId }),
+  closeDrawer: () => set({ composerOpen: false, drawerOpen: false, editingId: null }),
+  openConfirmDelete: (confirmDeleteId, confirmDeleteName = null) => set({ confirmDeleteId, confirmDeleteName }),
+  closeConfirmDelete: () => set({ confirmDeleteId: null, confirmDeleteName: null }),
 }));

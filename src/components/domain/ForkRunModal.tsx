@@ -56,7 +56,6 @@ export function ForkRunModal({ runId, runTitle, open, onClose }: Props) {
       open={open}
       onClose={handleClose}
       title="Fork run"
-      description={`Fork "${runTitle}" into a new independent run you can edit and re-run.`}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 

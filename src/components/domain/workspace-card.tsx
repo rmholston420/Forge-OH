@@ -46,10 +46,10 @@ export function WorkspaceCard({
     >
       <header className="workspace-card__header">
         <div className="workspace-card__type-badge">
-          <span aria-hidden="true">{TYPE_ICONS[type]}</span>
-          <span className="workspace-card__type-label">{TYPE_LABELS[type]}</span>
+          <span aria-hidden="true">{TYPE_ICONS[type ?? 'local']}</span>
+          <span className="workspace-card__type-label">{TYPE_LABELS[type ?? 'local']}</span>
         </div>
-        <WorkspaceHealthBadge health={health} />
+        <WorkspaceHealthBadge health={health ?? 'healthy'} />
       </header>
 
       <h3 className="workspace-card__name">{name}</h3>

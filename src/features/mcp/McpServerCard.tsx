@@ -28,7 +28,7 @@ export function McpServerCard({ server }: { server: McpServer }) {
     <article className="mcp-card" aria-label={server.name}>
       <div className="mcp-card-header">
         <span className="mcp-transport-icon" aria-hidden="true">
-          {TRANSPORT_ICONS[server.transport]}
+          {TRANSPORT_ICONS[server.transport ?? 'stdio']}
         </span>
         <div className="mcp-card-title">
           <h3>{server.name}</h3>
@@ -36,7 +36,7 @@ export function McpServerCard({ server }: { server: McpServer }) {
             <p className="mcp-card-desc">{server.description}</p>
           )}
         </div>
-        <span className={STATUS_CLASSES[server.status]}>
+        <span className={STATUS_CLASSES[server.status ?? 'disconnected']}>
           {server.status}
         </span>
       </div>
@@ -51,9 +51,9 @@ export function McpServerCard({ server }: { server: McpServer }) {
         )}
       </div>
 
-      {server.tags.length > 0 && (
+      {(server.tags ?? []).length > 0 && (
         <div className="mcp-tags">
-          {server.tags.map(tag => (
+          {(server.tags ?? []).map(tag => (
             <span key={tag} className="mcp-tag">{tag}</span>
           ))}
         </div>

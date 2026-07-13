@@ -1,109 +1,95 @@
-import crypto from 'node:crypto';
-import { PluginEventSchema, type PluginEvent, type PluginManifest, PluginEventType, PluginManifestSchema } from './schemas';
+import { createHmac, timingSafeEqual } from 'crypto';
+import { PluginEventSchema, PluginEventType, PluginManifestSchema } from '@/lib/plugins/schemas';
 
+type PluginManifest = ReturnType<typeof PluginManifestSchema.parse>;
+type PluginEvent = ReturnType<typeof PluginEventSchema.parse>;
 type Handler = (event: PluginEvent) => void;
-
-type DispatchResult = {
-  pluginId: string;
-  ok: boolean;
-  status?: number;
-  error?: string;
-};
 
 export class PluginBridge {
   private manifests = new Map<string, PluginManifest>();
-  private handlers = new Map<PluginEventType, Set<Handler>>();
+  private handlers = new Map<string, Set<Handler>>();
 
-  register(manifest: PluginManifest): void {
+  register(manifest: unknown): void {
     const parsed = PluginManifestSchema.parse(manifest);
     this.manifests.set(parsed.id, parsed);
   }
 
-  on(type: PluginEventType, handler: Handler): () => void {
-    const bucket = this.handlers.get(type) ?? new Set<Handler>();
-    bucket.add(handler);
-    this.handlers.set(type, bucket);
+  list(): PluginManifest[] {
+    return Array.from(this.manifests.values());
+  }
 
+  on(type: PluginEventType | string, handler: Handler): () => void {
+    if (!this.handlers.has(type)) this.handlers.set(type, new Set());
+    this.handlers.get(type)!.add(handler);
     let removed = false;
     return () => {
       if (removed) return;
       removed = true;
-      const current = this.handlers.get(type);
-      current?.delete(handler);
-      if (current && current.size === 0) this.handlers.delete(type);
+      this.off(type, handler);
     };
   }
 
-  handleInbound(pluginId: string, body: string, signature?: string): PluginEvent | null {
+  off(type: PluginEventType | string, handler: Handler): void {
+    this.handlers.get(type)?.delete(handler);
+  }
+
+  async dispatch(type: PluginEventType, payload: Record<string, unknown>) {
+    const matched = this.list().filter((m) => (m.capabilities ?? []).includes(type));
+    if (matched.length === 0) return [];
+
+    const body = JSON.stringify({ type, payload });
+    const results = await Promise.all(
+      matched.map(async (manifest) => {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (manifest.authType === 'bearer' && manifest.secret) {
+          headers.Authorization = `Bearer ${manifest.secret}`;
+          headers['X-Forge-Signature'] = createHmac('sha256', manifest.secret).update(body).digest('hex');
+        } else if (manifest.authType === 'api_key' && manifest.secret) {
+          headers['X-API-Key'] = manifest.secret;
+        }
+
+        const url = `${manifest.baseUrl.replace(/\/$/, '')}/events`;
+        try {
+          const response = await fetch(url, { method: 'POST', headers, body });
+          return { ok: response.ok, status: response.status, pluginId: manifest.id };
+        } catch (error) {
+          return {
+            ok: false,
+            status: 0,
+            pluginId: manifest.id,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }),
+    );
+
+    return results;
+  }
+
+  handleInbound(pluginId: string, rawEvent: string, signature?: string) {
     const manifest = this.manifests.get(pluginId);
     if (!manifest) return null;
 
     if (manifest.secret) {
-      const expected = crypto.createHmac('sha256', manifest.secret).update(body).digest('hex');
-      if (signature !== expected) return null;
+      if (!signature) return null;
+      const expected = createHmac('sha256', manifest.secret).update(rawEvent).digest('hex');
+      const a = Buffer.from(signature);
+      const b = Buffer.from(expected);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
     }
 
-    let json: unknown;
+    let parsedBody: unknown;
     try {
-      json = JSON.parse(body);
+      parsedBody = JSON.parse(rawEvent);
     } catch {
       return null;
     }
 
-    const parsed = PluginEventSchema.safeParse(json);
+    const parsed = PluginEventSchema.safeParse(parsedBody);
     if (!parsed.success) return null;
 
-    const event = parsed.data;
-    const bucket = this.handlers.get(event.type);
-    if (bucket) {
-      for (const handler of bucket) handler(event);
-    }
-    return event;
-  }
-
-  async dispatch(type: PluginEventType, payload: Record<string, unknown>): Promise<DispatchResult[]> {
-    const results: DispatchResult[] = [];
-    const event = {
-      type,
-      payload,
-    };
-
-    for (const manifest of this.manifests.values()) {
-      if (!manifest.capabilities.includes(type)) continue;
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-
-      if (manifest.authType === 'bearer' && manifest.secret) headers.Authorization = `Bearer ${manifest.secret}`;
-      if (manifest.authType === 'api_key' && manifest.secret) headers['X-API-Key'] = manifest.secret;
-
-      const body = JSON.stringify(event);
-
-      if (manifest.secret) {
-        headers['X-Forge-Signature'] = crypto.createHmac('sha256', manifest.secret).update(body).digest('hex');
-      }
-
-      try {
-        const response = await fetch(manifest.baseUrl, {
-          method: 'POST',
-          headers,
-          body,
-        });
-        results.push({
-          pluginId: manifest.id,
-          ok: response.ok,
-          status: response.status,
-        });
-      } catch (error) {
-        results.push({
-          pluginId: manifest.id,
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return results;
+    const handlers = this.handlers.get(parsed.data.type);
+    handlers?.forEach((handler) => handler(parsed.data));
+    return parsed.data;
   }
 }

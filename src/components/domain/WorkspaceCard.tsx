@@ -1,77 +1,64 @@
-'use client';
-import React from 'react';
+import { Badge } from '@/components/core/Badge';
 import type { Workspace } from '@/lib/schemas/workspace';
-import styles from './WorkspaceCard.module.css';
 
-const TYPE_LABEL: Record<Workspace['type'], string> = {
+const typeLabels: Record<'local' | 'docker' | 'remote_api' | 'remoteapi' | 'e2b' | 'modal', string> = {
   local: 'Local',
   docker: 'Docker',
   remote_api: 'Remote API',
+  remoteapi: 'Remote API',
+  e2b: 'E2B',
+  modal: 'Modal',
 };
 
-const TYPE_ICON: Record<Workspace['type'], string> = {
-  local: '🖥️',
-  docker: '🐳',
-  remote_api: '🌐',
+const typeHints: Record<'local' | 'docker' | 'remote_api' | 'remoteapi' | 'e2b' | 'modal', string> = {
+  local: 'filesystem',
+  docker: 'container',
+  remote_api: 'via API',
+  remoteapi: 'via API',
+  e2b: 'ephemeral',
+  modal: 'serverless',
 };
 
-const STATUS_CLASS: Record<Workspace['status'], string> = {
-  active: 'active',
-  inactive: 'inactive',
-  error: 'error',
-  provisioning: 'provisioning',
+const statusColors: Record<'idle' | 'active' | 'inactive' | 'error' | 'provisioning', string> = {
+  idle: 'muted',
+  active: 'success',
+  inactive: 'muted',
+  error: 'danger',
+  provisioning: 'warning',
 };
 
-export interface WorkspaceCardProps {
+type Props = {
   workspace: Workspace;
-  onEdit?: (id: string) => void;
-  onDelete?: (id: string) => void;
-  onTest?: (id: string) => void;
+};
+
+export function WorkspaceCard({ workspace }: Props) {
+  const type = workspace.type ?? 'local';
+  const status = workspace.status ?? 'idle';
+  const health = workspace.health ?? 'healthy';
+  const activeRunCount = workspace.activeRunCount ?? 0;
+
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">{workspace.name}</h3>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            {typeLabels[type]} · {typeHints[type]}
+          </p>
+        </div>
+        <Badge variant={statusColors[status] as never}>{status}</Badge>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-text-muted)]">
+        <span>Health: {health}</span>
+        <span>Runs: {workspace.runCount ?? 0}</span>
+        <span>Active: {activeRunCount}</span>
+        <span>
+          Disk: {(workspace.diskUsageMb ?? 0).toFixed?.(0) ?? 0}/{(workspace.diskLimitMb ?? 0).toFixed?.(0) ?? 0} MB
+        </span>
+      </div>
+    </div>
+  );
 }
 
-export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
-  workspace, onEdit, onDelete, onTest,
-}) => (
-  <article className={styles.card}>
-    <div className={styles.header}>
-      <span className={styles.typeIcon} aria-hidden="true">{TYPE_ICON[workspace.type]}</span>
-      <div className={styles.titleRow}>
-        <span className={styles.name}>{workspace.name}</span>
-        <span className={[styles.statusDot, styles[`statusDot--${STATUS_CLASS[workspace.status]}`]].join(' ')}
-          title={workspace.status} aria-label={`Status: ${workspace.status}`} />
-      </div>
-      <span className={styles.typeBadge}>{TYPE_LABEL[workspace.type]}</span>
-    </div>
-    {workspace.description && (
-      <p className={styles.description}>{workspace.description}</p>
-    )}
-    <dl className={styles.meta}>
-      {workspace.baseDir && (
-        <><dt>Dir</dt><dd className={styles.code}>{workspace.baseDir}</dd></>
-      )}
-      {workspace.dockerImage && (
-        <><dt>Image</dt><dd className={styles.code}>{workspace.dockerImage}</dd></>
-      )}
-      {workspace.remoteUrl && (
-        <><dt>URL</dt><dd className={styles.code}>{workspace.remoteUrl}</dd></>
-      )}
-      <dt>Runs</dt><dd>{workspace.activeRunCount} active</dd>
-    </dl>
-    <div className={styles.actions}>
-      <button className={styles.btn} onClick={() => onTest?.(workspace.id)} aria-label="Test connection">
-        Test
-      </button>
-      <button className={styles.btn} onClick={() => onEdit?.(workspace.id)} aria-label="Edit workspace">
-        Edit
-      </button>
-      <button
-        className={[styles.btn, styles['btn--danger']].join(' ')}
-        onClick={() => onDelete?.(workspace.id)}
-        aria-label="Delete workspace"
-        disabled={workspace.activeRunCount > 0}
-      >
-        Delete
-      </button>
-    </div>
-  </article>
-);
+export default WorkspaceCard;

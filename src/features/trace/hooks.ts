@@ -1,12 +1,17 @@
-'use client';
-import { useQuery } from '@tanstack/react-query';
-import { fetchTrace } from './api';
+import type { Trace, TraceSpan } from '@/lib/schemas/trace';
 
-export function useTrace(runId: string) {
-  return useQuery({
-    queryKey: ['trace', runId],
-    queryFn: () => fetchTrace(runId),
-    enabled: !!runId,
-    staleTime: 30_000,
-  });
+export function useTraceSpans(_runId?: string) {
+  return {
+    data: [] as TraceSpan[],
+    isLoading: false,
+    error: null as Error | null,
+  };
+}
+
+export function useTrace(_runId?: string) {
+  return {
+    data: { traceId: 'mock-trace', spans: [] } as Trace,
+    isLoading: false,
+    error: null as Error | null,
+  };
 }

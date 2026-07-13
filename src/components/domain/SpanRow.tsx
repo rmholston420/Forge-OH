@@ -5,7 +5,8 @@ import { useTraceStore } from '@/features/trace/store';
 import styles from './SpanRow.module.css';
 
 const STATUS_CLASS: Record<Span['status'], string> = {
-  ok: 'ok', error: 'error', unset: 'unset',
+  ok: 'ok', error: 'error', warning: 'var(--color-warning)',
+  unset: 'unset',
 };
 
 function flattenSpans(span: Span, depth = 0): { span: Span; depth: number }[] {
@@ -21,11 +22,11 @@ export interface SpanRowProps {
 
 export const SpanRow: React.FC<SpanRowProps> = ({ span, depth, traceStartTime, traceDurationMs }) => {
   const { expandedSpanIds, selectedSpanId, toggleSpan, selectSpan } = useTraceStore();
-  const isExpanded = expandedSpanIds.has(span.spanId);
+  const isExpanded = expandedSpanIds.includes(span.spanId ?? '');
   const isSelected = selectedSpanId === span.spanId;
   const hasChildren = span.children.length > 0;
 
-  const startOffset = new Date(span.startTime).getTime() - new Date(traceStartTime).getTime();
+  const startOffset = new Date(span.startTime || traceStartTime).getTime() - new Date(traceStartTime).getTime();
   const leftPct = traceDurationMs > 0 ? (startOffset / traceDurationMs) * 100 : 0;
   const widthPct = traceDurationMs > 0 && span.durationMs != null
     ? Math.max(0.5, (span.durationMs / traceDurationMs) * 100)
@@ -35,18 +36,18 @@ export const SpanRow: React.FC<SpanRowProps> = ({ span, depth, traceStartTime, t
     <>
       <tr
         className={[styles.row, isSelected ? styles['row--selected'] : ''].filter(Boolean).join(' ')}
-        onClick={() => selectSpan(span.spanId)}
+        onClick={() => selectSpan(span.spanId ?? null)}
         role="row"
         aria-selected={isSelected}
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && selectSpan(span.spanId)}
+        onKeyDown={(e) => e.key === 'Enter' && selectSpan(span.spanId ?? null)}
       >
         {/* Name */}
         <td className={styles.nameCell} style={{ paddingLeft: `${depth * 16 + 8}px` }}>
           {hasChildren && (
             <button
               className={styles.expandBtn}
-              onClick={(e) => { e.stopPropagation(); toggleSpan(span.spanId); }}
+              onClick={(e) => { e.stopPropagation(); toggleSpan(span.spanId || ''); }}
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
               aria-expanded={isExpanded}
             >

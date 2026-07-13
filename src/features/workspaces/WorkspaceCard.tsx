@@ -23,16 +23,16 @@ export function WorkspaceCard({ workspace: ws }: { workspace: Workspace }) {
   const { openEditDrawer, openConfirmDelete } = useWorkspacesStore();
   const reset  = useResetWorkspace();
 
-  const diskPct = Math.min(100, Math.round((ws.diskUsageMb / ws.diskLimitMb) * 100));
+  const diskPct = Math.min(100, Math.round(((ws.diskUsageMb ?? 0) / ((ws.diskLimitMb ?? 1) || 1)) * 100));
 
   return (
     <article className="workspace-card" aria-label={ws.name}>
       <div className="workspace-card-header">
         <div className="workspace-card-title">
-          <span className={STATUS_DOTS[ws.status]} aria-label={`Status: ${ws.status}`} />
+          <span className={STATUS_DOTS[ws.status ?? 'stopped']} aria-label={`Status: ${ws.status}`} />
           <h3>{ws.name}</h3>
         </div>
-        <span className={TYPE_STYLES[ws.type]}>{ws.type}</span>
+        <span className={TYPE_STYLES[ws.type ?? 'local']}>{ws.type}</span>
       </div>
 
       {ws.description && (

@@ -25,7 +25,7 @@ beforeAll(() => {
   );
   server.listen({ onUnhandledRequest: 'warn' });
 });
-aftereEach(() => server.resetHandlers());
+afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 function makeWrapper() {

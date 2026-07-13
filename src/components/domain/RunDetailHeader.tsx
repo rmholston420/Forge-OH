@@ -14,33 +14,33 @@ export interface RunDetailHeaderProps {
 }
 
 export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({ run, onPause, onStop, onFork, onApprove }) => {
-  const isRunning = run.status === 'running' || run.status === 'streaming';
+  const isRunning = run.status === 'running' || (false || run.status === 'pending');
   const isPaused = run.status === 'paused';
   const isAwaiting = run.status === 'awaiting_approval';
 
   return (
     <div className={styles.header}>
       <div className={styles.left}>
-        <h1 className={styles.title}>{run.title}</h1>
+        <h1 className={styles.title}>{String(run.title ?? run.id)}</h1>
         <div className={styles.chips}>
           <StatusBadge status={run.status} />
           <span className={styles.chip}>
-            <span aria-hidden="true">📦</span> {run.workspaceType}
+            <span aria-hidden="true">📦</span> {String(run.workspaceType ?? 'local')}
           </span>
           <span className={styles.chip}>
-            <span aria-hidden="true">🤖</span> {run.agentPresetName}
+            <span aria-hidden="true">🤖</span> {String(run.agentPresetName ?? 'Default')}
           </span>
-          {run.activeTool && (
+          {Boolean(run.activeTool) && (
             <span className={[styles.chip, styles.chipActive].join(' ')}>
-              <span aria-hidden="true">⚡</span> {run.activeTool}
+              <span aria-hidden="true">⚡</span> {String(run.activeTool ?? '')}
             </span>
           )}
         </div>
       </div>
       <div className={styles.right}>
         <div className={styles.stats}>
-          <span className={styles.stat}>{formatDuration(run.elapsedMs)}</span>
-          <span className={styles.stat}>{formatCost(run.estimatedCostUsd)}</span>
+          <span className={styles.stat}>{formatDuration(run.elapsedMs ?? null)}</span>
+          <span className={styles.stat}>{formatCost(run.estimatedCostUsd ?? null)}</span>
         </div>
         <div className={styles.controls}>
           {isAwaiting && (

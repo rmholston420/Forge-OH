@@ -21,7 +21,7 @@ export default function McpPage() {
     ? servers
     : servers.filter(s => s.status === statusFilter);
 
-  const totalTools = servers.reduce((sum, s) => sum + s.toolCount, 0);
+  const totalTools = servers.reduce((sum, s) => sum + (s.toolCount ?? 0), 0);
 
   return (
     <div className="mcp-page">

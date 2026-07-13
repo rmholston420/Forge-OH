@@ -22,3 +22,6 @@ export const BrowserFrameSchema = z.object({
 
 export type BrowserFrame = z.infer<typeof BrowserFrameSchema>;
 export type BrowserActionType = z.infer<typeof BrowserActionTypeSchema>;
+
+
+export const BrowserStateSchema = BrowserFrameSchema;

@@ -1,23 +1,26 @@
 import { create } from 'zustand';
 
-interface TraceStore {
-  expandedSpanIds: Set<string>;
+export interface TraceStore {
   selectedSpanId: string | null;
-  toggleSpan: (id: string) => void;
+  expandedSpanIds: string[];
+  setSelectedSpanId: (id: string | null) => void;
   selectSpan: (id: string | null) => void;
-  expandAll: (ids: string[]) => void;
+  toggleSpan: (id: string) => void;
+  expandAll: () => void;
   collapseAll: () => void;
 }
 
 export const useTraceStore = create<TraceStore>((set) => ({
-  expandedSpanIds: new Set(),
   selectedSpanId: null,
-  toggleSpan: (id) => set((s) => {
-    const next = new Set(s.expandedSpanIds);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return { expandedSpanIds: next };
-  }),
+  expandedSpanIds: [],
+  setSelectedSpanId: (selectedSpanId) => set({ selectedSpanId }),
   selectSpan: (selectedSpanId) => set({ selectedSpanId }),
-  expandAll: (ids) => set({ expandedSpanIds: new Set(ids) }),
-  collapseAll: () => set({ expandedSpanIds: new Set() }),
+  toggleSpan: (id) =>
+    set((state) => ({
+      expandedSpanIds: state.expandedSpanIds.includes(id)
+        ? state.expandedSpanIds.filter((x) => x !== id)
+        : [...state.expandedSpanIds, id],
+    })),
+  expandAll: () => set({ expandedSpanIds: ['*'] }),
+  collapseAll: () => set({ expandedSpanIds: [] }),
 }));

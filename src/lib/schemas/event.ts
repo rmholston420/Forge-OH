@@ -1,26 +1,19 @@
 import { z } from 'zod';
 
-export const ToolEventTypeSchema = z.enum([
-  'message',
-  'think',
-  'plan',
-  'edit_file',
-  'run_command',
-  'browser_action',
-  'read_file',
-  'web_search',
-  'error',
-  'finish',
-]);
-
-export const ToolEventSchema = z.object({
-  id: z.string(),
-  runId: z.string(),
-  type: ToolEventTypeSchema,
+export const EventSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  eventId: z.union([z.string(), z.number()]).optional(),
+  type: z.string(),
   timestamp: z.string(),
-  summary: z.string(),
-  raw: z.record(z.unknown()).optional(),
-  source: z.enum(['agent', 'user', 'system']),
+  runId: z.string().optional(),
+  source: z.string().optional(),
+  payload: z.record(z.string(), z.unknown()).or(z.object({}).passthrough()).optional(),
+  rawPayload: z.record(z.string(), z.unknown()).or(z.object({}).passthrough()).optional(),
+  summary: z.string().optional(),
+  raw: z.unknown().optional(),
 });
 
-export type ToolEvent = z.infer<typeof ToolEventSchema>;
+export const ToolEventSchema = EventSchema;
+export type Event = z.infer<typeof EventSchema>;
+export type RunEvent = Event;
+export type ToolEvent = Event;

@@ -10,3 +10,12 @@ export const TerminalCommandSchema = z.object({
 });
 
 export type TerminalCommand = z.infer<typeof TerminalCommandSchema>;
+
+
+export const TerminalOutputSchema = z.object({
+  stream: z.enum(['stdout', 'stderr']),
+  data: z.string(),
+  timestamp: z.string(),
+});
+
+export type TerminalOutput = z.infer<typeof TerminalOutputSchema>;

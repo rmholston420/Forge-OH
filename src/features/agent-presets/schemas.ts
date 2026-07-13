@@ -25,7 +25,7 @@ export const AgentPresetSchema = z.object({
   temperature:  z.number().min(0).max(2).default(0.2),
   topP:         z.number().min(0).max(1).default(0.95),
   toolAllowlist: z.array(z.string()).default([]),
-  loopGuard:    LoopGuardConfigSchema.default({}),
+  loopGuard:    LoopGuardConfigSchema.default({ enabled: true, windowSize: 20, threshold: 0.85 }),
   isDefault:    z.boolean().default(false),
   createdAt:    z.string().datetime(),
   updatedAt:    z.string().datetime(),

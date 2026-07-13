@@ -60,7 +60,7 @@ export function WorkspaceDetailsDrawer({
         <div className="drawer__body">
           <section className="drawer__section">
             <h3 className="drawer__section-title">Health</h3>
-            <WorkspaceHealthBadge health={workspace.health} size="md" />
+            <WorkspaceHealthBadge health={workspace.health ?? 'healthy'} size="md" />
           </section>
 
           <section className="drawer__section">

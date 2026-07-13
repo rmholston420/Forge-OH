@@ -40,10 +40,12 @@ export function TraceTab({ runId }: Props) {
           <SpanRow
             key={span.id}
             span={span}
-            allSpans={spans}
+           
             depth={0}
-            selectedSpanId={selectedSpanId}
-            onSelect={setSelectedSpanId}
+            traceStartTime={span.startedAt || new Date().toISOString()}
+            traceDurationMs={span.durationMs || 1}
+           
+           
           />
         ))}
       </ul>

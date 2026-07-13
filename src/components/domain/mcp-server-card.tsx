@@ -6,6 +6,8 @@ const STATUS_CONFIG: Record<
   { label: string; icon: string; colorVar: string }
 > = {
   connected: { label: 'Connected', icon: '●', colorVar: 'var(--color-state-success)' },
+  disconnected: { label: 'Disconnected', icon: 'plug', colorVar: 'var(--color-text-muted)' },
+  warning: { label: 'Warning', icon: 'alert-triangle', colorVar: 'var(--color-warning)' },
   connecting: { label: 'Connecting…', icon: '◔', colorVar: 'var(--color-state-running)' },
   error: { label: 'Error', icon: '✕', colorVar: 'var(--color-state-error)' },
   disabled: { label: 'Disabled', icon: '○', colorVar: 'var(--color-text-muted)' },
@@ -20,7 +22,7 @@ interface MCPServerCardProps {
 
 export function MCPServerCard({ server, pingInFlight, onToggle, onPing }: MCPServerCardProps) {
   const { id, name, url, status, toolCount, lastPingMs, version, description } = server;
-  const cfg = STATUS_CONFIG[status];
+  const cfg = STATUS_CONFIG[status ?? 'disconnected'];
   const isDisabled = status === 'disabled';
 
   return (

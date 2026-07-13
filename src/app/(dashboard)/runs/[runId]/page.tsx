@@ -22,6 +22,35 @@ const TABS = [
   { id: 'security', label: 'Security' },
 ];
 
+type DisplayEvent = {
+  id: string | number;
+  type: string;
+  timestamp: string;
+  eventId?: string | number;
+  runId?: string;
+  source?: string;
+  payload?: Record<string, unknown>;
+  rawPayload?: Record<string, unknown>;
+  summary?: string;
+  raw?: unknown;
+};
+
+const toDisplayEvent = (event: unknown): DisplayEvent => {
+  const e = (event ?? {}) as Record<string, unknown>;
+  return {
+    id: (e.id ?? e.eventId ?? `evt:${Date.now()}`) as string | number,
+    type: String(e.type ?? 'message'),
+    timestamp: String(e.timestamp ?? new Date().toISOString()),
+    eventId: e.eventId as string | number | undefined,
+    runId: e.runId as string | undefined,
+    source: e.source as string | undefined,
+    payload: (e.payload as Record<string, unknown> | undefined) ?? {},
+    rawPayload: (e.rawPayload as Record<string, unknown> | undefined) ?? {},
+    summary: e.summary as string | undefined,
+    raw: e.raw,
+  };
+};
+
 export default function RunDetailPage({ params }: { params: { runId: string } }) {
   const { runId } = params;
   const { data: run, isLoading: runLoading, error: runError } = useRunDetail(runId);
@@ -117,8 +146,8 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
             )}
             {allEvents.map((evt, i) => (
               <EventCard
-                key={evt.id}
-                event={evt}
+                key={String(evt.id)}
+                event={toDisplayEvent(evt)}
                 selected={selectedEventId === evt.id}
                 highlight={i === allEvents.length - 1 && streamEvents.includes(evt)}
                 onSelect={setSelectedEventId}
@@ -129,8 +158,8 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
           {selectedEventId && (
             <aside className={styles.inspector} aria-label="Event inspector">
               {(() => {
-                const ev = allEvents.find((e) => e.id === selectedEventId);
-                if (!ev) return null;
+                const ev = allEvents.find((e) => e.id === selectedEventId); const displayEv = ev ? toDisplayEvent(ev) : null;
+                if (!ev || !displayEv) return null;
                 return (
                   <div className={styles.inspectorContent}>
                     <div className={styles.inspectorHeader}>
@@ -142,13 +171,15 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
                       >×</button>
                     </div>
                     <dl className={styles.dl}>
-                      <dt>Type</dt><dd>{ev.type}</dd>
-                      <dt>Source</dt><dd>{ev.source}</dd>
-                      <dt>Timestamp</dt><dd>{new Date(ev.timestamp).toLocaleString()}</dd>
-                      <dt>Summary</dt><dd>{ev.summary}</dd>
+                      <dt>Type</dt><dd>{String(displayEv.type)}</dd>
+                      <dt>Source</dt><dd>{String(displayEv.source ?? 'system')}</dd>
+                      <dt>Timestamp</dt><dd>{new Date(String(displayEv.timestamp)).toLocaleString()}</dd>
+                      <dt>Summary</dt><dd>{String(displayEv.summary ?? '')}</dd>
                     </dl>
-                    {ev.raw && (
-                      <pre className={styles.inspectorRaw}>{JSON.stringify(ev.raw, null, 2)}</pre>
+                    {Boolean(displayEv.raw) && (
+                      <pre className={styles.inspectorRaw}>
+                        {typeof displayEv.raw === 'string' ? displayEv.raw : JSON.stringify(displayEv.raw ?? {}, null, 2)}
+                      </pre>
                     )}
                   </div>
                 );

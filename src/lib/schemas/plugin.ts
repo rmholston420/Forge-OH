@@ -19,7 +19,7 @@ export const PluginSchema = z.object({
   capabilities: z.array(PluginCapabilitySchema).default([]),
   command: z.string().nullable().default(null),   // stdio: command to exec
   url: z.string().nullable().default(null),        // sse/http: endpoint url
-  envVars: z.record(z.string()).default({}),
+  envVars: z.record(z.string(), z.string()).default({}),
   toolCount: z.number().int().min(0).default(0),
   installedAt: z.string().nullable().default(null),
   lastHeartbeatAt: z.string().nullable().default(null),
@@ -31,7 +31,7 @@ export const InstallPluginSchema = z.object({
   transport: PluginTransportSchema,
   command: z.string().nullable().optional(),
   url: z.string().url().nullable().optional(),
-  envVars: z.record(z.string()).default({}),
+  envVars: z.record(z.string(), z.string()).default({}),
 });
 
 export type Plugin = z.infer<typeof PluginSchema>;

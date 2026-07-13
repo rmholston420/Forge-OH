@@ -136,7 +136,7 @@ function ComparePageInner() {
                 </span>
               </div>
               {file.diff ? (
-                <DiffViewer diff={file.diff} filename={file.path} />
+                <DiffViewer diff={{ path: file.path, status: file.status === 'unchanged' ? 'modified' : file.status, additions: file.additions, deletions: file.deletions, original: file.diff ?? null, modified: file.diff ?? null, language: "text", isBinary: false }} />
               ) : (
                 <div className={styles.noDiff}>No diff content available.</div>
               )}

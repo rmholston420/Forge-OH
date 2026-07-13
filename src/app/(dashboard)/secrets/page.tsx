@@ -27,7 +27,7 @@ export default function SecretsPage() {
   const handleRotate = async (id: string) => {
     const newValue = prompt('Enter new secret value:');
     if (!newValue) return;
-    await rotateMutation.mutateAsync({ id, value: newValue });
+    await rotateMutation.mutateAsync({ id, newValue });
   };
 
   return (
@@ -65,7 +65,7 @@ export default function SecretsPage() {
           title="No secrets"
           description="Secrets are injected as environment variables into agent runs."
           icon="🔑"
-          action={{ label: 'Add Secret', onClick: openComposer }}
+          action={<button className={styles.newBtn} onClick={openComposer}>Add Secret</button>}
         />
       ) : (
         <div className={styles.tableWrapper}>

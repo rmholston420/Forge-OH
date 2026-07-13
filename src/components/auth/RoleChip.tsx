@@ -4,13 +4,13 @@ import type { Role } from '@/lib/schemas/auth';
 const ROLE_STYLES: Record<Role, string> = {
   admin:     'role-chip role-chip--admin',
   developer: 'role-chip role-chip--developer',
-  viewer:    'role-chip role-chip--viewer',
+  editor: 'Editor', viewer:    'role-chip role-chip--viewer',
 };
 
 const ROLE_LABELS: Record<Role, string> = {
   admin:     'Admin',
   developer: 'Developer',
-  viewer:    'Viewer',
+  editor: 'Editor', viewer:    'Viewer',
 };
 
 export function RoleChip({ role }: { role: Role }) {

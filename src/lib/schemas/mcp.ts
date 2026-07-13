@@ -1,62 +1,39 @@
-/**
- * src/lib/schemas/mcp.ts
- *
- * Zod v4 schema for the Integration / MCP Server domain object.
- *
- * Domain name: Integration (canonical — do not rename)
- * Ref: Forge-OH-Build-Plan-Definitive.md § Domain Model
- */
 import { z } from 'zod';
 
-// ---------------------------------------------------------------------------
-// MCPTool — a single tool exposed by an MCP server
-// ---------------------------------------------------------------------------
+export const McpServerStatusSchema = z.enum(['connected', 'disconnected', 'error', 'disabled', 'warning', 'connecting']);
+export type McpServerStatus = z.infer<typeof McpServerStatusSchema>;
+export type McpStatus = McpServerStatus;
 
-export const MCPToolSchema = z.object({
+export const McpToolSchema = z.object({
   name: z.string(),
-  description: z.string().optional(),
-  inputSchema: z.record(z.unknown()).optional(),
+  description: z.string().default(''),
+  inputSchema: z.record(z.string(), z.unknown()).default({}),
 });
 
-export type MCPTool = z.infer<typeof MCPToolSchema>;
-
-// ---------------------------------------------------------------------------
-// MCPServer status — matches state language in design spec
-// ---------------------------------------------------------------------------
-
-export const MCPServerStatusSchema = z.enum([
-  'connected',
-  'warning',
-  'disconnected',
-  'error',
-]);
-
-export type MCPServerStatus = z.infer<typeof MCPServerStatusSchema>;
-
-// ---------------------------------------------------------------------------
-// MCPServer (Integration domain object)
-// ---------------------------------------------------------------------------
-
-export const MCPServerSchema = z.object({
+export const McpServerSchema = z.object({
   id: z.string(),
   name: z.string(),
-  url: z.string().url(),
-  status: MCPServerStatusSchema,
-  toolCount: z.number().int().nonnegative(),
-  tools: z.array(MCPToolSchema).optional(),
-  /** OAuth / API-key auth state */
-  authState: z.enum(['authenticated', 'unauthenticated', 'expired']),
-  lastCallAt: z.string().datetime().nullable(),
-  lastError: z.string().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  url: z.string().default(''),
+  transport: z.enum(['stdio', 'http', 'sse']).default('stdio'),
+  enabled: z.boolean().default(true),
+  tools: z.array(McpToolSchema).default([]),
+  toolCount: z.number().default(0),
+  tags: z.array(z.string()).default([]),
+  lastPingMs: z.number().optional(),
+  lastPingAt: z.string().optional(),
+  version: z.string().optional(),
+  description: z.string().optional(),
+  status: McpServerStatusSchema.default('disconnected'),
 });
 
-export type MCPServer = z.infer<typeof MCPServerSchema>;
+export const RegisterMcpServerRequestSchema = z.object({
+  name: z.string(),
+  url: z.string().optional(),
+  transport: z.enum(['stdio', 'http', 'sse']).default('stdio'),
+  enabled: z.boolean().default(true),
+});
 
-// ---------------------------------------------------------------------------
-// List response
-// ---------------------------------------------------------------------------
-
-export const MCPServerListSchema = z.array(MCPServerSchema);
-export type MCPServerList = z.infer<typeof MCPServerListSchema>;
+export type McpTool = z.infer<typeof McpToolSchema>;
+export type McpServer = Partial<z.infer<typeof McpServerSchema>> & Pick<z.infer<typeof McpServerSchema>, 'id' | 'name'>;
+export type MCPServer = McpServer;
+export type RegisterMcpServerRequest = z.infer<typeof RegisterMcpServerRequestSchema>;

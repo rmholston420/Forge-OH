@@ -1,45 +1,65 @@
 import { z } from 'zod';
 
 export const RunStatusSchema = z.enum([
-  'idle',
-  'running',
-  'streaming',
   'queued',
-  'paused',
-  'awaiting_approval',
-  'succeeded',
+  'pending',
+  'running',
+  'completed',
   'failed',
-  'blocked',
-  'stopped',   // terminal state: user-initiated stop (distinct from failed)
+  'stopped',
+  'paused',
+  'succeeded',
+  'awaiting_approval',
+  'pending_approval',
 ]);
 
-export type RunStatus = z.infer<typeof RunStatusSchema>;
-
-export const WorkspaceTypeSchema = z.enum(['local', 'docker', 'remote_api']);
-export type WorkspaceType = z.infer<typeof WorkspaceTypeSchema>;
-
-export const RunSummarySchema = z.object({
-  id: z.string(),
-  title: z.string(),
+export const RunSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
   status: RunStatusSchema,
-  agentPresetName: z.string(),
-  workspaceId: z.string(),
-  workspaceType: WorkspaceTypeSchema,
-  activeTool: z.string().nullable(),
+  agentPresetName: z.string().min(1),
+  workspaceId: z.string().min(1),
+  workspaceType: z.string().min(1),
+  activeTool: z.unknown().nullable(),
   updatedAt: z.string(),
   createdAt: z.string(),
-  elapsedMs: z.number().nullable(),
-  estimatedCostUsd: z.number().nullable(),
+  elapsedMs: z.number().optional(),
+  finishedAt: z.string().optional(),
+  durationMs: z.number().optional(),
+  costUsd: z.number().optional(),
+  estimatedCostUsd: z.number().nullable().optional(),
+});
+
+export type Run = z.infer<typeof RunSchema>;
+
+export const RunSummarySchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  status: RunStatusSchema,
+  agentPresetName: z.string().min(1),
+  workspaceType: z.string().min(1),
+  activeTool: z.unknown().nullable(),
+  createdAt: z.string(),
+  workspaceId: z.string().min(1).optional(),
+  updatedAt: z.string().optional(),
+  elapsedMs: z.number().optional(),
+  finishedAt: z.string().optional(),
+  durationMs: z.number().optional(),
+  costUsd: z.number().optional(),
+  estimatedCostUsd: z.number().nullable().optional(),
 });
 
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 
+export const CreateRunSchema = z.object({
+  agentPreset: z.string(),
+  workspaceId: z.string(),
+});
+
 export const RunDetailUIStateSchema = z.object({
-  selectedTab: z.enum(['overview', 'files', 'terminal', 'browser', 'metrics', 'security']),
-  selectedEventId: z.string().nullable(),
+  selectedTab: z.enum(['overview', 'events', 'plan', 'terminal', 'browser', 'artifacts', 'diff', 'trace']),
+  selectedEventId: z.union([z.string(), z.number(), z.null()]),
   diffMode: z.enum(['split', 'unified']),
   inspectorOpen: z.boolean(),
   latestStreamEventId: z.number(),
 });
-
-export type RunDetailUIState = z.infer<typeof RunDetailUIStateSchema>;

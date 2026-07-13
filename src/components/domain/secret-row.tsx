@@ -22,7 +22,12 @@ interface SecretRowProps {
 }
 
 export function SecretRow({ secret, onRotate, onDelete }: SecretRowProps) {
-  const { id, name, scope, provider, maskedPreview, createdAt, rotatedAt, usedIn } = secret;
+  const { id, name, scope } = secret;
+  const provider = 'vault';
+  const maskedPreview = secret.key ?? '••••••';
+  const createdAt = null;
+  const rotatedAt = null;
+  const usedIn: string[] = [];
 
   return (
     <tr className="secret-row">
@@ -54,7 +59,7 @@ export function SecretRow({ secret, onRotate, onDelete }: SecretRowProps) {
       </td>
       <td className="secret-row__created">
         <span className="secret-row__date">
-          {rotatedAt ? `Rotated ${formatRelativeTime(rotatedAt)}` : formatRelativeTime(createdAt)}
+          {rotatedAt ? `Rotated ${formatRelativeTime(rotatedAt)}` : (createdAt ? formatRelativeTime(createdAt) : '—')}
         </span>
       </td>
       <td className="secret-row__actions">

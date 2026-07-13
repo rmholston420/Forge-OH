@@ -39,14 +39,14 @@ export const EventCard: React.FC<EventCardProps> = ({ event, selected, highlight
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      onClick={() => onSelect?.(event.id)}
-      onKeyDown={(e) => e.key === 'Enter' && onSelect?.(event.id)}
+      onClick={() => onSelect?.(String(event.id))}
+      onKeyDown={(e) => e.key === 'Enter' && onSelect?.(String(event.id))}
     >
       <div className={styles.header}>
         <span className={styles.icon} aria-hidden="true">{icon}</span>
-        <span className={styles.summary}>{event.summary}</span>
+        <span className={styles.summary}>{String(event.summary ?? '')}</span>
         <span className={styles.meta}>{formatDate(event.timestamp)}</span>
-        {event.raw && (
+        {Boolean(event.raw) && (
           <button
             className={styles.expandBtn}
             onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
@@ -57,9 +57,9 @@ export const EventCard: React.FC<EventCardProps> = ({ event, selected, highlight
           </button>
         )}
       </div>
-      {expanded && event.raw && (
+      {expanded && Boolean(event.raw) && (
         <pre className={styles.raw}>
-          <code>{JSON.stringify(event.raw, null, 2)}</code>
+          <code>{typeof event.raw === 'string' ? event.raw : JSON.stringify(event.raw ?? {}, null, 2)}</code>
         </pre>
       )}
     </div>

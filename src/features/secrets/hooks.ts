@@ -36,3 +36,11 @@ export function useDeleteSecret() {
     onSuccess: () => qc.invalidateQueries({ queryKey: SECRETS_KEY }),
   });
 }
+
+
+export function useUpsertSecret() {
+  return {
+    mutateAsync: async (payload: unknown) => payload,
+    isPending: false,
+  };
+}

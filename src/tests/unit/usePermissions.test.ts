@@ -1,13 +1,19 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { vi } from 'vitest';
+import { usePermissions } from '@/lib/rbac/hooks';
 import { Permission } from '@/lib/rbac/permissions';
 
 const mockUseSession = vi.fn();
-vi.mock('@/lib/auth/hooks', () => ({ useSession: mockUseSession }));
 
-import { usePermissions } from '@/lib/rbac/hooks';
+vi.mock('@/lib/auth/hooks', () => ({
+  useSession: mockUseSession,
+}));
 
 describe('usePermissions', () => {
+  beforeEach(() => {
+    mockUseSession.mockReset();
+  });
+
   it('admin has all permissions', () => {
     mockUseSession.mockReturnValue({ user: { role: 'admin' } });
     const { result } = renderHook(() => usePermissions());
@@ -32,7 +38,7 @@ describe('usePermissions', () => {
   });
 
   it('returns empty set when no user', () => {
-    mockUseSession.mockReturnValue({ user: undefined });
+    mockUseSession.mockReturnValue({ user: null });
     const { result } = renderHook(() => usePermissions());
     expect(result.current.permissions.size).toBe(0);
   });

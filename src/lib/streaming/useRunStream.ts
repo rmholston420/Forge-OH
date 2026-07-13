@@ -1,65 +1,91 @@
-'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { io } from 'socket.io-client';
-import type { ToolEvent } from '@/lib/schemas/event';
+import { BFF_WS } from './socket';
 
-const BFF_WS = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+export interface StreamEvent {
+  id: string | number;
+  eventId?: string | number;
+  type: string;
+  timestamp: string;
+  runId?: string;
+  source?: string;
+  payload?: Record<string, unknown>;
+  rawPayload?: Record<string, unknown>;
+  summary?: string;
+  raw?: unknown;
+  [key: string]: unknown;
+}
 
 export interface UseRunStreamOptions {
-  runId: string;
-  onEvent: (evt: ToolEvent) => void;
-  onStatusChange?: (status: string) => void;
-  onApprovalRequest?: (data: unknown) => void;
-  onError?: (err: unknown) => void;
+  runId?: string;
+  latestEventId?: string | number;
+  enabled?: boolean;
+  onEvent?: (event: StreamEvent) => void;
+  onStatusChange?: (event: StreamEvent) => void;
+  onApprovalRequest?: (event: StreamEvent) => void;
+  onError?: (event: StreamEvent) => void;
+  onConnected?: () => void;
+  onDisconnected?: () => void;
+  onReconnecting?: () => void;
+}
+
+function normalizeEvent(event: unknown, runId?: string): StreamEvent {
+  const e = (event ?? {}) as Record<string, unknown>;
+  return {
+    id: (e.id ?? e.eventId ?? `${runId ?? 'run'}:${Date.now()}`) as string | number,
+    eventId: e.eventId as string | number | undefined,
+    type: String(e.type ?? 'message'),
+    timestamp: String(e.timestamp ?? new Date().toISOString()),
+    runId: (e.runId as string | undefined) ?? runId,
+    source: e.source as string | undefined,
+    payload: (e.payload as Record<string, unknown> | undefined) ?? {},
+    rawPayload: (e.rawPayload as Record<string, unknown> | undefined) ?? {},
+    summary: e.summary as string | undefined,
+    raw: e.raw,
+    ...e,
+  };
 }
 
 export function useRunStream({
   runId,
+  latestEventId,
+  enabled = true,
   onEvent,
   onStatusChange,
   onApprovalRequest,
   onError,
+  onConnected,
+  onDisconnected,
+  onReconnecting,
 }: UseRunStreamOptions) {
-  // Keep stable refs to all callbacks so the socket handlers always call the
-  // latest version without needing to re-register on every render.
-  const onEventRef            = useRef(onEvent);
-  const onStatusChangeRef     = useRef(onStatusChange);
-  const onApprovalRequestRef  = useRef(onApprovalRequest);
-  const onErrorRef            = useRef(onError);
-
-  onEventRef.current           = onEvent;
-  onStatusChangeRef.current    = onStatusChange;
-  onApprovalRequestRef.current = onApprovalRequest;
-  onErrorRef.current           = onError;
-
   useEffect(() => {
-    if (!runId) return;
+    if (!enabled || !runId) return;
 
     const socket = io(BFF_WS, {
-      autoConnect: false,
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 8000,
+      transports: ['websocket'],
+      query: { runId, latestEventId },
     });
 
-    // Stable wrapper handlers — always delegate to the latest ref.
-    const handleEvent           = (evt: ToolEvent) => onEventRef.current(evt);
-    const handleStatusChange    = (status: string) => onStatusChangeRef.current?.(status);
-    const handleApprovalRequest = (data: unknown)  => onApprovalRequestRef.current?.(data);
-    const handleError           = (err: unknown)   => onErrorRef.current?.(err);
+    socket.on('connect', () => onConnected?.());
+    socket.on('disconnect', () => onDisconnected?.());
+    socket.on('reconnect_attempt', () => onReconnecting?.());
 
-    socket.on('run:event',            handleEvent);
-    socket.on('run:status',           handleStatusChange);
-    socket.on('run:approval_request', handleApprovalRequest);
-    socket.on('run:error',            handleError);
+    const forward = (event: unknown) => {
+      const e = normalizeEvent(event, runId);
+      onEvent?.(e);
+      onStatusChange?.(e);
+      if (e.type === 'approval_required' || e.type === 'pending_approval') onApprovalRequest?.(e);
+      if (e.type === 'error' || e.type === 'run_failed') onError?.(e);
+    };
+
+    ['run:event', 'message', 'event', 'status', 'approval_required', 'error'].forEach((name) => socket.on(name, forward));
 
     return () => {
-      socket.off('run:event',            handleEvent);
-      socket.off('run:status',           handleStatusChange);
-      socket.off('run:approval_request', handleApprovalRequest);
-      socket.off('run:error',            handleError);
+      ['run:event', 'message', 'event', 'status', 'approval_required', 'error'].forEach((name) => socket.off(name, forward));
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('reconnect_attempt');
       socket.disconnect();
     };
-  }, [runId]);
+  }, [runId, latestEventId, enabled, onEvent, onStatusChange, onApprovalRequest, onError, onConnected, onDisconnected, onReconnecting]);
 }

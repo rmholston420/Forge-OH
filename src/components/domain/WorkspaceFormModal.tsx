@@ -19,7 +19,7 @@ export const WorkspaceFormModal: React.FC<WorkspaceFormModalProps> = ({ open, ed
 
   const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<CreateWorkspace>({
     resolver: zodResolver(CreateWorkspaceSchema),
-    defaultValues: { type: 'local', envVars: {} },
+    defaultValues: { type: 'local', envVars: [] },
   });
 
   const watchedType = watch('type') as WorkspaceType;
@@ -36,7 +36,7 @@ export const WorkspaceFormModal: React.FC<WorkspaceFormModalProps> = ({ open, ed
         envVars: existing.envVars,
       });
     } else {
-      reset({ type: 'local', envVars: {} });
+      reset({ type: 'local', envVars: [] });
     }
   }, [existing, reset]);
 

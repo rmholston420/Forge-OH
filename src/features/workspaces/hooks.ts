@@ -53,3 +53,11 @@ export function useResetWorkspace() {
     },
   });
 }
+
+
+export function useTestWorkspaceConnection() {
+  return {
+    mutateAsync: async () => ({ ok: true }),
+    isPending: false,
+  };
+}

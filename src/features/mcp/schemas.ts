@@ -1,48 +1,29 @@
-import { z } from 'zod';
+export * from '@/lib/schemas/mcp';
+export type {
+  McpServer as MCPServer,
+  McpServerStatus as MCPServerStatus,
+  McpStatus as McpStatus,
+  RegisterMcpServerRequest as RegisterMcpServerRequest,
+} from '@/lib/schemas/mcp';
 
-export const McpTransportSchema = z.enum(['stdio', 'sse', 'http']);
-export type McpTransport = z.infer<typeof McpTransportSchema>;
+export type PluginStatus =
+  | 'installed'
+  | 'enabled'
+  | 'disabled'
+  | 'updateavailable'
+  | 'error'
+  | 'installing';
 
-export const McpStatusSchema = z.enum(['connected', 'disconnected', 'error', 'connecting']);
-export type McpStatus = z.infer<typeof McpStatusSchema>;
-
-export const McpServerSchema = z.object({
-  id:          z.string(),
-  name:        z.string().min(1).max(64),
-  description: z.string().optional(),
-  transport:   McpTransportSchema,
-  command:     z.string().optional(),   // stdio only
-  url:         z.string().url().optional(), // sse / http only
-  status:      McpStatusSchema,
-  toolCount:   z.number().int().min(0),
-  lastPingMs:  z.number().optional(),
-  lastSeenAt:  z.string().datetime().optional(),
-  tags:        z.array(z.string()).default([]),
-  enabled:     z.boolean().default(true),
-});
-export type McpServer = z.infer<typeof McpServerSchema>;
-
-export const RegisterMcpServerSchema = z.discriminatedUnion('transport', [
-  z.object({
-    transport:   z.literal('stdio'),
-    name:        z.string().min(1),
-    command:     z.string().min(1, 'Command is required for stdio transport'),
-    description: z.string().optional(),
-    tags:        z.array(z.string()).default([]),
-  }),
-  z.object({
-    transport:   z.literal('sse'),
-    name:        z.string().min(1),
-    url:         z.string().url('Must be a valid URL'),
-    description: z.string().optional(),
-    tags:        z.array(z.string()).default([]),
-  }),
-  z.object({
-    transport:   z.literal('http'),
-    name:        z.string().min(1),
-    url:         z.string().url('Must be a valid URL'),
-    description: z.string().optional(),
-    tags:        z.array(z.string()).default([]),
-  }),
-]);
-export type RegisterMcpServerRequest = z.infer<typeof RegisterMcpServerSchema>;
+export interface Plugin {
+  id: string;
+  name: string;
+  version: string;
+  status?: PluginStatus;
+  baseUrl?: string;
+  authType?: string;
+  capabilities: string[];
+  description?: string;
+  author?: string;
+  configSchema?: Record<string, unknown>;
+  installedAt?: string;
+}
