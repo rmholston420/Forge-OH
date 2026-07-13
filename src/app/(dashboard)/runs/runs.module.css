@@ -1,0 +1,5 @@
+.page { display: flex; flex-direction: column; gap: var(--space-5); }
+.header { display: flex; align-items: center; justify-content: space-between; }
+.title { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
+.skeletonList { display: flex; flex-direction: column; gap: var(--space-3); }
+.skeletonRow { display: flex; gap: var(--space-4); align-items: center; padding: var(--space-3) var(--space-4); background: var(--color-bg-surface); border-radius: var(--radius-md); border: 1px solid var(--color-border-subtle); }

@@ -1,0 +1,22 @@
+.shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--color-bg-app);
+}
+
+.content {
+  flex: 1;
+  margin-left: var(--layout-sidebar-expanded);
+  margin-top: var(--layout-topbar-height);
+  padding: var(--space-6);
+  transition: margin-left var(--motion-normal) var(--motion-easing);
+  min-height: calc(100vh - var(--layout-topbar-height));
+}
+
+.content--collapsed {
+  margin-left: var(--layout-sidebar-collapsed);
+}
+
+@media (max-width: 1280px) {
+  .content { padding: var(--space-4); }
+}
