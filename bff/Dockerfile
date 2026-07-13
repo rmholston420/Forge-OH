@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -25,9 +25,17 @@ LABEL org.opencontainers.image.source="https://github.com/rmholston420/Forge-OH"
 LABEL org.opencontainers.image.description="Forge-OH BFF (Backend For Frontend)"
 LABEL org.opencontainers.image.licenses="MIT"
 
-CMD ["uvicorn", "main:app", \
+# CRITICAL — two constraints that must never be changed without a migration plan:
+#
+# 1. Entry point is bff.main:app_with_sio (the Socket.IO ASGI wrapper), NOT bff.main:app.
+#    Starting with bff.main:app silently bypasses Socket.IO; all WebSocket connections fail.
+#
+# 2. --workers 1 is intentional. The in-memory _TOKENS dict in bff/auth_state.py is
+#    process-local. With multiple workers, a token issued by worker-A will 401 on worker-B.
+#    Replace _TOKENS with Redis or JWT before increasing worker count.
+CMD ["uvicorn", "bff.main:app_with_sio", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
-     "--workers", "2", \
+     "--workers", "1", \
      "--proxy-headers", \
      "--forwarded-allow-ips", "*"]
