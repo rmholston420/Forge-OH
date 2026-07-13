@@ -92,7 +92,7 @@ export default function LoginPage() {
         </form>
 
         <p className="login-hint">
-          Demo: <code>admin@forge.dev</code> / any 8+ char password
+          Demo: <code>admin@forge.dev</code> / <code>password123</code>
         </p>
       </div>
     </div>
