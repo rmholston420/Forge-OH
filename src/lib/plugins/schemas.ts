@@ -15,7 +15,8 @@ export type PluginEventType = typeof PluginEventType[keyof typeof PluginEventTyp
 export const PluginAuthType = z.enum(['none', 'bearer', 'api_key']);
 
 export const PluginManifestSchema = z.object({
-  id:           z.string().uuid(),
+  // Allow any non-empty string as plugin id (UUID recommended but not enforced)
+  id:           z.string().min(1),
   name:         z.string().min(1),
   version:      z.string().regex(/^\d+\.\d+\.\d+$/),
   description:  z.string().optional(),

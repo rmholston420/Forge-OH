@@ -11,12 +11,18 @@ export const runKeys = {
   plan:    (id: string) => ['runs', 'plan',   id] as const,
   files:   (id: string) => ['runs', 'files',  id] as const,
   diff:    (id: string, path: string) => ['runs', 'diff', id, path] as const,
-  presets: ['runs', 'presets']         as const,
+  presets: () => ['runs', 'presets']   as const,
 };
 
 export const workspaceKeys = {
   all:    ['workspaces']                        as const,
   detail: (id: string) => ['workspaces', id]    as const,
+};
+
+export const agentKeys = {
+  all:     ['agents']                           as const,
+  presets: () => ['agents', 'presets']          as const,
+  detail:  (id: string) => ['agents', id]       as const,
 };
 
 export const mcpKeys = {
@@ -31,10 +37,13 @@ export const pluginKeys = {
 };
 
 export const secretKeys = {
-  all: ['secrets'] as const,
+  all:   ['secrets'] as const,
+  lists: () => ['secrets', 'list'] as const,
 };
 
 export const observabilityKeys = {
+  all:     ['observability']                              as const,
+  summary: () => ['observability', 'summary']            as const,
   metrics: (runId: string) => ['observability', 'metrics', runId] as const,
 };
 
