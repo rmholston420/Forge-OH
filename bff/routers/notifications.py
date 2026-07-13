@@ -11,13 +11,20 @@ TODO(foh-phase2):
 
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Literal, Optional
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
 class NotificationOut(BaseModel):
+    # Allow direct attribute mutation so mark_read / mark_all_read work
+    # without replacing list entries.  Pydantic v2 models are frozen by
+    # default only when model_config frozen=True; the default is actually
+    # mutable, BUT explicitly declaring it avoids any future footgun if
+    # someone adds `frozen=True` elsewhere.
+    model_config = ConfigDict(frozen=False)
+
     id: str
     type: Literal["info", "success", "warning", "error", "run_event"]
     title: str
