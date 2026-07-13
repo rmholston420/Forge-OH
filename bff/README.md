@@ -1,58 +1,98 @@
+# Forge-OH BFF
 
-## Auth quickstart
+The Forge-OH BFF is a FastAPI-based backend that fronts the OpenHands SDK and provides the API surface for the Forge-OH frontend.[file:221] This document describes the pinned runtime stack, the recommended local environment, and how to run and test the BFF.
 
-The BFF exposes a simple demo auth flow for local development:
+## Pinned stack
 
-- `/api/auth/demo-login` — accepts a demo username/password and returns a bearer token.
-- `/api/auth/me` — returns the current user, given a valid `Authorization` header.
-- Protected routes (e.g. `/api/plugins`, `/api/secrets`, `/api/runs`) require `Authorization: Bearer <token>`.
+The BFF runs against a pinned Python stack to keep local dev and CI reproducible.[file:221]
 
-### Demo login (admin user)
+- Python: 3.13.x  
+- FastAPI: \`fastapi==0.115.5\`  
+- Uvicorn: \`uvicorn==0.39.0\`  
+- Pydantic: \`pydantic==2.12.5\`  
+- Pydantic Settings: \`pydantic-settings==2.6.1\`  
+- OpenHands SDK: \`openhands-sdk==1.29.3\`  
+- Python Socket.IO: \`python-socketio==5.11.4\`  
+- AIOHTTP: \`aiohttp==3.11.10\`  
+- AioSQLite: \`aiosqlite==0.22.1\`  
 
-Use the built-in demo credentials:
+Canonical files:
+
+- Runtime requirements: \`bff/requirements.txt\`  
+- Frozen lockfile: \`bff/requirements.lock\` (generated via \`pip freeze\` from \`bff/requirements.txt\`)  
+
+\`bff/requirements.txt\` is intentionally limited to the runtime stack; the full resolved environment (including transitive dependencies like \`lmnr\`, FastMCP, and Opentelemetry) lives in \`bff/requirements.lock\`.[file:221]
+
+## Local environment (.venv-bff)
+
+Use a dedicated virtual environment for BFF work so it is not polluted by vLLM, Torch, or model-hosting packages.[file:221]
 
 ```bash
 cd ~/Forge-OH
-source .venv/bin/activate
 
-curl -i -X POST http://127.0.0.1:8081/api/auth/demo-login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"password"}'
+python3 -m venv .venv-bff
+source .venv-bff/bin/activate
+
+# Keep pip in a stable range; no need to chase latest.
+python -m pip install "pip<27"
+
+# Install the pinned BFF runtime stack.
+python -m pip install -r bff/requirements.txt
 ```
 
-On success, the response will include a JSON body with a `token` field, for example:
+This environment should only be used for BFF work. Install vLLM, Torch, and other model-hosting dependencies in a separate environment if needed.[file:221]
 
-```jsonc
-{
-  "token": "YOUR_DEMO_TOKEN",
-  "email": "admin@forge.dev",
-  "role": "admin"
-}
-```
+## Running the BFF
 
-Copy that `token` value for the next steps.
-
-### Using the token
-
-Use the token in an `Authorization` header for protected routes:
+From the repo root with \`.venv-bff\` activated:
 
 ```bash
-# Replace YOUR_DEMO_TOKEN with the value from demo-login
-TOKEN=YOUR_DEMO_TOKEN
+cd ~/Forge-OH
+source .venv-bff/bin/activate
 
-curl -i http://127.0.0.1:8081/api/auth/me \
-  -H "Authorization: Bearer ${TOKEN}"
-
-curl -i http://127.0.0.1:8081/api/plugins \
-  -H "Authorization: Bearer ${TOKEN}"
+uvicorn bff.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-- `/api/auth/me` should return the admin demo user (e.g. `admin@forge.dev` with role `admin`).
-- `/api/plugins` will return `[]` until you configure plugins, but `200 OK` confirms auth is working.
+The same \`bff.main:app\` entrypoint is referenced in \`docker-compose.dev.yml\` and CI workflows; \`bff.main:app_with_sio\` is no longer used.[file:220][file:221]
 
-### Notes
+## Data and storage
 
-- These demo credentials are intended for local development only.
-- The token is backed by an in-memory store in `bff.auth_state` and is not persisted across process restarts.
-- For tests, additional tokens and roles are seeded directly in the test suite (see `bff/tests/test_auth_router.py` and `bff/tests/test_rbac.py`).
+The BFF uses local SQLite databases for certain features:
 
+- Episodic memory: \`data/episodic_memory.db\`  
+- Run metadata: \`bff/data/run_metadata.db\`  
+
+These files are generated at runtime and **ignored by git**.[file:221] Do not commit them. If they become corrupted during development, you can delete them and let the BFF recreate them.
+
+## Tests
+
+To run the BFF test suite:
+
+```bash
+cd ~/Forge-OH
+source .venv-bff/bin/activate
+
+pytest bff
+```
+
+Tests assume the pinned stack from \`bff/requirements.txt\` is installed in the active environment.[file:221]
+
+## Updating dependencies
+
+When updating the BFF runtime stack:
+
+1. Edit \`bff/requirements.txt\` (minimal runtime set).  
+2. Recreate a clean environment or use \`.venv-bff\` to install from it.  
+3. Regenerate \`bff/requirements.lock\` from the clean environment:
+
+   ```bash
+   cd ~/Forge-OH
+   source .venv-bff/bin/activate
+
+   python -m pip install -r bff/requirements.txt
+   python -m pip freeze > bff/requirements.lock
+   ```
+
+4. Run the BFF tests and the frontend integration flows before committing.[file:221]
+
+\`docs/Forge-OH-Build-Plan-Definitive.md\` should be updated to match any new pinned versions so the documentation stays in sync with the code.[file:220][file:221]
