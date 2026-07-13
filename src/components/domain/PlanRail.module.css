@@ -1,0 +1,30 @@
+.rail {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: sticky;
+  top: calc(var(--layout-topbar-height) + 120px);
+  max-height: calc(100vh - var(--layout-topbar-height) - 160px);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.title { font-size: var(--font-size-meta); font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.progress { font-size: var(--font-size-meta); color: var(--color-text-muted); font-family: var(--font-mono); }
+
+.list { list-style: none; padding: var(--space-2); overflow-y: auto; }
+
+.skeletonList { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.skeletonNode { display: flex; align-items: center; gap: var(--space-2); }
