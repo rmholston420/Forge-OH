@@ -83,3 +83,11 @@ export function useResetWorkspace() {
     },
   });
 }
+
+export function useTestWorkspaceConnection() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetch(`${BASE}/${id}/test`, { method: 'POST' }).then(r => r.json()),
+  });
+}
+

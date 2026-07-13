@@ -134,3 +134,21 @@ def reset_workspace(
     reset = ws.model_copy(update={'diskUsageMb': 0, 'runCount': 0, 'status': 'idle', 'updatedAt': _now()})
     _WORKSPACES[workspace_id] = reset
     return reset
+
+
+
+class TestConnectionResult(BaseModel):
+    ok: bool
+    latencyMs: Optional[float] = None
+    error: Optional[str] = None
+
+
+@router.post('/{workspace_id}/test', response_model=TestConnectionResult)
+def test_workspace_connection(workspace_id: str):
+    """Stub connectivity test — returns ok=True for existing workspaces."""
+    ws = _WORKSPACES.get(workspace_id)
+    if not ws:
+        raise HTTPException(404, 'Workspace not found')
+    # TODO(foh-phase2): replace with real reachability probe per workspace type
+    return TestConnectionResult(ok=True, latencyMs=12.0)
+

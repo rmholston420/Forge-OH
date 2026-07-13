@@ -41,7 +41,7 @@ export default function WorkspacesPage() {
   };
 
   const handleTest = async (id: string) => {
-    const result = await testMutation.mutateAsync();
+    const result = await testMutation.mutateAsync(id);
     alert(result.ok
       ? `✅ Connection OK (${('latencyMs' in result ? result.latencyMs : undefined)}ms)`
       : `❌ Connection failed: ${('error' in result ? result.error : undefined)}`);

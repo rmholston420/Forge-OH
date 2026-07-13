@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import socketio
 
 from bff.routers import (
     agent_presets,
@@ -40,3 +41,6 @@ app.include_router(plugins.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(workspaces.router, prefix="/api")
+
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+app_with_sio = socketio.ASGIApp(sio, other_asgi_app=app)
