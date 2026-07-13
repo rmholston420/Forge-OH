@@ -1,36 +1,64 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import * as api from './api';
-import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from './schemas';
+import type { Workspace } from './schemas';
 
-const WS_KEY = ['workspaces'] as const;
-const wsKey = (id: string) => ['workspaces', id] as const;
+const BASE = '/api/workspaces';
+
+export const workspaceKeys = {
+  all:    ['workspaces']           as const,
+  detail: (id: string) => ['workspaces', id] as const,
+};
+
+// ---------------------------------------------------------------------------
+// Queries
+// ---------------------------------------------------------------------------
 
 export function useWorkspaces() {
-  return useQuery({ queryKey: WS_KEY, queryFn: api.fetchWorkspaces,
-    refetchInterval: 30_000 });
+  return useQuery<Workspace[]>({
+    queryKey: workspaceKeys.all,
+    queryFn:  () => fetch(BASE).then(r => r.json()),
+    // Avoid treating every poll result as stale; 4 s matches the run-list hook.
+    staleTime: 4_000,
+  });
 }
 
 export function useWorkspace(id: string) {
-  return useQuery({ queryKey: wsKey(id), queryFn: () => api.fetchWorkspace(id),
-    enabled: !!id });
+  return useQuery<Workspace>({
+    queryKey: workspaceKeys.detail(id),
+    queryFn:  () => fetch(`${BASE}/${id}`).then(r => r.json()),
+    enabled:  !!id,
+    staleTime: 10_000,
+  });
 }
+
+// ---------------------------------------------------------------------------
+// Mutations
+// ---------------------------------------------------------------------------
 
 export function useCreateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateWorkspaceRequest) => api.createWorkspace(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: WS_KEY }),
+    mutationFn: (payload: Partial<Workspace>) =>
+      fetch(BASE, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: workspaceKeys.all }),
   });
 }
 
 export function useUpdateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: UpdateWorkspaceRequest }) =>
-      api.updateWorkspace(id, body),
-    onSuccess: (ws) => {
-      qc.invalidateQueries({ queryKey: WS_KEY });
-      qc.setQueryData(wsKey(ws.id), ws);
+    mutationFn: ({ id, ...patch }: Partial<Workspace> & { id: string }) =>
+      fetch(`${BASE}/${id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(patch),
+      }).then(r => r.json()),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: workspaceKeys.all });
+      qc.invalidateQueries({ queryKey: workspaceKeys.detail(id) });
     },
   });
 }
@@ -38,26 +66,20 @@ export function useUpdateWorkspace() {
 export function useDeleteWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.deleteWorkspace(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: WS_KEY }),
+    mutationFn: (id: string) =>
+      fetch(`${BASE}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: workspaceKeys.all }),
   });
 }
 
 export function useResetWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.resetWorkspace(id),
-    onSuccess: (ws) => {
-      qc.invalidateQueries({ queryKey: WS_KEY });
-      qc.setQueryData(wsKey(ws.id), ws);
+    mutationFn: (id: string) =>
+      fetch(`${BASE}/${id}/reset`, { method: 'POST' }).then(r => r.json()),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: workspaceKeys.all });
+      qc.invalidateQueries({ queryKey: workspaceKeys.detail(id) });
     },
   });
-}
-
-
-export function useTestWorkspaceConnection() {
-  return {
-    mutateAsync: async () => ({ ok: true }),
-    isPending: false,
-  };
 }

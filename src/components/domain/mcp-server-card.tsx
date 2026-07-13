@@ -1,72 +1,69 @@
+// DEPRECATED — re-export shim. Rename consuming imports to McpServerCard (PascalCase) in a follow-up.
+// TODO(foh-phase2): delete this file once all callers updated.
 import React from 'react';
-import type { MCPServer, MCPServerStatus } from '@/features/mcp/schemas';
+import type { Plugin, PluginStatus } from '@/features/mcp/schemas';
 
-const STATUS_CONFIG: Record<
-  MCPServerStatus,
-  { label: string; icon: string; colorVar: string }
-> = {
-  connected: { label: 'Connected', icon: '●', colorVar: 'var(--color-state-success)' },
-  disconnected: { label: 'Disconnected', icon: 'plug', colorVar: 'var(--color-text-muted)' },
-  warning: { label: 'Warning', icon: 'alert-triangle', colorVar: 'var(--color-warning)' },
-  connecting: { label: 'Connecting…', icon: '◔', colorVar: 'var(--color-state-running)' },
-  error: { label: 'Error', icon: '✕', colorVar: 'var(--color-state-error)' },
-  disabled: { label: 'Disabled', icon: '○', colorVar: 'var(--color-text-muted)' },
+const STATUS_CONFIG: Record<PluginStatus, { label: string; colorVar: string }> = {
+  enabled:         { label: 'Enabled',          colorVar: 'var(--color-state-success)' },
+  disabled:        { label: 'Disabled',         colorVar: 'var(--color-text-muted)' },
+  error:           { label: 'Error',            colorVar: 'var(--color-state-error)' },
+  installed:       { label: 'Installed',        colorVar: 'var(--color-text-muted)' },
+  updateavailable: { label: 'Update available', colorVar: 'var(--color-warning)' },
+  installing:      { label: 'Installing…',      colorVar: 'var(--color-state-running)' },
 };
 
-interface MCPServerCardProps {
-  server: MCPServer;
-  pingInFlight: boolean;
+interface McpServerCardProps {
+  plugin: Plugin;
   onToggle: (id: string, enable: boolean) => void;
-  onPing: (id: string) => void;
+  onConfigure: (id: string) => void;
 }
 
-export function MCPServerCard({ server, pingInFlight, onToggle, onPing }: MCPServerCardProps) {
-  const { id, name, url, status, toolCount, lastPingMs, version, description } = server;
-  const cfg = STATUS_CONFIG[status ?? 'disconnected'];
-  const isDisabled = status === 'disabled';
+/** @deprecated Use PluginCard from './PluginCard' once MCP schema is unified. */
+export function McpServerCard({ plugin, onToggle, onConfigure }: McpServerCardProps) {
+  const { id, name, version, status, description, author, configSchema } = plugin;
+  const cfg = STATUS_CONFIG[status ?? 'disabled'];
+  const isEnabled = status === 'enabled';
+  const hasConfig = !!configSchema && Object.keys(configSchema).length > 0;
 
   return (
-    <article className="mcp-server-card">
-      <header className="mcp-server-card__header">
-        <h3 className="mcp-server-card__name">{name}</h3>
-        <span
-          className="status-chip"
-          style={{ color: cfg.colorVar }}
-          role="status"
-          aria-label={`MCP server status: ${cfg.label}`}
-        >
-          <span aria-hidden="true">{cfg.icon}</span>
-          <span>{cfg.label}</span>
-        </span>
+    <article className="plugin-card">
+      <header className="plugin-card__header">
+        <h3 className="plugin-card__name">{name}</h3>
+        <div className="plugin-card__badges">
+          <span className="badge badge--secondary">v{version}</span>
+          <span
+            className="badge"
+            style={{ color: cfg.colorVar }}
+            role="status"
+            aria-label={`Plugin status: ${cfg.label}`}
+          >
+            {cfg.label}
+          </span>
+        </div>
       </header>
 
-      {description && <p className="mcp-server-card__desc">{description}</p>}
+      {description && <p className="plugin-card__desc">{description}</p>}
+      {author && <p className="plugin-card__author">by {author}</p>}
 
-      <p className="mcp-server-card__url">{url}</p>
-
-      <div className="mcp-server-card__meta">
-        <span className="badge">{toolCount} tools</span>
-        {version && <span className="badge badge--secondary">v{version}</span>}
-        {lastPingMs !== null && (
-          <span className="badge badge--secondary">{lastPingMs}ms</span>
+      <div className="plugin-card__actions">
+        {hasConfig && (
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => onConfigure(id)}
+            aria-label={`Configure plugin ${name}`}
+          >
+            Configure
+          </button>
         )}
-      </div>
-
-      <div className="mcp-server-card__actions">
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => onPing(id)}
-          disabled={pingInFlight || isDisabled}
-          aria-label={`Ping MCP server ${name}`}
+        <label
+          className="toggle-switch"
+          aria-label={`${isEnabled ? 'Disable' : 'Enable'} plugin ${name}`}
         >
-          {pingInFlight ? 'Pinging…' : 'Ping Now'}
-        </button>
-
-        <label className="toggle-switch" aria-label={`${isDisabled ? 'Enable' : 'Disable'} ${name}`}>
           <input
             type="checkbox"
-            checked={!isDisabled}
+            checked={isEnabled}
             onChange={(e) => onToggle(id, e.target.checked)}
+            disabled={status === 'installing'}
           />
           <span className="toggle-switch__track" />
         </label>
