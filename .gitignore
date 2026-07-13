@@ -47,3 +47,12 @@ yarn-error.log*
 .coverage
 next-env.d.ts
 .ai-backups/
+
+# Local browser triage artifacts
+.auth/
+playwright-artifacts/
+playwright-next-debug.log
+
+# Local scratch helpers created during triage
+tests/
+scripts/
