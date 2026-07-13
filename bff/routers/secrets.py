@@ -1,57 +1,96 @@
-"""Secrets vault router — Phase 3 stub.
-Values are never returned. The BFF will delegate to the system keychain
-or a Vault instance in production.
-"""
-from fastapi import APIRouter
+from __future__ import annotations
+
+import hashlib
+from datetime import datetime, timezone
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-from typing import Optional
 
-router = APIRouter()
+router = APIRouter(prefix="/secrets", tags=["secrets"])
 
 
-class UpsertSecretRequest(BaseModel):
+class SecretRefModel(BaseModel):
+    """Returned to client — never includes raw value."""
+    id: str
     name: str
-    value: str
-    scope: str = 'global'
-    scopeId: Optional[str] = None
-    description: Optional[str] = None
+    scope: Literal["global", "workspace", "run"]
+    provider: Literal["env", "vault", "k8s-secret", "plaintext"]
+    masked_preview: str  # Always '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
+    created_at: str
+    updated_at: str
+    rotated_at: str | None = None
+    used_in: list[str] = []
+
+
+class CreateSecretRequest(BaseModel):
+    name: str
+    scope: Literal["global", "workspace", "run"]
+    provider: Literal["env", "vault", "k8s-secret", "plaintext"]
+    value: str  # write-only — never returned after this point
 
 
 class RotateSecretRequest(BaseModel):
-    value: str
+    value: str  # write-only
 
 
-def _stub_secret(id_: str, name: str, scope: str, description: Optional[str] = None) -> dict:
-    return {
-        "id": id_, "name": name, "scope": scope, "scopeId": None,
-        "description": description,
-        "masked": True,  # value is NEVER in the response
-        "lastRotatedAt": None,
-        "createdAt": "2026-07-12T00:00:00Z",
-        "updatedAt": "2026-07-12T00:00:00Z",
-    }
+class RotateSecretResponse(BaseModel):
+    secret_id: str
+    status: Literal["rotated"]
+    rotated_at: str
 
 
-@router.get("/secrets")
-async def list_secrets() -> dict:
-    return {"data": [], "stub": True}
+def _mask(value: str) -> str:
+    return "•" * min(len(value), 8)
 
 
-@router.post("/secrets")
-async def upsert_secret(body: UpsertSecretRequest) -> dict:
-    # Never echo back the value
-    secret = _stub_secret("secret-new-001", body.name, body.scope, body.description)
-    return {"data": secret}
+# In-memory store: stores hashed value, never plaintext after write
+_SECRETS: dict[str, SecretRefModel] = {}
+_SECRET_HASHES: dict[str, str] = {}  # id -> sha256 of value
 
 
-@router.delete("/secrets/{secret_id}")
-async def delete_secret(secret_id: str) -> dict:
-    return {"ok": True, "secret_id": secret_id}
+@router.get("/", response_model=list[SecretRefModel])
+async def list_secrets() -> list[SecretRefModel]:
+    return list(_SECRETS.values())
 
 
-@router.post("/secrets/{secret_id}/rotate")
-async def rotate_secret(secret_id: str, body: RotateSecretRequest) -> dict:
-    from datetime import datetime, timezone
-    secret = _stub_secret(secret_id, "stub", "global")
-    secret["lastRotatedAt"] = datetime.now(timezone.utc).isoformat()
-    return {"data": secret}
+@router.post("/", response_model=SecretRefModel, status_code=status.HTTP_201_CREATED)
+async def create_secret(payload: CreateSecretRequest) -> SecretRefModel:
+    import uuid
+    new_id = f"secret-{uuid.uuid4().hex[:8]}"
+    now = datetime.now(timezone.utc).isoformat()
+    # Store SHA-256 hash only — never the plaintext value
+    _SECRET_HASHES[new_id] = hashlib.sha256(payload.value.encode()).hexdigest()
+    ref = SecretRefModel(
+        id=new_id,
+        name=payload.name,
+        scope=payload.scope,
+        provider=payload.provider,
+        masked_preview=_mask(payload.value),
+        created_at=now,
+        updated_at=now,
+    )
+    _SECRETS[new_id] = ref
+    return ref  # value field never included in response
+
+
+@router.post("/{secret_id}/rotate", response_model=RotateSecretResponse)
+async def rotate_secret(secret_id: str, payload: RotateSecretRequest) -> RotateSecretResponse:
+    ref = _SECRETS.get(secret_id)
+    if not ref:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Secret not found")
+    now = datetime.now(timezone.utc).isoformat()
+    # Re-hash new value — old value is discarded
+    _SECRET_HASHES[secret_id] = hashlib.sha256(payload.value.encode()).hexdigest()
+    _SECRETS[secret_id] = ref.model_copy(
+        update={"masked_preview": _mask(payload.value), "rotated_at": now, "updated_at": now}
+    )
+    return RotateSecretResponse(secret_id=secret_id, status="rotated", rotated_at=now)
+
+
+@router.delete("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_secret(secret_id: str) -> None:
+    if secret_id not in _SECRETS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Secret not found")
+    del _SECRETS[secret_id]
+    _SECRET_HASHES.pop(secret_id, None)

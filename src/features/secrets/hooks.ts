@@ -1,31 +1,38 @@
-'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchSecrets, upsertSecret, deleteSecret, rotateSecret } from './api';
+import { queryKeys } from '@/lib/query/query-keys';
+import { fetchSecrets, createSecret, rotateSecret, deleteSecret } from './api';
 
 export function useSecrets() {
-  return useQuery({ queryKey: ['secrets'], queryFn: fetchSecrets });
-}
-
-export function useUpsertSecret() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: upsertSecret,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['secrets'] }),
+  return useQuery({
+    queryKey: queryKeys.secrets.list(),
+    queryFn: fetchSecrets,
+    // Secrets change rarely — poll less aggressively
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }
 
-export function useDeleteSecret() {
+export function useCreateSecret() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: deleteSecret,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['secrets'] }),
+    mutationFn: createSecret,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.secrets.list() }),
   });
 }
 
 export function useRotateSecret() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, value }: { id: string; value: string }) => rotateSecret(id, value),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['secrets'] }),
+    mutationFn: ({ id, newValue }: { id: string; newValue: string }) =>
+      rotateSecret(id, newValue),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.secrets.list() }),
+  });
+}
+
+export function useDeleteSecret() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteSecret(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.secrets.list() }),
   });
 }

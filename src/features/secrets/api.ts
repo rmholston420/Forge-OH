@@ -1,37 +1,30 @@
-import type { Secret, UpsertSecret } from '@/lib/schemas/secret';
+import { apiClient } from '@/lib/api/client';
+import {
+  SecretRefListSchema,
+  SecretRefSchema,
+  RotateSecretResponseSchema,
+} from './schemas';
+import type { SecretRef, CreateSecretRequest, RotateSecretResponse } from './schemas';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
-
-export async function fetchSecrets(): Promise<Secret[]> {
-  const res = await fetch(`${BFF}/api/secrets`);
-  if (!res.ok) throw new Error(`Failed to fetch secrets: ${res.status}`);
-  const json = await res.json();
-  return json.data ?? [];
+export async function fetchSecrets(): Promise<SecretRef[]> {
+  const data = await apiClient.get('/secrets');
+  return SecretRefListSchema.parse(data);
 }
 
-export async function upsertSecret(body: UpsertSecret): Promise<Secret> {
-  const res = await fetch(`${BFF}/api/secrets`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Failed to save secret: ${res.status}`);
-  const json = await res.json();
-  return json.data;
+/**
+ * Creates a secret. The `value` field is sent to BFF and NEVER
+ * returned or stored in any client-side state after the request completes.
+ */
+export async function createSecret(payload: CreateSecretRequest): Promise<SecretRef> {
+  const data = await apiClient.post('/secrets', payload);
+  return SecretRefSchema.parse(data);
+}
+
+export async function rotateSecret(id: string, newValue: string): Promise<RotateSecretResponse> {
+  const data = await apiClient.post(`/secrets/${id}/rotate`, { value: newValue });
+  return RotateSecretResponseSchema.parse(data);
 }
 
 export async function deleteSecret(id: string): Promise<void> {
-  const res = await fetch(`${BFF}/api/secrets/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`Failed to delete secret: ${res.status}`);
-}
-
-export async function rotateSecret(id: string, newValue: string): Promise<Secret> {
-  const res = await fetch(`${BFF}/api/secrets/${id}/rotate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value: newValue }),
-  });
-  if (!res.ok) throw new Error(`Failed to rotate secret: ${res.status}`);
-  const json = await res.json();
-  return json.data;
+  await apiClient.delete(`/secrets/${id}`);
 }

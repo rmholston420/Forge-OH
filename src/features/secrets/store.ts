@@ -1,22 +1,28 @@
 import { create } from 'zustand';
-import type { SecretScope } from '@/lib/schemas/secret';
+import type { SecretScope } from './schemas';
 
-interface SecretsStore {
+interface SecretsUIState {
+  addModalOpen: boolean;
+  confirmDeleteId: string | null;
+  searchQuery: string;
   scopeFilter: SecretScope | 'all';
-  composerOpen: boolean;
-  rotatingId: string | null;
-  setScopeFilter: (s: SecretScope | 'all') => void;
-  openComposer: () => void;
-  closeComposer: () => void;
-  setRotatingId: (id: string | null) => void;
+
+  openAddModal: () => void;
+  closeAddModal: () => void;
+  setConfirmDeleteId: (id: string | null) => void;
+  setSearchQuery: (q: string) => void;
+  setScopeFilter: (f: SecretScope | 'all') => void;
 }
 
-export const useSecretsStore = create<SecretsStore>((set) => ({
+export const useSecretsStore = create<SecretsUIState>((set) => ({
+  addModalOpen: false,
+  confirmDeleteId: null,
+  searchQuery: '',
   scopeFilter: 'all',
-  composerOpen: false,
-  rotatingId: null,
-  setScopeFilter: (scopeFilter) => set({ scopeFilter }),
-  openComposer: () => set({ composerOpen: true }),
-  closeComposer: () => set({ composerOpen: false }),
-  setRotatingId: (rotatingId) => set({ rotatingId }),
+
+  openAddModal: () => set({ addModalOpen: true }),
+  closeAddModal: () => set({ addModalOpen: false }),
+  setConfirmDeleteId: (id) => set({ confirmDeleteId: id }),
+  setSearchQuery: (q) => set({ searchQuery: q }),
+  setScopeFilter: (f) => set({ scopeFilter: f }),
 }));

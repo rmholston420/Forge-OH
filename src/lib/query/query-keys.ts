@@ -1,27 +1,48 @@
-export const QUERY_KEYS = {
+/**
+ * Centralized, hierarchical TanStack Query key registry.
+ * All keys are typed tuples for surgical cache invalidation.
+ */
+export const queryKeys = {
   runs: {
-    list: () => ['runs'] as const,
-    detail: (id: string) => ['runs', id] as const,
-    events: (id: string) => ['runs', id, 'events'] as const,
-    artifacts: (id: string) => ['runs', id, 'artifacts'] as const,
-    commands: (id: string) => ['runs', id, 'commands'] as const,
-    traces: (id: string) => ['runs', id, 'traces'] as const,
-    presets: () => ['runs', 'presets'] as const,
+    all: () => ['runs'] as const,
+    list: () => ['runs', 'list'] as const,
+    detail: (id: string) => ['runs', 'detail', id] as const,
+    events: (id: string) => ['runs', 'events', id] as const,
+    files: (id: string) => ['runs', 'files', id] as const,
+    fileDiff: (id: string, path: string) => ['runs', 'diff', id, path] as const,
+    commands: (id: string) => ['runs', 'commands', id] as const,
+    artifacts: (id: string) => ['runs', 'artifacts', id] as const,
+    traces: (id: string) => ['runs', 'traces', id] as const,
+    plan: (id: string) => ['runs', 'plan', id] as const,
+  },
+  agents: {
+    presets: () => ['agents', 'presets'] as const,
   },
   workspaces: {
-    list: () => ['workspaces'] as const,
-    detail: (id: string) => ['workspaces', id] as const,
-  },
-  secrets: {
-    list: () => ['secrets'] as const,
-  },
-  plugins: {
-    list: () => ['plugins'] as const,
+    all: () => ['workspaces'] as const,
+    list: () => ['workspaces', 'list'] as const,
+    detail: (id: string) => ['workspaces', 'detail', id] as const,
   },
   mcp: {
-    list: () => ['mcp'] as const,
+    all: () => ['mcp'] as const,
+    list: () => ['mcp', 'list'] as const,
+    detail: (id: string) => ['mcp', 'detail', id] as const,
+  },
+  plugins: {
+    all: () => ['plugins'] as const,
+    list: () => ['plugins', 'list'] as const,
+    detail: (id: string) => ['plugins', 'detail', id] as const,
+  },
+  secrets: {
+    all: () => ['secrets'] as const,
+    list: () => ['secrets', 'list'] as const,
   },
   observability: {
     summary: () => ['observability', 'summary'] as const,
+    traces: () => ['observability', 'traces'] as const,
+    trace: (id: string) => ['observability', 'trace', id] as const,
   },
-};
+  browser: {
+    sessions: (runId: string) => ['browser', 'sessions', runId] as const,
+  },
+} as const;
