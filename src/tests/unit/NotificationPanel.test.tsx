@@ -1,7 +1,17 @@
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NotificationPanel } from '@/components/domain/NotificationPanel';
 import { useNotificationsStore } from '@/features/notifications/store';
+
+const server = setupServer(
+  http.get('/api/notifications', () => HttpResponse.json([]))
+);
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
 const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const wrap = (ui: React.ReactElement) => (

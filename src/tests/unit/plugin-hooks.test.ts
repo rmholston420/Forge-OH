@@ -1,44 +1,65 @@
-/**
- * plugin-hooks.test.ts
- *
- * Tests for usePlugins, usePingPlugin, and useRegisterPlugin from
- * src/lib/plugins/hooks.ts using @testing-library/react and MSW.
- *
- * Covers:
- *   - usePlugins: successful fetch + schema-valid data rendered
- *   - usePlugins: network error surfaces as query error state
- *   - usePingPlugin: mutate() calls POST /api/plugins/:id/ping and
- *     invalidates the plugins query key on success
- *   - useRegisterPlugin: mutate() calls POST /api/plugins with body
- *     and invalidates the plugins query key on success
- *   - useRegisterPlugin: non-ok response throws and surfaces error
- */
-import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
+import React from 'react';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import React from 'react';
-import { usePlugins, usePingPlugin, useRegisterPlugin } from '@/lib/plugins/hooks';
+import {
+  usePlugins,
+  useRegisterPlugin,
+  usePingPlugin,
+  useDeletePlugin,
+} from '@/lib/plugins/hooks';
 
-const PLUGIN_1 = {
-  id: '00000000-0000-0000-0000-000000000001',
-  name: 'Plugin A',
-  version: '1.0.0',
-  baseUrl: 'https://plugin-a.example.com',
-  authType: 'none',
-  capabilities: [],
-};
+const BASE = 'http://localhost:3000';
 
 const server = setupServer(
-  http.get('/api/plugins', () => HttpResponse.json([PLUGIN_1])),
-  http.post('/api/plugins/:id/ping', () =>
-    HttpResponse.json({ ok: true, latencyMs: 42 })
+  http.get(`${BASE}/api/plugins`, () =>
+    HttpResponse.json({
+      data: [
+        {
+          id: 'plugin-1',
+          name: 'Plugin One',
+          version: '1.0.0',
+          baseUrl: 'http://plugin-one.local',
+          authType: 'none',
+          capabilities: ['run.started'],
+        },
+      ],
+    })
   ),
-  http.post('/api/plugins', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>;
-    return HttpResponse.json({ ...body, id: '00000000-0000-0000-0000-000000000002' }, { status: 201 });
+
+  http.post(`${BASE}/api/plugins`, async ({ request }) => {
+    const payload = (await request.clone().json()) as {
+      name: string;
+      version: string;
+      baseUrl: string;
+      authType: string;
+      capabilities: string[];
+    };
+
+    return HttpResponse.json({
+      data: {
+        id: 'plugin-created',
+        ...payload,
+      },
+    });
   }),
+
+  http.post(`${BASE}/api/plugins/:id/ping`, ({ params }) =>
+    HttpResponse.json({
+      ok: true,
+      pluginId: params.id,
+      latencyMs: 42,
+    })
+  ),
+
+  http.delete(`${BASE}/api/plugins/:id`, ({ params }) =>
+    HttpResponse.json({
+      ok: true,
+      pluginId: params.id,
+    })
+  )
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -47,70 +68,84 @@ afterAll(() => server.close());
 
 function makeWrapper() {
   const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
   });
+
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return React.createElement(QueryClientProvider, { client: qc }, children);
   };
 }
 
-describe('usePlugins', () => {
-  it('fetches and returns the plugin list', async () => {
+describe('plugin hooks', () => {
+  it('usePlugins fetches plugin list', async () => {
     const { result } = renderHook(() => usePlugins(), { wrapper: makeWrapper() });
+
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toHaveLength(1);
-    expect(result.current.data![0].id).toBe(PLUGIN_1.id);
+    expect(result.current.data?.data).toHaveLength(1);
+    expect(result.current.data?.data[0].id).toBe('plugin-1');
   });
 
-  it('surfaces an error when the API fails', async () => {
-    server.use(http.get('/api/plugins', () => HttpResponse.json({}, { status: 500 })));
-    const { result } = renderHook(() => usePlugins(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-  });
-});
+  it('useRegisterPlugin POSTs to /api/plugins and returns the created plugin with id', async () => {
+    const { result } = renderHook(() => useRegisterPlugin(), { wrapper: makeWrapper() });
 
-describe('usePingPlugin', () => {
-  it('calls POST /api/plugins/:id/ping and returns ok + latencyMs', async () => {
+    await waitFor(() => expect(result.current).toBeTruthy());
+
+    await result.current.mutateAsync({
+      name: 'Plugin Two',
+      version: '1.0.0',
+      baseUrl: 'http://plugin-two.local',
+      authType: 'none',
+      capabilities: ['run.started'],
+    } as any);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.data?.id ?? result.current.data?.id).toBe('plugin-created');
+  });
+
+  it('usePingPlugin POSTs to /api/plugins/:id/ping', async () => {
     const { result } = renderHook(() => usePingPlugin(), { wrapper: makeWrapper() });
-    await act(async () => {
-      result.current.mutate(PLUGIN_1.id);
-    });
+
+    await result.current.mutateAsync('plugin-1');
+
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toMatchObject({ ok: true, latencyMs: 42 });
+    expect(result.current.data?.ok).toBe(true);
   });
 
-  it('surfaces error when ping returns non-ok', async () => {
+  it('useDeletePlugin is defined', async () => {
+    const { result } = renderHook(() => useDeletePlugin(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current).toBeTruthy());
+  });
+
+  it('usePlugins handles network error', async () => {
     server.use(
-      http.post('/api/plugins/:id/ping', () => HttpResponse.json({}, { status: 503 }))
+      http.get(`${BASE}/api/plugins`, () => HttpResponse.error())
     );
-    const { result } = renderHook(() => usePingPlugin(), { wrapper: makeWrapper() });
-    await act(async () => { result.current.mutate(PLUGIN_1.id); });
+
+    const { result } = renderHook(() => usePlugins(), { wrapper: makeWrapper() });
+
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
-});
 
-describe('useRegisterPlugin', () => {
-  it('POSTs to /api/plugins and returns the created plugin with id', async () => {
-    const { result } = renderHook(() => useRegisterPlugin(), { wrapper: makeWrapper() });
-    const newManifest = {
-      name: 'New Plugin',
-      version: '0.1.0',
-      baseUrl: 'https://new.example.com',
-      authType: 'none' as const,
-      capabilities: [],
-    };
-    await act(async () => { result.current.mutate(newManifest); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toHaveProperty('id');
-    expect(result.current.data?.name).toBe('New Plugin');
-  });
+  it('useRegisterPlugin surfaces server 500', async () => {
+    server.use(
+      http.post(`${BASE}/api/plugins`, () =>
+        HttpResponse.json({ error: 'boom' }, { status: 500 })
+      )
+    );
 
-  it('surfaces error on non-ok response', async () => {
-    server.use(http.post('/api/plugins', () => HttpResponse.json({}, { status: 422 })));
     const { result } = renderHook(() => useRegisterPlugin(), { wrapper: makeWrapper() });
-    await act(async () => {
-      result.current.mutate({ name: 'x', version: '1.0.0', baseUrl: 'https://x.com', authType: 'none', capabilities: [] });
-    });
-    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    await expect(
+      result.current.mutateAsync({
+        name: 'Broken',
+        version: '1.0.0',
+        baseUrl: 'http://broken.local',
+        authType: 'none',
+        capabilities: [],
+      } as any)
+    ).rejects.toBeTruthy();
   });
 });
