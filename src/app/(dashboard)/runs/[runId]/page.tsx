@@ -1,8 +1,9 @@
 'use client';
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { useRunDetail, useRunEvents } from '@/features/run-detail/hooks';
 import { useRunDetailStore } from '@/features/run-detail/store';
 import { useRunStream } from '@/lib/streaming/useRunStream';
+import type { StreamEvent } from '@/lib/streaming/useRunStream';
 import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
 import { EventCard } from '@/components/domain/EventCard';
 import { StreamBanner } from '@/components/domain/StreamBanner';
@@ -10,16 +11,23 @@ import { Banner } from '@/components/core/Banner';
 import { Skeleton } from '@/components/core/Skeleton';
 import { EmptyState } from '@/components/core/EmptyState';
 import { Tabs } from '@/components/core/Tabs';
-import type { ToolEvent } from '@/lib/schemas/event';
+import { BrowserTab } from './tabs/BrowserTab';
+import { MetricsTab } from './tabs/MetricsTab';
+import { SecurityTab } from './tabs/SecurityTab';
+import { TraceTab } from './tabs/TraceTab';
 import styles from './run-detail.module.css';
 
+// Tab definitions must stay in sync with:
+//   - RunDetailStore['selectedTab'] in src/features/run-detail/store.ts
+//   - RunDetailUIStateSchema.selectedTab in src/lib/schemas/run.ts
 const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'files', label: 'Files' },
-  { id: 'terminal', label: 'Terminal' },
-  { id: 'browser', label: 'Browser' },
-  { id: 'metrics', label: 'Metrics' },
-  { id: 'security', label: 'Security' },
+  { id: 'overview',  label: 'Overview'  },
+  { id: 'files',     label: 'Files'     },
+  { id: 'terminal',  label: 'Terminal'  },
+  { id: 'browser',   label: 'Browser'   },
+  { id: 'metrics',   label: 'Metrics'   },
+  { id: 'security',  label: 'Security'  },
+  { id: 'trace',     label: 'Trace'     },
 ];
 
 type DisplayEvent = {
@@ -70,18 +78,31 @@ export default function RunDetailPage({
     latestStreamEventId,
   } = useRunDetailStore();
 
-  const handleEvent = useCallback((evt: ToolEvent) => {
-    appendStreamEvent(evt);
+  // handleEvent uses StreamEvent (the socket wire type) — not ToolEvent.
+  // Previously typed as ToolEvent which caused a silent schema mismatch.
+  const handleEvent = useCallback((evt: StreamEvent) => {
+    appendStreamEvent(evt as Record<string, unknown>);
     if (evt.type === 'error') setPendingApprovalBanner(false);
   }, [appendStreamEvent, setPendingApprovalBanner]);
+
+  // Stabilize inline callbacks so the socket doesn't reconnect on every render.
+  // useRunStream does this internally via refs, but we also keep local refs for
+  // clarity and for any future direct use.
+  const setStreamConnectedRef = useRef(setStreamConnected);
+  const setStreamReconnectingRef = useRef(setStreamReconnecting);
+  setStreamConnectedRef.current = setStreamConnected;
+  setStreamReconnectingRef.current = setStreamReconnecting;
 
   useRunStream({
     runId,
     latestEventId: latestStreamEventId,
     onEvent: handleEvent,
-    onConnected: () => { setStreamConnected(true); setStreamReconnecting(false); },
-    onDisconnected: () => setStreamConnected(false),
-    onReconnecting: () => setStreamReconnecting(true),
+    onConnected: useCallback(() => {
+      setStreamConnectedRef.current(true);
+      setStreamReconnectingRef.current(false);
+    }, []),
+    onDisconnected: useCallback(() => setStreamConnectedRef.current(false), []),
+    onReconnecting: useCallback(() => setStreamReconnectingRef.current(true), []),
   });
 
   const allEvents = [
@@ -124,10 +145,11 @@ export default function RunDetailPage({
       <Tabs
         tabs={TABS}
         activeTab={selectedTab}
-        onTabChange={(t) => setSelectedTab(t as any)}
+        onTabChange={(t) => setSelectedTab(t as RunDetailStore['selectedTab'])}
         variant="underline"
       />
 
+      {/* Overview — event timeline + inspector */}
       {selectedTab === 'overview' && (
         <div className={styles.timelineLayout}>
           <div className={styles.timeline}>
@@ -162,7 +184,8 @@ export default function RunDetailPage({
           {selectedEventId && (
             <aside className={styles.inspector} aria-label="Event inspector">
               {(() => {
-                const ev = allEvents.find((e) => e.id === selectedEventId); const displayEv = ev ? toDisplayEvent(ev) : null;
+                const ev = allEvents.find((e) => e.id === selectedEventId);
+                const displayEv = ev ? toDisplayEvent(ev) : null;
                 if (!ev || !displayEv) return null;
                 return (
                   <div className={styles.inspectorContent}>
@@ -193,13 +216,46 @@ export default function RunDetailPage({
         </div>
       )}
 
-      {selectedTab !== 'overview' && (
+      {/* Files — Phase 1 (Slice 1B) */}
+      {selectedTab === 'files' && (
         <EmptyState
-          title={`${TABS.find(t => t.id === selectedTab)?.label} tab`}
-          description={`This tab will be implemented in a later phase.`}
-          icon="🚧"
+          title="Files"
+          description="File diff view will be available in Phase 1."
+          icon="📁"
         />
+      )}
+
+      {/* Terminal — Phase 1 (Slice 1C) */}
+      {selectedTab === 'terminal' && (
+        <EmptyState
+          title="Terminal"
+          description="Terminal output will be available in Phase 1."
+          icon="⌨️"
+        />
+      )}
+
+      {/* Browser — Phase 1 (Slice 2A) */}
+      {selectedTab === 'browser' && (
+        <BrowserTab runId={runId} />
+      )}
+
+      {/* Metrics — Phase 1 (Slice 3A) */}
+      {selectedTab === 'metrics' && (
+        <MetricsTab runId={runId} />
+      )}
+
+      {/* Security — Phase 1 (Slice 3B) */}
+      {selectedTab === 'security' && (
+        <SecurityTab runId={runId} />
+      )}
+
+      {/* Trace — Phase 1 (Slice 4A) */}
+      {selectedTab === 'trace' && (
+        <TraceTab runId={runId} />
       )}
     </div>
   );
 }
+
+// Explicit re-export of store type so callers don't have to import from two places
+export type { RunDetailStore } from '@/features/run-detail/store';

@@ -12,12 +12,15 @@ const initialState = {
   latestStreamEventId: 0,
   pendingApprovalBanner: false,
   streamEvents: [] as StreamEvent[],
+  streamEventIds: new Set<string | number>(),
   streamConnected: false,
   streamReconnecting: false,
 };
 
 export interface RunDetailStore {
-  selectedTab: 'overview' | 'events' | 'files' | 'artifacts' | 'terminal' | 'browser' | 'metrics' | 'security';
+  // Tab union must match TABS array in page.tsx AND the Zod schema in src/lib/schemas/run.ts.
+  // Canonical tab set as of Phase 0: overview | files | terminal | browser | metrics | security | trace
+  selectedTab: 'overview' | 'files' | 'terminal' | 'browser' | 'metrics' | 'security' | 'trace';
   selectedEventId: string | null;
   selectedArtifactId: string | null;
   diffMode: 'split' | 'unified';
@@ -26,6 +29,9 @@ export interface RunDetailStore {
   latestStreamEventId: number;
   pendingApprovalBanner: boolean;
   streamEvents: StreamEvent[];
+  /** Tracks IDs of events that have been streamed so duplicate replay after the
+   *  200-event slice rollover doesn't re-add already-seen events. */
+  streamEventIds: Set<string | number>;
   streamConnected: boolean;
   streamReconnecting: boolean;
 
@@ -54,9 +60,19 @@ export const useRunDetailStore = create<RunDetailStore>((set) => ({
   setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
   setLatestStreamEventId: (latestStreamEventId) => set({ latestStreamEventId }),
   setPendingApprovalBanner: (pendingApprovalBanner) => set({ pendingApprovalBanner }),
-  appendStreamEvent: (event) => set((state) => ({ streamEvents: [...state.streamEvents, event].slice(-200) })),
-  clearStreamEvents: () => set({ streamEvents: [] }),
+  appendStreamEvent: (event) =>
+    set((state) => {
+      const id = (event.id ?? event.eventId) as string | number | undefined;
+      // Dedup: skip events whose ID we've already seen (prevents duplicate replay
+      // after the 200-event slice rolls over latestStreamEventId).
+      if (id !== undefined && state.streamEventIds.has(id)) return state;
+      const newEvents = [...state.streamEvents, event].slice(-200);
+      const newIds = new Set(state.streamEventIds);
+      if (id !== undefined) newIds.add(id);
+      return { streamEvents: newEvents, streamEventIds: newIds };
+    }),
+  clearStreamEvents: () => set({ streamEvents: [], streamEventIds: new Set() }),
   setStreamConnected: (streamConnected) => set({ streamConnected }),
   setStreamReconnecting: (streamReconnecting) => set({ streamReconnecting }),
-  reset: () => set({ ...initialState }),
+  reset: () => set({ ...initialState, streamEventIds: new Set() }),
 }));

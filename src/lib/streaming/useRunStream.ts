@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { BFF_WS } from './socket';
 
@@ -58,6 +58,27 @@ export function useRunStream({
   onDisconnected,
   onReconnecting,
 }: UseRunStreamOptions) {
+  // Stabilize all callbacks in refs so inline arrow functions passed by the
+  // parent don't cause the socket to disconnect/reconnect on every render.
+  // The useEffect dep array only contains the stable primitive values
+  // (runId, latestEventId, enabled) — not the callbacks.
+  const onEventRef = useRef(onEvent);
+  const onStatusChangeRef = useRef(onStatusChange);
+  const onApprovalRequestRef = useRef(onApprovalRequest);
+  const onErrorRef = useRef(onError);
+  const onConnectedRef = useRef(onConnected);
+  const onDisconnectedRef = useRef(onDisconnected);
+  const onReconnectingRef = useRef(onReconnecting);
+
+  // Keep refs current on every render without triggering the effect.
+  onEventRef.current = onEvent;
+  onStatusChangeRef.current = onStatusChange;
+  onApprovalRequestRef.current = onApprovalRequest;
+  onErrorRef.current = onError;
+  onConnectedRef.current = onConnected;
+  onDisconnectedRef.current = onDisconnected;
+  onReconnectingRef.current = onReconnecting;
+
   useEffect(() => {
     if (!enabled || !runId) return;
 
@@ -66,16 +87,16 @@ export function useRunStream({
       query: { runId, latestEventId },
     });
 
-    socket.on('connect', () => onConnected?.());
-    socket.on('disconnect', () => onDisconnected?.());
-    socket.on('reconnect_attempt', () => onReconnecting?.());
+    socket.on('connect', () => onConnectedRef.current?.());
+    socket.on('disconnect', () => onDisconnectedRef.current?.());
+    socket.on('reconnect_attempt', () => onReconnectingRef.current?.());
 
     const forward = (event: unknown) => {
       const e = normalizeEvent(event, runId);
-      onEvent?.(e);
-      onStatusChange?.(e);
-      if (e.type === 'approval_required' || e.type === 'pending_approval') onApprovalRequest?.(e);
-      if (e.type === 'error' || e.type === 'run_failed') onError?.(e);
+      onEventRef.current?.(e);
+      onStatusChangeRef.current?.(e);
+      if (e.type === 'approval_required' || e.type === 'pending_approval') onApprovalRequestRef.current?.(e);
+      if (e.type === 'error' || e.type === 'run_failed') onErrorRef.current?.(e);
     };
 
     ['run:event', 'message', 'event', 'status', 'approval_required', 'error'].forEach((name) => socket.on(name, forward));
@@ -87,5 +108,7 @@ export function useRunStream({
       socket.off('reconnect_attempt');
       socket.disconnect();
     };
-  }, [runId, latestEventId, enabled, onEvent, onStatusChange, onApprovalRequest, onError, onConnected, onDisconnected, onReconnecting]);
+  // Intentionally excludes callback functions — those are stabilized via refs above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, latestEventId, enabled]);
 }

@@ -22,9 +22,15 @@ class LoopGuard:
         return hashlib.md5(key.encode()).hexdigest()  # noqa: S324
 
     def is_looping(self, fp: ActionFingerprint) -> bool:
+        """Return True when the same fingerprint has been seen `threshold` times total.
+
+        Fix: append FIRST, then count. The previous implementation counted before
+        appending, meaning it triggered on the (threshold+1)th occurrence instead
+        of the threshold-th.
+        """
         h = self.fingerprint(fp)
-        count = sum(1 for x in self.history if x == h)
-        self.history.append(h)
+        self.history.append(h)          # append first
+        count = sum(1 for x in self.history if x == h)  # then count
         return count >= self.threshold
 
     def suggest_escalation(self, fp: ActionFingerprint) -> str:

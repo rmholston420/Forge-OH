@@ -1,34 +1,35 @@
 # Forge-OH Architecture
 
-## Four-Layer Architecture
+Forge-OH is an AI coding assistant that wraps OpenHands with a production-grade
+BFF (Backend For Frontend), a Next.js 16 dashboard, and a Rigpa-LMS integration.
+
+## System Layers
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Rigpa-LMS Plugin Shell (Phase 5C)                   │
-├─────────────────────────────────────────────────────┤
-│  Forge-OH Frontend                                   │
-│  Next.js 16 App Router · Zustand 5 · TanStack Q 5   │
-├─────────────────────────────────────────────────────┤
-│  Forge BFF / Orchestration Service                   │
-│  FastAPI 0.136 · Python 3.13                         │
-├─────────────────────────────────────────────────────┤
-│  OpenHands Agent Server (cloud-1.46.0)               │
-│  Ollama v0.31.2 (primary) · vLLM v0.25.0 (backup)   │
-└─────────────────────────────────────────────────────┘
+ Browser
+   │
+   ├── Next.js 16 frontend (src/)
+   │     ├── App Router pages  (src/app/)
+   │     ├── Feature slices    (src/features/)
+   │     ├── Shared components (src/components/)
+   │     └── Zustand stores    (src/lib/state/)
+   │
+   ├── Next.js API routes (src/app/api/) — BFF proxy boundary
+   │
+   ├── BFF FastAPI (bff/)
+   │     ├── Routers     (bff/routers/)
+   │     ├── Services    (bff/services/)
+   │     └── Socket.IO   (bff/main.py → app_with_sio)
+   │
+   └── OpenHands sandbox (never called from the browser directly)
 ```
 
-## Non-Negotiable Rules
+## Key Constraints
 
-1. **The frontend NEVER talks directly to OpenHands.** All traffic through BFF.
-2. **Secret values NEVER reach the browser.** BFF redacts all raw values.
-3. **Model selection NEVER happens in the frontend.** BFF routes all LLM calls.
-4. **Never go below Q4_K_M quantization.** Q3_K_S introduces code syntax errors.
-5. **Control/target plane separation.** The running Forge-OH instance is never the agent's target.
-
-## Five First-Class Objects
-
-- **Run** — one live or historical execution session
-- **AgentPreset** — reusable behavior: model, tools, policies
-- **Workspace** — execution environment: local, docker, remote_api
-- **ToolEvent** — single action, observation, or file operation
-- **Artifact** — file change, patch, screenshot, report
+- The browser never calls OpenHands directly.
+- All model routing happens in `bff/services/model_router.py`. The frontend has
+  no model awareness.
+- Socket.IO is the primary streaming transport. The ASGI entry point is
+  `bff.main:app_with_sio` — never `bff.main:app`.
+- Authentication tokens are currently in-memory (`bff/auth_state.py`). This
+  limits deployment to a single Uvicorn worker. Migrate to Redis before scaling.
