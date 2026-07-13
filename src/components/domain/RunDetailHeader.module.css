@@ -1,0 +1,55 @@
+.header {
+  position: sticky;
+  top: var(--layout-topbar-height);
+  z-index: 50;
+  background: var(--color-bg-app);
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: var(--space-4) 0 var(--space-3);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.right { display: flex; align-items: center; gap: var(--space-4); flex-shrink: 0; }
+
+.title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.chips { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-meta);
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface-alt);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.chipActive { composes: chip; color: var(--color-state-running); background: var(--color-accent-soft); }
+
+.stats { display: flex; gap: var(--space-4); }
+.stat { font-family: var(--font-mono); font-size: var(--font-size-meta); color: var(--color-text-secondary); }
+
+.controls { display: flex; gap: var(--space-2); }
+
+.btn {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-meta);
+  font-weight: 500;
+  padding: var(--space-2) var(--space-3);
+  transition: opacity var(--motion-fast) var(--motion-easing);
+}
+.btn:hover { opacity: 0.85; }
+.btn:focus-visible { outline: 2px solid var(--color-accent-primary); outline-offset: 2px; }
+
+.btn--secondary { background: var(--color-bg-surface-elevated); color: var(--color-text-primary); }
+.btn--danger { background: rgba(240,97,107,0.15); color: var(--color-text-error); border-color: var(--color-state-error); }
+.btn--approve { background: rgba(53,196,124,0.15); color: var(--color-text-success); border-color: var(--color-state-success); font-weight: 600; }

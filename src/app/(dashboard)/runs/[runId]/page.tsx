@@ -1,14 +1,170 @@
 'use client';
-
-import React from 'react';
+import React, { useCallback } from 'react';
+import { useRunDetail, useRunEvents } from '@/features/run-detail/hooks';
+import { useRunDetailStore } from '@/features/run-detail/store';
+import { useRunStream } from '@/lib/streaming/useRunStream';
+import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
+import { EventCard } from '@/components/domain/EventCard';
+import { StreamBanner } from '@/components/domain/StreamBanner';
+import { Banner } from '@/components/core/Banner';
+import { Skeleton } from '@/components/core/Skeleton';
 import { EmptyState } from '@/components/core/EmptyState';
+import { Tabs } from '@/components/core/Tabs';
+import type { ToolEvent } from '@/lib/schemas/event';
+import styles from './run-detail.module.css';
+
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'files', label: 'Files' },
+  { id: 'terminal', label: 'Terminal' },
+  { id: 'browser', label: 'Browser' },
+  { id: 'metrics', label: 'Metrics' },
+  { id: 'security', label: 'Security' },
+];
 
 export default function RunDetailPage({ params }: { params: { runId: string } }) {
+  const { runId } = params;
+  const { data: run, isLoading: runLoading, error: runError } = useRunDetail(runId);
+  const { data: bootstrapEvents = [] } = useRunEvents(runId);
+
+  const {
+    selectedTab, setSelectedTab,
+    selectedEventId, setSelectedEventId,
+    streamEvents, appendStreamEvent,
+    streamConnected, setStreamConnected,
+    streamReconnecting, setStreamReconnecting,
+    setPendingApprovalBanner, pendingApprovalBanner,
+    latestStreamEventId,
+  } = useRunDetailStore();
+
+  const handleEvent = useCallback((evt: ToolEvent) => {
+    appendStreamEvent(evt);
+    if (evt.type === 'error') setPendingApprovalBanner(false);
+  }, [appendStreamEvent, setPendingApprovalBanner]);
+
+  useRunStream({
+    runId,
+    latestEventId: latestStreamEventId,
+    onEvent: handleEvent,
+    onConnected: () => { setStreamConnected(true); setStreamReconnecting(false); },
+    onDisconnected: () => setStreamConnected(false),
+    onReconnecting: () => setStreamReconnecting(true),
+  });
+
+  const allEvents = [
+    ...bootstrapEvents,
+    ...streamEvents.filter((se) => !bootstrapEvents.find((be) => be.id === se.id)),
+  ];
+
+  const streamState = streamReconnecting ? 'reconnecting' : streamConnected ? 'connected' : 'disconnected';
+
+  if (runError) {
+    return (
+      <Banner variant="error">
+        Failed to load run: {runError instanceof Error ? runError.message : 'Unknown error'}
+      </Banner>
+    );
+  }
+
   return (
-    <EmptyState
-      title="Run Detail — coming in Slice 1B"
-      description={`Run ID: ${params.runId}. Full event timeline, streaming, and inspector in Phase 1.`}
-      icon="⚡"
-    />
+    <div className={styles.page}>
+      {runLoading ? (
+        <div className={styles.headerSkeleton}>
+          <Skeleton width="50%" height={20} />
+          <Skeleton width="30%" height={14} />
+        </div>
+      ) : run ? (
+        <RunDetailHeader
+          run={run}
+          onApprove={() => setPendingApprovalBanner(false)}
+        />
+      ) : null}
+
+      {pendingApprovalBanner && (
+        <Banner variant="warning" title="Awaiting Approval">
+          The agent has paused and is waiting for your approval before proceeding.
+        </Banner>
+      )}
+
+      <StreamBanner state={streamState} />
+
+      <Tabs
+        tabs={TABS}
+        activeTab={selectedTab}
+        onTabChange={(t) => setSelectedTab(t as any)}
+        variant="underline"
+      />
+
+      {selectedTab === 'overview' && (
+        <div className={styles.timelineLayout}>
+          <div className={styles.timeline}>
+            {runLoading && (
+              <div className={styles.skeletonList}>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className={styles.skeletonEvent}>
+                    <Skeleton width={24} height={24} borderRadius="50%" />
+                    <div style={{ flex: 1 }}><Skeleton width="80%" height={14} /></div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!runLoading && allEvents.length === 0 && (
+              <EmptyState
+                title="No events yet"
+                description="Events will appear here as the agent runs."
+                icon="⚡"
+              />
+            )}
+            {allEvents.map((evt, i) => (
+              <EventCard
+                key={evt.id}
+                event={evt}
+                selected={selectedEventId === evt.id}
+                highlight={i === allEvents.length - 1 && streamEvents.includes(evt)}
+                onSelect={setSelectedEventId}
+              />
+            ))}
+          </div>
+
+          {selectedEventId && (
+            <aside className={styles.inspector} aria-label="Event inspector">
+              {(() => {
+                const ev = allEvents.find((e) => e.id === selectedEventId);
+                if (!ev) return null;
+                return (
+                  <div className={styles.inspectorContent}>
+                    <div className={styles.inspectorHeader}>
+                      <span className={styles.inspectorTitle}>Event Detail</span>
+                      <button
+                        className={styles.inspectorClose}
+                        onClick={() => setSelectedEventId(null)}
+                        aria-label="Close inspector"
+                      >×</button>
+                    </div>
+                    <dl className={styles.dl}>
+                      <dt>Type</dt><dd>{ev.type}</dd>
+                      <dt>Source</dt><dd>{ev.source}</dd>
+                      <dt>Timestamp</dt><dd>{new Date(ev.timestamp).toLocaleString()}</dd>
+                      <dt>Summary</dt><dd>{ev.summary}</dd>
+                    </dl>
+                    {ev.raw && (
+                      <pre className={styles.inspectorRaw}>{JSON.stringify(ev.raw, null, 2)}</pre>
+                    )}
+                  </div>
+                );
+              })()}
+            </aside>
+          )}
+        </div>
+      )}
+
+      {selectedTab !== 'overview' && (
+        <EmptyState
+          title={`${TABS.find(t => t.id === selectedTab)?.label} tab`}
+          description={`This tab will be implemented in a later phase.`}
+          icon="🚧"
+        />
+      )}
+    </div>
   );
 }
