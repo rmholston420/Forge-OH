@@ -2,6 +2,17 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Literal, Optional
 
+from bff.services.model_router import (
+    OLLAMA_URL,
+    VLLM_URL,
+    PRIMARY_MODEL,
+    FAST_MODEL,
+    ollama_health_check,
+    vllm_health_check,
+    route_request,
+    ModelUnavailableError,
+)
+
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
@@ -37,6 +48,24 @@ class SettingsPatch(BaseModel):
     keyboardShortcuts: Optional[KeyboardShortcuts] = None
 
 
+class RoutingProbe(BaseModel):
+    taskComplexity: str
+    contextLength: int
+    selected: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ModelRoutingStatus(BaseModel):
+    ollamaUrl: str
+    vllmUrl: str
+    primaryModel: str
+    fastModel: str
+    ollamaPrimaryHealthy: bool
+    ollamaFastHealthy: bool
+    vllmHealthy: bool
+    probes: list[RoutingProbe]
+
+
 _SETTINGS = SettingsResponse()
 
 
@@ -64,3 +93,43 @@ def reset_settings():
     global _SETTINGS
     _SETTINGS = SettingsResponse()
     return _SETTINGS
+
+
+@router.get("/model-routing", response_model=ModelRoutingStatus)
+async def get_model_routing():
+    probes: list[RoutingProbe] = []
+    scenarios = [
+        ("agentic", 8000),
+        ("simple", 8000),
+        ("simple", 50000),
+    ]
+
+    for task_complexity, context_length in scenarios:
+        try:
+            selected = await route_request(task_complexity, context_length)
+            probes.append(
+                RoutingProbe(
+                    taskComplexity=task_complexity,
+                    contextLength=context_length,
+                    selected=selected,
+                )
+            )
+        except ModelUnavailableError as exc:
+            probes.append(
+                RoutingProbe(
+                    taskComplexity=task_complexity,
+                    contextLength=context_length,
+                    error=str(exc),
+                )
+            )
+
+    return ModelRoutingStatus(
+        ollamaUrl=OLLAMA_URL,
+        vllmUrl=VLLM_URL,
+        primaryModel=PRIMARY_MODEL,
+        fastModel=FAST_MODEL,
+        ollamaPrimaryHealthy=await ollama_health_check(PRIMARY_MODEL),
+        ollamaFastHealthy=await ollama_health_check(FAST_MODEL),
+        vllmHealthy=await vllm_health_check(),
+        probes=probes,
+    )
