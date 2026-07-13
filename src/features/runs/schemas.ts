@@ -1,18 +1,16 @@
+/**
+ * src/features/runs/schemas.ts
+ *
+ * Re-exports canonical schema types from lib/schemas/run.
+ * Do NOT define a second CreateRunRequestSchema here — the canonical
+ * definition lives in src/lib/schemas/run.ts.
+ */
 import { z } from 'zod';
-import { RunSummarySchema, RunStatusSchema } from '@/lib/schemas/run';
+import { RunSummarySchema, RunStatusSchema, CreateRunRequestSchema } from '@/lib/schemas/run';
 
-export { RunSummarySchema, RunStatusSchema };
-
-export const CreateRunRequestSchema = z.object({
-  title: z.string().min(1, 'Task description is required'),
-  agentPresetId: z.string().min(1),
-  workspaceId: z.string().min(1),
-  contextPrompt: z.string().optional(),
-  taskComplexity: z.enum(['simple', 'agentic']).default('agentic'),
-  contextLength: z.number().int().nonnegative().optional(),
-});
-
-export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;
+export { RunSummarySchema, RunStatusSchema, CreateRunRequestSchema };
+export type { RunSummary } from '@/lib/schemas/run';
+export type CreateRunRequest = import('@/lib/schemas/run').CreateRunRequest;
 
 export const AgentPresetSchema = z.object({
   id: z.string(),
@@ -25,7 +23,8 @@ export type AgentPreset = z.infer<typeof AgentPresetSchema>;
 
 export const RunsFilterSchema = z.object({
   status: RunStatusSchema.optional(),
-  workspaceType: z.enum(['local', 'docker', 'remote_api']).optional(),
+  // remote-api (hyphenated) — matches DOMAIN_MODEL.md and RunSummarySchema
+  workspaceType: z.enum(['local', 'docker', 'remote-api']).optional(),
   search: z.string().optional(),
 });
 

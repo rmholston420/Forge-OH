@@ -30,7 +30,8 @@ export const mockRuns: RunSummary[] = [
   {
     id: 'run-003',
     title: 'Fix merge conflict in BFF router stubs',
-    status: 'awaiting_approval',
+    // awaiting-approval (hyphenated) — matches DOMAIN_MODEL.md and RunStatusSchema
+    status: 'awaiting-approval',
     agentPresetName: 'DevstralAgentic',
     workspaceId: 'ws-local-001',
     workspaceType: 'local',
@@ -46,7 +47,8 @@ export const mockRuns: RunSummary[] = [
     status: 'failed',
     agentPresetName: 'DevstralAgentic',
     workspaceId: 'ws-remote-001',
-    workspaceType: 'remote_api',
+    // remote-api (hyphenated) — matches DOMAIN_MODEL.md and RunSummarySchema
+    workspaceType: 'remote-api',
     activeTool: null,
     updatedAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
     createdAt: new Date(Date.now() - 1000 * 60 * 75).toISOString(),
