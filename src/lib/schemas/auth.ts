@@ -11,6 +11,7 @@ export const SessionUserSchema = z.object({
   email: z.string().optional(),
   role: RoleSchema.default('viewer'),
   avatarUrl: AvatarUrlSchema,
+  bffToken: z.string().optional(),
 });
 export type SessionUser = z.infer<typeof SessionUserSchema>;
 
