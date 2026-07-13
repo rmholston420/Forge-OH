@@ -3,19 +3,22 @@ import { create } from 'zustand';
 export type ActiveRoute =
   | 'runs'
   | 'run-detail'
+  | 'run-replay'
   | 'workspaces'
   | 'tools-mcp'
   | 'plugins'
   | 'observability'
+  | 'observability-traces'
   | 'settings'
-  | 'secrets';
+  | 'secrets'
+  | 'lms';
 
 export interface AppState {
   sidebarExpanded: boolean;
   sidebarOpen: boolean;
   activeRoute: ActiveRoute | null;
+  /** Single source of truth for command palette visibility. */
   commandPaletteOpen: boolean;
-  cmdPaletteOpen: boolean;
   activeRunId: string | null;
   unreadCount: number;
 }
@@ -26,7 +29,6 @@ export interface AppActions {
   setSidebarOpen: (open: boolean) => void;
   setActiveRoute: (route: ActiveRoute | null) => void;
   setCommandPaletteOpen: (open: boolean) => void;
-  setCmdPaletteOpen: (open: boolean) => void;
   toggleCommandPalette: () => void;
   setActiveRunId: (runId: string | null) => void;
   incrementUnread: () => void;
@@ -38,7 +40,6 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
   sidebarOpen: false,
   activeRoute: null,
   commandPaletteOpen: false,
-  cmdPaletteOpen: false,
   activeRunId: null,
   unreadCount: 0,
 
@@ -56,17 +57,10 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
 
   setActiveRoute: (route) => set({ activeRoute: route }),
 
-  setCommandPaletteOpen: (open) =>
-    set({ commandPaletteOpen: open, cmdPaletteOpen: open }),
-
-  setCmdPaletteOpen: (open) =>
-    set({ cmdPaletteOpen: open, commandPaletteOpen: open }),
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
 
   toggleCommandPalette: () =>
-    set((s) => ({
-      commandPaletteOpen: !s.commandPaletteOpen,
-      cmdPaletteOpen: !s.cmdPaletteOpen,
-    })),
+    set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
 
   setActiveRunId: (runId) => set({ activeRunId: runId }),
 

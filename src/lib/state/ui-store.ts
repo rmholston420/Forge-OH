@@ -48,6 +48,12 @@ export interface RunDetailUIActions {
   toggleInspector: () => void;
   setLatestStreamEventId: (id: number) => void;
   setPendingApprovalBanner: (pending: boolean) => void;
+  /**
+   * MUST be called when navigating away from one run to another.
+   * Resets latestStreamEventId to 0 so the new run's Socket.IO stream
+   * reconnects from the beginning instead of skipping events using the
+   * previous run's stale cursor.
+   */
   resetRunDetailUI: () => void;
 }
 

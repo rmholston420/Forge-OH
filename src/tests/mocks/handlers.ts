@@ -16,6 +16,7 @@ import {
   mockPackageResponse,
 } from '../../features/rigpa-lms/fixtures';
 
+// NEXT_PUBLIC_BFF_URL — same env var used by bff-client.ts and lib/api/client.ts.
 const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
 
 export const handlers = [
@@ -120,8 +121,9 @@ export const handlers = [
 
   // -------------------------------------------------------------------------
   // Agent presets
+  // Note: BFF mounts at /api/agent-presets (not /api/agents/presets)
   // -------------------------------------------------------------------------
-  http.get(`${BFF}/api/agents/presets`, () =>
+  http.get(`${BFF}/api/agent-presets`, () =>
     HttpResponse.json({
       data: [
         { id: SEED.agents.a1, name: 'DevstralAgentic', model: 'devstral-small:24b', description: 'Multi-file agentic workflows' },
