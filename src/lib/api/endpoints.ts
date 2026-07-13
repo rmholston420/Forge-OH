@@ -90,9 +90,10 @@ export const ENDPOINTS = {
 
   // ------------------------------------------------------------------
   // Agents / Presets
+  // Note: BFF router mounts at /api/agent-presets (not /api/agents/presets).
   // ------------------------------------------------------------------
   AGENTS: {
-    listPresets: () => `${BASE}/agents/presets`,
+    listPresets: () => `${BASE}/agent-presets`,
   },
 
   // ------------------------------------------------------------------
@@ -100,6 +101,10 @@ export const ENDPOINTS = {
   // ------------------------------------------------------------------
   MCP: {
     list: () => `${BASE}/integrations/mcp`,
+    servers: () => `${BASE}/mcp/servers`,
+    register: () => `${BASE}/mcp/servers`,
+    deleteServer: (id: string) => `${BASE}/mcp/servers/${id}`,
+    listTools: (id: string) => `${BASE}/mcp/servers/${id}/tools`,
   },
 
   // ------------------------------------------------------------------
@@ -107,8 +112,10 @@ export const ENDPOINTS = {
   // ------------------------------------------------------------------
   PLUGINS: {
     list: () => `${BASE}/plugins`,
+    install: () => `${BASE}/plugins/install`,
     enable: (id: string) => `${BASE}/plugins/${id}/enable`,
     disable: (id: string) => `${BASE}/plugins/${id}/disable`,
+    uninstall: (id: string) => `${BASE}/plugins/${id}`,
   },
 
   // ------------------------------------------------------------------

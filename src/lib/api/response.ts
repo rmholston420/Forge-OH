@@ -25,15 +25,18 @@ export function unwrap<T>(result: ApiResult<T>): T {
 }
 
 // ---------------------------------------------------------------------------
-// Paginated list
+// Paginated list — matches the BFF envelope: { data: [...], pageInfo: { ... } }
 // ---------------------------------------------------------------------------
 
-export interface PaginatedList<T> {
-  items: T[];
+export interface PageInfo {
   total: number;
   page: number;
   pageSize: number;
-  hasMore: boolean;
+}
+
+export interface PaginatedList<T> {
+  data: T[];
+  pageInfo: PageInfo;
 }
 
 export type PaginatedResult<T> = ApiResult<PaginatedList<T>>;

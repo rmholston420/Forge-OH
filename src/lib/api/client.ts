@@ -17,10 +17,16 @@ import type { ApiResult } from './response';
 // Configuration
 // ---------------------------------------------------------------------------
 
-/** Base URL for the Forge BFF. Override via NEXT_PUBLIC_BFF_BASE_URL. */
+/**
+ * Base URL for the Forge BFF.
+ *
+ * Uses NEXT_PUBLIC_BFF_URL — the same variable used by bff-client.ts and
+ * MSW handlers, so dev, test, and production all share a single env var.
+ * Default port 8000 matches the BFF uvicorn default.
+ */
 const BFF_BASE =
-  process.env.NEXT_PUBLIC_BFF_BASE_URL ??
-  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080');
+  process.env.NEXT_PUBLIC_BFF_URL ??
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000');
 
 // ---------------------------------------------------------------------------
 // Internal fetch wrapper

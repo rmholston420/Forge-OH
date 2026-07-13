@@ -1,12 +1,23 @@
 import { z } from 'zod';
 
+// ISO-8601 datetime — accepts both Z-suffix ("2026-07-13T00:00:00Z") and
+// numeric offset ("2026-07-13T00:00:00+00:00"). z.string().datetime() rejects
+// Z-suffix in some Zod versions, so we use a permissive regex instead.
+const isoDatetime = z
+  .string()
+  .regex(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+    'Expected ISO-8601 datetime string',
+  );
+
 export const RunStatusSchema = z.enum([
   'idle',
   'running',
   'streaming',
   'queued',
   'paused',
-  'awaiting_approval',
+  'awaiting-approval',
+  'disconnected',
   'succeeded',
   'failed',
   'blocked',
@@ -20,10 +31,10 @@ export const RunSummarySchema = z.object({
   status: RunStatusSchema,
   agentPresetName: z.string(),
   workspaceId: z.string(),
-  workspaceType: z.enum(['local', 'docker', 'remote_api']),
+  workspaceType: z.enum(['local', 'docker', 'remote-api']),
   activeTool: z.string().nullable(),
-  updatedAt: z.string().datetime(),
-  createdAt: z.string().datetime(),
+  updatedAt: isoDatetime,
+  createdAt: isoDatetime,
   elapsedMs: z.number().nullable(),
   estimatedCostUsd: z.number().nullable(),
 });
@@ -41,20 +52,27 @@ export const RunDetailSchema = RunSummarySchema.extend({
 
 export type RunDetail = z.infer<typeof RunDetailSchema>;
 
+// BFF list envelope: { data: [...], pageInfo: { total, page, pageSize } }
 export const RunListResponseSchema = z.object({
-  runs: z.array(RunSummarySchema),
-  total: z.number(),
-  page: z.number().optional(),
-  pageSize: z.number().optional(),
+  data: z.array(RunSummarySchema),
+  pageInfo: z.object({
+    total: z.number(),
+    page: z.number(),
+    pageSize: z.number(),
+  }),
 });
 
 export type RunListResponse = z.infer<typeof RunListResponseSchema>;
 
+// Canonical create-run request shape — aligns with BFF CreateRunRequest.
+// Single source of truth: features/runs/schemas.ts re-exports this type.
 export const CreateRunRequestSchema = z.object({
-  taskPrompt: z.string().min(1),
-  agentPresetId: z.string(),
-  workspaceId: z.string(),
-  title: z.string().optional(),
+  title: z.string().min(1, 'Task description is required'),
+  agentPresetId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  taskPrompt: z.string().optional(),
+  taskComplexity: z.enum(['simple', 'agentic']).default('agentic'),
+  contextLength: z.number().int().nonnegative().optional(),
 });
 
 export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;
