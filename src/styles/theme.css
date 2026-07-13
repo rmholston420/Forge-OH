@@ -1,0 +1,31 @@
+/* Theme utility classes derived from tokens */
+
+.surface {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.surface-elevated {
+  background-color: var(--color-bg-surface-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.text-primary { color: var(--color-text-primary); }
+.text-secondary { color: var(--color-text-secondary); }
+.text-tertiary { color: var(--color-text-tertiary); }
+.text-muted { color: var(--color-text-muted); }
+.text-accent { color: var(--color-text-accent); }
+.text-success { color: var(--color-text-success); }
+.text-warning { color: var(--color-text-warning); }
+.text-error { color: var(--color-text-error); }
+
+.state-running { color: var(--color-state-running); }
+.state-success { color: var(--color-state-success); }
+.state-warning { color: var(--color-state-warning); }
+.state-error { color: var(--color-state-error); }
+.state-paused { color: var(--color-state-paused); }
+
+.font-mono { font-family: var(--font-mono); }
+.font-ui { font-family: var(--font-ui); }

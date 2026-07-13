@@ -1,0 +1,87 @@
+:root {
+  /* Background */
+  --color-bg-canvas: #0F1115;
+  --color-bg-app: #12151B;
+  --color-bg-sidebar: #131722;
+  --color-bg-topbar: #141A24;
+  --color-bg-surface: #171D29;
+  --color-bg-surface-alt: #1C2331;
+  --color-bg-surface-elevated: #232C3E;
+  --color-bg-surface-inset: #10151D;
+  --color-bg-overlay: rgba(5, 8, 13, 0.72);
+
+  /* Borders */
+  --color-border-subtle: rgba(255,255,255,0.08);
+  --color-border-default: rgba(255,255,255,0.12);
+  --color-border-strong: rgba(255,255,255,0.18);
+  --color-border-accent: rgba(77,163,255,0.44);
+
+  /* Text */
+  --color-text-primary: #F4F7FB;
+  --color-text-secondary: #BAC4D6;
+  --color-text-tertiary: #8893A7;
+  --color-text-muted: #6E788B;
+  --color-text-accent: #A9D0FF;
+  --color-text-success: #9BE6BF;
+  --color-text-warning: #FFD789;
+  --color-text-error: #FFB0B7;
+
+  /* Accent */
+  --color-accent-primary: #4DA3FF;
+  --color-accent-hover: #6CB4FF;
+  --color-accent-active: #3D8DE3;
+  --color-accent-soft: rgba(77,163,255,0.14);
+
+  /* State */
+  --color-state-success: #35C47C;
+  --color-state-warning: #F2B84B;
+  --color-state-error: #F0616B;
+  --color-state-paused: #C28BFF;
+  --color-state-running: #4DA3FF;
+
+  /* Diff */
+  --color-diff-added-bg: rgba(53,196,124,0.12);
+  --color-diff-removed-bg: rgba(240,97,107,0.12);
+
+  /* Terminal */
+  --color-terminal-bg: #0D1219;
+  --color-terminal-command: #D5E6FF;
+  --color-terminal-stderr: #FF9EA6;
+  --color-terminal-prompt: #7AA2F7;
+
+  /* Typography */
+  --font-ui: 'Inter', 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  --font-size-body: 14px;
+  --font-size-code: 12.5px;
+  --font-size-meta: 12px;
+
+  /* Spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* Layout */
+  --layout-topbar-height: 56px;
+  --layout-tabs-height: 42px;
+  --layout-sidebar-collapsed: 72px;
+  --layout-sidebar-expanded: 248px;
+  --layout-inspector-width: 384px;
+
+  /* Motion */
+  --motion-instant: 80ms;
+  --motion-fast: 140ms;
+  --motion-normal: 200ms;
+  --motion-easing: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
