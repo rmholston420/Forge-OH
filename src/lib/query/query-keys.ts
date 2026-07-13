@@ -1,48 +1,63 @@
 /**
- * Centralized, hierarchical TanStack Query key registry.
- * All keys are typed tuples for surgical cache invalidation.
+ * Centralized TanStack Query key registry.
+ * Every feature domain owns a namespace here.
+ * Hierarchy: [domain, ...specifics]
  */
-export const queryKeys = {
-  runs: {
-    all: () => ['runs'] as const,
-    list: () => ['runs', 'list'] as const,
-    detail: (id: string) => ['runs', 'detail', id] as const,
-    events: (id: string) => ['runs', 'events', id] as const,
-    files: (id: string) => ['runs', 'files', id] as const,
-    fileDiff: (id: string, path: string) => ['runs', 'diff', id, path] as const,
-    commands: (id: string) => ['runs', 'commands', id] as const,
-    artifacts: (id: string) => ['runs', 'artifacts', id] as const,
-    traces: (id: string) => ['runs', 'traces', id] as const,
-    plan: (id: string) => ['runs', 'plan', id] as const,
-  },
-  agents: {
-    presets: () => ['agents', 'presets'] as const,
-  },
-  workspaces: {
-    all: () => ['workspaces'] as const,
-    list: () => ['workspaces', 'list'] as const,
-    detail: (id: string) => ['workspaces', 'detail', id] as const,
-  },
-  mcp: {
-    all: () => ['mcp'] as const,
-    list: () => ['mcp', 'list'] as const,
-    detail: (id: string) => ['mcp', 'detail', id] as const,
-  },
-  plugins: {
-    all: () => ['plugins'] as const,
-    list: () => ['plugins', 'list'] as const,
-    detail: (id: string) => ['plugins', 'detail', id] as const,
-  },
-  secrets: {
-    all: () => ['secrets'] as const,
-    list: () => ['secrets', 'list'] as const,
-  },
-  observability: {
-    summary: () => ['observability', 'summary'] as const,
-    traces: () => ['observability', 'traces'] as const,
-    trace: (id: string) => ['observability', 'trace', id] as const,
-  },
-  browser: {
-    sessions: (runId: string) => ['browser', 'sessions', runId] as const,
-  },
-} as const;
+export const runKeys = {
+  all:     ['runs']                    as const,
+  lists:   () => ['runs', 'list']      as const,
+  detail:  (id: string) => ['runs', 'detail', id] as const,
+  events:  (id: string) => ['runs', 'events', id] as const,
+  plan:    (id: string) => ['runs', 'plan',   id] as const,
+  files:   (id: string) => ['runs', 'files',  id] as const,
+  diff:    (id: string, path: string) => ['runs', 'diff', id, path] as const,
+  presets: ['runs', 'presets']         as const,
+};
+
+export const workspaceKeys = {
+  all:    ['workspaces']                        as const,
+  detail: (id: string) => ['workspaces', id]    as const,
+};
+
+export const mcpKeys = {
+  all:     ['mcp']                as const,
+  servers: ['mcp', 'servers']    as const,
+  server:  (id: string) => ['mcp', 'servers', id] as const,
+};
+
+export const pluginKeys = {
+  all:    ['plugins']             as const,
+  detail: (id: string) => ['plugins', id] as const,
+};
+
+export const secretKeys = {
+  all: ['secrets'] as const,
+};
+
+export const observabilityKeys = {
+  metrics: (runId: string) => ['observability', 'metrics', runId] as const,
+};
+
+export const traceKeys = {
+  spans: (runId: string) => ['trace', 'spans', runId] as const,
+};
+
+export const browserKeys = {
+  frames: (runId: string) => ['browser', 'frames', runId] as const,
+};
+
+export const artifactKeys = {
+  list: (runId: string) => ['artifacts', runId] as const,
+};
+
+export const terminalKeys = {
+  commands: (runId: string) => ['terminal', 'commands', runId] as const,
+};
+
+export const settingsKeys = {
+  all: ['settings'] as const,
+};
+
+export const notificationKeys = {
+  all: ['notifications'] as const,
+};
