@@ -42,8 +42,10 @@ cp .env.example .env.local
 npm run dev
 ```
 
-> Note: `@hookform/resolvers` and `react-hook-form` are needed for NewRunComposer.
-> Run `npm install react-hook-form @hookform/resolvers` to add them.
+> Note: Install Phase 2 deps:
+> ```bash
+> npm install monaco-editor @xterm/xterm @xterm/addon-fit
+> ```
 
 ### BFF
 
@@ -77,8 +79,8 @@ npm run test:e2e
 |-------|--------|-------------|
 | **Phase 0** | ✅ Done | App shell, tokens, core components, MSW mocks, Storybook, E2E smoke |
 | **Phase 1** | ✅ Done | Run supervision MVP — runs list, new run composer, run detail + streaming, plan rail, approval banner |
-| **Phase 2** | 🚧 Next | Code, terminal, artifact review |
-| **Phase 3** | ⏳ Planned | Workspaces, MCP, plugins, secrets |
+| **Phase 2** | ✅ Done | Code review (Monaco diff), terminal emulator (xterm.js), artifact viewer |
+| **Phase 3** | 🚧 Next | Workspaces, MCP, plugins, secrets |
 | **Phase 4** | ⏳ Planned | Browser automation, observability, trace explorer |
 | **Phase 5** | ⏳ Planned | Approvals, fork/compare, Rigpa-LMS integration, hardening |
 
