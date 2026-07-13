@@ -1,22 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Workspace } from './schemas';
+import { bffFetch } from '@/lib/http/bff-client';
 
 const BASE = '/api/workspaces';
 
 export const workspaceKeys = {
-  all:    ['workspaces']           as const,
+  all: ['workspaces'] as const,
   detail: (id: string) => ['workspaces', id] as const,
 };
 
-// ---------------------------------------------------------------------------
-// Queries
-// ---------------------------------------------------------------------------
+async function readJsonOrThrow(res: Response) {
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Workspace API ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return res.json();
+}
 
 export function useWorkspaces() {
   return useQuery<Workspace[]>({
     queryKey: workspaceKeys.all,
-    queryFn:  () => fetch(BASE).then(r => r.json()),
-    // Avoid treating every poll result as stale; 4 s matches the run-list hook.
+    queryFn: async () => {
+      const res = await bffFetch(BASE);
+      return readJsonOrThrow(res);
+    },
     staleTime: 4_000,
   });
 }
@@ -24,25 +31,25 @@ export function useWorkspaces() {
 export function useWorkspace(id: string) {
   return useQuery<Workspace>({
     queryKey: workspaceKeys.detail(id),
-    queryFn:  () => fetch(`${BASE}/${id}`).then(r => r.json()),
-    enabled:  !!id,
+    queryFn: async () => {
+      const res = await bffFetch(`${BASE}/${id}`);
+      return readJsonOrThrow(res);
+    },
+    enabled: !!id,
     staleTime: 10_000,
   });
 }
 
-// ---------------------------------------------------------------------------
-// Mutations
-// ---------------------------------------------------------------------------
-
 export function useCreateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: Partial<Workspace>) =>
-      fetch(BASE, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-      }).then(r => r.json()),
+    mutationFn: async (payload: Partial<Workspace>) => {
+      const res = await bffFetch(BASE, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      return readJsonOrThrow(res);
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: workspaceKeys.all }),
   });
 }
@@ -50,12 +57,13 @@ export function useCreateWorkspace() {
 export function useUpdateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...patch }: Partial<Workspace> & { id: string }) =>
-      fetch(`${BASE}/${id}`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(patch),
-      }).then(r => r.json()),
+    mutationFn: async ({ id, ...patch }: Partial<Workspace> & { id: string }) => {
+      const res = await bffFetch(`${BASE}/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      return readJsonOrThrow(res);
+    },
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: workspaceKeys.all });
       qc.invalidateQueries({ queryKey: workspaceKeys.detail(id) });
@@ -66,8 +74,10 @@ export function useUpdateWorkspace() {
 export function useDeleteWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      fetch(`${BASE}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    mutationFn: async (id: string) => {
+      const res = await bffFetch(`${BASE}/${id}`, { method: 'DELETE' });
+      return readJsonOrThrow(res);
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: workspaceKeys.all }),
   });
 }
@@ -75,8 +85,10 @@ export function useDeleteWorkspace() {
 export function useResetWorkspace() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      fetch(`${BASE}/${id}/reset`, { method: 'POST' }).then(r => r.json()),
+    mutationFn: async (id: string) => {
+      const res = await bffFetch(`${BASE}/${id}/reset`, { method: 'POST' });
+      return readJsonOrThrow(res);
+    },
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: workspaceKeys.all });
       qc.invalidateQueries({ queryKey: workspaceKeys.detail(id) });
@@ -86,8 +98,9 @@ export function useResetWorkspace() {
 
 export function useTestWorkspaceConnection() {
   return useMutation({
-    mutationFn: (id: string) =>
-      fetch(`${BASE}/${id}/test`, { method: 'POST' }).then(r => r.json()),
+    mutationFn: async (id: string) => {
+      const res = await bffFetch(`${BASE}/${id}/test`, { method: 'POST' });
+      return readJsonOrThrow(res);
+    },
   });
 }
-
