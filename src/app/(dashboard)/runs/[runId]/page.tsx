@@ -51,8 +51,12 @@ const toDisplayEvent = (event: unknown): DisplayEvent => {
   };
 };
 
-export default function RunDetailPage({ params }: { params: { runId: string } }) {
-  const { runId } = params;
+export default function RunDetailPage({
+  params,
+}: {
+  params: Promise<{ runId: string }>;
+}) {
+  const { runId } = React.use(params);
   const { data: run, isLoading: runLoading, error: runError } = useRunDetail(runId);
   const { data: bootstrapEvents = [] } = useRunEvents(runId);
 
