@@ -1,20 +1,43 @@
-# Target User
+# Target User Persona — Forge-OH
 
-## Primary: Rigpa-LMS Instructor / Course Author
+## Primary: The Supervising Developer
 
-- **Role**: Creating coding exercises, reviewing student submissions, authoring lesson content
-- **Technical level**: Comfortable with code, not a full-stack engineer
-- **Primary need**: Supervise AI agents doing pedagogical content work without getting lost in raw LLM output
-- **Key frustration**: Agents that loop silently, make invisible changes, or produce outputs that don't fit the LMS
+**Name**: Alex  
+**Role**: Senior software engineer or technical lead  
+**Context**: Working on a complex, multi-file codebase with AI assistance
 
-## Secondary: Software Developer (standalone use)
+**Goals**:
+- Delegate well-scoped programming tasks to an autonomous agent
+- Maintain clear visibility into what the agent is doing at all times
+- Intervene quickly when the agent goes off-course or loops
+- Review and approve file changes before they land in the codebase
+- Export clean artifacts (patches, reports) for PR review
 
-- **Role**: Using Forge-OH as a standalone code agent supervision console
-- **Technical level**: Developer-grade; reads diffs, understands git, reviews PRs
-- **Primary need**: See what the agent is doing, pause/approve/reject steps, export artifacts
+**Pain points with existing tools**:
+- Agent tools are either too opaque (black box execution) or too verbose (raw JSON logs)
+- No clear way to pause, inspect, and redirect a running agent
+- Approval flows are buried or missing
+- No persistent memory across sessions — agent re-learns the same context every time
 
-## Design Implications
+**What Forge-OH gives Alex**:
+- Summary-first event stream: understands what happened without reading raw logs
+- Plan rail: knows exactly which step the agent is on and what's next
+- Approval banners: unmissable, actionable, never buried
+- Loop guard: automatic escalation before the agent wastes 20 iterations
+- Episodic memory: agent remembers past decisions, failed approaches, and project conventions
 
-- Supervision-first: the most important action is always visible and one click away
-- Status is conveyed by text + icon, never color alone (accessibility)
-- Approval banners are full-width, amber, unmissable — never buried in the event stream
+## Secondary: The LMS Student (Rigpa-LMS Context)
+
+**Name**: Sam  
+**Role**: Student in a software engineering or AI course  
+**Context**: Working on course projects with an embedded AI coding assistant
+
+**Goals**:
+- Get meaningful coding help on assignments without just getting the answer
+- Understand what the AI agent did and why
+- Submit artifact bundles (patches, reports) that demonstrate learning
+
+**What Forge-OH gives Sam**:
+- Course ribbon showing current assignment context injected into every agent session
+- Artifact packaging for assignment submission
+- Learning-mode agent presets (explain-as-you-go, hint-first policies)

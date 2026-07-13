@@ -1,28 +1,53 @@
 # Forge-OH Coding Conventions
 
-## Python (BFF)
+## Domain Object Naming (Never Rename)
 
-- Python 3.13+. Type hints on all public functions.
-- All I/O in async FastAPI routes must be non-blocking. Use `aiosqlite` for
-  SQLite, `httpx.AsyncClient` for HTTP, `asyncio.to_thread()` for any remaining
-  sync calls.
-- Pydantic v2 models for all request/response bodies.
-- Never import from `bff.main:app` — import from `bff.main:app_with_sio`.
+All frontend contracts, API routes, mock fixtures, and agent context must use these exact names:
 
-## TypeScript (Frontend)
+| Object | Purpose |
+|--------|---------|
+| `Run` | One live or historical execution session |
+| `AgentPreset` | Reusable behavior: model, tools, policies, skills |
+| `Workspace` | Execution environment: local, docker, remote_api |
+| `ToolEvent` | Single action, observation, browser step, or file operation |
+| `Artifact` | File change, patch, screenshot, report, downloadable output |
+| `Integration` | MCP server, plugin, endpoint, external system |
+| `TraceSpan` | OTEL record for LLM, tool, workspace, browser, network |
+| `SecretRef` | Metadata only — raw values never in UI |
+| `PlanNode` | One step in an agent task decomposition tree |
+| `CommandExecution` | Shell command: text, cwd, exit code, duration, risk level |
+| `BrowserSession` | Browser automation session: URL, step history, viewport |
 
-- TypeScript strict mode. No `any` without an explanatory comment.
-- Zod schemas in `src/lib/schemas/` are the single source of truth for all API
-  shapes. Derive TypeScript types from schemas with `z.infer<>`.
-- Zustand stores in `src/lib/state/` for global UI state. TanStack Query for
-  server state. Never mix them.
-- Socket.IO callbacks passed to `useRunStream` must be stable references
-  (created with `useCallback` or stored in `useRef`). Inline arrow functions
-  will cause the socket to reconnect on every render.
-- Feature slices in `src/features/` are self-contained: hooks, store, types,
-  and components co-located.
+## TypeScript Rules
 
-## Commits
+- `strict: true` is always on — never use `any` or `// @ts-ignore`
+- Run `tsc --noEmit` before every commit
+- All API contracts are validated with Zod schemas in `src/lib/schemas/`
+- No direct OpenHands SDK imports in frontend — all via BFF proxy
 
-Conventional Commits: `type(scope): description`
-Types: feat, fix, docs, refactor, test, chore
+## API Conventions
+
+- All BFF routes are prefixed `/api/`
+- Run operations: `/api/runs`, `/api/runs/:id`, `/api/runs/:id/events`
+- All responses follow `{ data, error, meta }` envelope pattern
+- Pagination uses `cursor`-based pagination, not offset
+
+## Component Conventions
+
+- Every core component has three files: `.tsx`, `.module.css`, `.stories.tsx`
+- Domain components live in `src/components/domain/`
+- Feature logic lives in `src/features/<slice>/`
+- Shared utilities live in `src/lib/`
+
+## Design Token Rules
+
+- **Never hardcode colors, spacing, or font sizes**
+- All values must reference CSS custom properties from `src/styles/tokens.css`
+- State colors are semantic: use `--color-state-running`, `--color-state-error`, etc.
+- Never invent new token names — only use tokens defined in the spec
+
+## Secret Handling
+
+- Raw secret values are NEVER in the UI, NEVER in logs
+- `SecretRef` objects carry metadata only (name, type, last-rotated)
+- Terminal output with secrets is masked before display

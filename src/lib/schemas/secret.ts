@@ -1,67 +1,36 @@
 import { z } from 'zod';
 
-export const SecretScopeSchema = z.enum(['global', 'workspace', 'run', 'user', 'deployment']);
-export type SecretScope = z.infer<typeof SecretScopeSchema>;
+// Raw secret values NEVER appear in the UI or API responses.
+// Only SecretRef metadata is returned.
+export const SecretTypeSchema = z.enum([
+  'api_key',
+  'oauth_token',
+  'ssh_key',
+  'env_var',
+  'certificate',
+  'other',
+]);
 
 export const SecretRefSchema = z.object({
   id: z.string(),
-  name: z.string().default(''),
-  key: z.string().optional(),
-  scope: SecretScopeSchema,
-  scopeId: z.string().optional(),
+  name: z.string(),
+  type: SecretTypeSchema,
+  description: z.string().optional(),
+  lastRotatedAt: z.string().datetime().nullable().optional(),
+  createdAt: z.string().datetime(),
+  // Raw value is intentionally absent — never included in API responses
 });
+
 export type SecretRef = z.infer<typeof SecretRefSchema>;
 
-export const SecretMetadataSchema = z.object({
-  description: z.string().optional(),
-  tags: z.array(z.string()).default([]),
-  inUse: z.boolean().default(false),
-  usedIn: z.array(z.string()).default([]),
-  lastRotatedAt: z.string().optional(),
-  createdBy: z.string().optional(),
-});
-export type SecretMetadata = z.infer<typeof SecretMetadataSchema>;
+export const SecretRefListSchema = z.array(SecretRefSchema);
+export type SecretRefList = z.infer<typeof SecretRefListSchema>;
 
-export const SecretSchema = SecretRefSchema.extend({
-  maskedValue: z.string(),
-  updatedAt: z.string(),
-  createdAt: z.string().optional(),
-  rawValue: z.string().optional(),
-  description: z.string().optional(),
-  tags: z.array(z.string()).default([]),
-  inUse: z.boolean().default(false),
-  usedIn: z.array(z.string()).default([]),
-  lastRotatedAt: z.string().optional(),
-  createdBy: z.string().optional(),
-});
-export type Secret = z.infer<typeof SecretSchema>;
-
-export const CreateSecretSchema = z.object({
-  name: z.string().min(1).default(''),
-  key: z.string().min(1).optional(),
+export const CreateSecretRequestSchema = z.object({
+  name: z.string().min(1),
+  type: SecretTypeSchema,
   value: z.string().min(1),
-  scope: SecretScopeSchema.default('global'),
-  scopeId: z.string().optional(),
   description: z.string().optional(),
-  tags: z.array(z.string()).default([]),
 });
-export type CreateSecret = z.infer<typeof CreateSecretSchema>;
 
-export const UpsertSecretSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().optional(),
-  key: z.string().optional(),
-  value: z.string().min(1).optional(),
-  newValue: z.string().min(1).optional(),
-  scope: SecretScopeSchema.optional(),
-  scopeId: z.string().optional(),
-  description: z.string().optional(),
-  tags: z.array(z.string()).default([]),
-});
-export type UpsertSecret = z.infer<typeof UpsertSecretSchema>;
-
-export const RotateSecretSchema = z.object({
-  id: z.string(),
-  newValue: z.string(),
-});
-export type RotateSecret = z.infer<typeof RotateSecretSchema>;
+export type CreateSecretRequest = z.infer<typeof CreateSecretRequestSchema>;

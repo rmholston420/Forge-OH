@@ -1,27 +1,38 @@
 import { z } from 'zod';
 
 export const BrowserActionTypeSchema = z.enum([
-  'navigate', 'click', 'type', 'scroll', 'screenshot',
-  'wait', 'hover', 'select', 'keypress', 'back', 'forward',
+  'navigate',
+  'click',
+  'type',
+  'scroll',
+  'screenshot',
+  'wait',
+  'close',
 ]);
 
-export const BrowserFrameSchema = z.object({
-  id: z.string(),
-  runId: z.string(),
-  seq: z.number().int(),
+export const BrowserStepSchema = z.object({
+  stepId: z.string(),
   action: BrowserActionTypeSchema,
-  url: z.string().nullable().default(null),
-  screenshotUrl: z.string().nullable().default(null),
-  selector: z.string().nullable().default(null),
-  value: z.string().nullable().default(null),
-  boundingBox: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }).nullable().default(null),
-  durationMs: z.number().nullable().default(null),
-  error: z.string().nullable().default(null),
-  timestamp: z.string(),
+  url: z.string().url().optional(),
+  selector: z.string().optional(),
+  value: z.string().optional(),
+  screenshotUrl: z.string().url().optional(),
+  timestamp: z.string().datetime(),
+  durationMs: z.number().nonnegative().optional(),
+  error: z.string().optional(),
 });
 
-export type BrowserFrame = z.infer<typeof BrowserFrameSchema>;
-export type BrowserActionType = z.infer<typeof BrowserActionTypeSchema>;
+export type BrowserStep = z.infer<typeof BrowserStepSchema>;
 
+export const BrowserSessionSchema = z.object({
+  id: z.string(),
+  runId: z.string(),
+  startUrl: z.string().url().optional(),
+  currentUrl: z.string().url().optional(),
+  viewportWidth: z.number().int().positive().optional(),
+  viewportHeight: z.number().int().positive().optional(),
+  steps: z.array(BrowserStepSchema),
+  createdAt: z.string().datetime(),
+});
 
-export const BrowserStateSchema = BrowserFrameSchema;
+export type BrowserSession = z.infer<typeof BrowserSessionSchema>;

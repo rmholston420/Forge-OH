@@ -1,19 +1,25 @@
-# ADR-002: Frontend Never Talks Directly to OpenHands
+# ADR 002 — Frontend Never Talks Directly to OpenHands
 
 **Status**: Accepted  
-**Date**: 2026-07-12
+**Date**: July 2026
+
+## Context
+
+The OpenHands SDK exposes a rich REST and WebSocket API. It is tempting to call it directly from the frontend for simplicity, especially during early development.
 
 ## Decision
 
-All frontend traffic routes through the BFF. The frontend has no direct connection to OpenHands.
+The frontend is **permanently** prohibited from importing, calling, or connecting directly to any OpenHands endpoint. All traffic flows through the Forge BFF.
 
 ## Rationale
 
-- BFF is the policy injection point: course context, loop-guard, episodic memory
-- BFF normalizes all upstream OpenHands payload shapes
-- BFF redacts secrets before any data reaches the browser
-- BFF enforces delegation contract templates on every agent dispatch
+1. **Policy injection**: The BFF is the only place that injects loop-guard enforcement, course context, episodic memory, and delegation contracts. Direct calls bypass all safety policies.
+2. **Secret isolation**: OpenHands may have access to workspace secrets. The BFF enforces that raw values never reach the frontend.
+3. **Rigpa-LMS integration**: Course context enrichment happens in the BFF. Direct calls produce context-blind agent behavior.
+4. **Audit trail**: All agent instructions must pass through the BFF audit log.
 
-## Consequence
+## Enforcement
 
-All API routes live under `/api/` in the Next.js app, which proxies to the FastAPI BFF.
+- ESLint rule banning direct imports of `@all-hands-ai/openhands` in `src/`
+- CI check: `grep -r 'openhands' src/ --include='*.ts' --include='*.tsx'` must return zero results
+- All OpenHands calls are in `bff/openhands_client.py` only

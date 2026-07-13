@@ -1,0 +1,75 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-meta);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  line-height: 1.4;
+}
+
+/* State Language — per spec */
+.status-idle {
+  color: var(--color-text-tertiary);
+  background: rgba(255,255,255,0.04);
+  border-color: var(--color-border-subtle);
+}
+
+.status-running,
+.status-streaming {
+  color: var(--color-state-running);
+  background: rgba(77,163,255,0.12);
+  border-color: rgba(77,163,255,0.25);
+}
+
+.status-queued,
+.status-paused {
+  color: var(--color-state-paused);
+  background: rgba(194,139,255,0.12);
+  border-color: rgba(194,139,255,0.25);
+}
+
+.status-awaiting_approval {
+  color: var(--color-state-warning);
+  background: rgba(242,184,75,0.12);
+  border-color: rgba(242,184,75,0.25);
+}
+
+.status-succeeded {
+  color: var(--color-state-success);
+  background: rgba(53,196,124,0.12);
+  border-color: rgba(53,196,124,0.25);
+}
+
+.status-failed,
+.status-blocked {
+  color: var(--color-state-error);
+  background: rgba(240,97,107,0.12);
+  border-color: rgba(240,97,107,0.25);
+}
+
+/* Dot indicator */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.dotPulse {
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dotPulse { animation: none; }
+}

@@ -1,0 +1,32 @@
+export const mockMcpServers = [
+  {
+    id: 'mcp-filesystem',
+    name: 'Filesystem MCP',
+    description: 'Read and write files within the workspace root.',
+    status: 'connected',
+    toolCount: 8,
+    authState: 'none',
+    lastCallAt: '2026-07-13T10:01:00.000Z',
+    errorMessage: null,
+  },
+  {
+    id: 'mcp-github',
+    name: 'GitHub MCP',
+    description: 'GitHub API operations: issues, PRs, repos, code search.',
+    status: 'connected',
+    toolCount: 24,
+    authState: 'token',
+    lastCallAt: '2026-07-13T09:55:00.000Z',
+    errorMessage: null,
+  },
+  {
+    id: 'mcp-browser',
+    name: 'Browser MCP',
+    description: 'Playwright-based browser automation.',
+    status: 'warning',
+    toolCount: 12,
+    authState: 'none',
+    lastCallAt: '2026-07-13T08:00:00.000Z',
+    errorMessage: 'Chromium binary not found. Run: npx playwright install chromium',
+  },
+];
