@@ -56,3 +56,7 @@ playwright-next-debug.log
 # Local scratch helpers created during triage
 tests/
 scripts/
+
+# Generated SQLite databases
+bff/data/
+data/
