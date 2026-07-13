@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import socketio
 
-from bff.routers import runs, workspaces, mcp, observability, secrets, agents, plugins
+from bff.routers import runs, workspaces, mcp, observability, secrets, agents, plugins, lms
 
 # Socket.IO server
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
@@ -30,6 +30,7 @@ app.include_router(observability.router, prefix="/api", tags=["observability"])
 app.include_router(secrets.router, prefix="/api", tags=["secrets"])
 app.include_router(agents.router, prefix="/api", tags=["agents"])
 app.include_router(plugins.router, prefix="/api", tags=["plugins"])
+app.include_router(lms.router, prefix="/api", tags=["lms"])  # Slice 5C: Rigpa-LMS
 
 # ASGI mount for Socket.IO
 app_with_sio = socketio.ASGIApp(sio, other_asgi_app=app)
