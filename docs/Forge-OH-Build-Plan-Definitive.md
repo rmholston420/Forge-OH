@@ -60,6 +60,8 @@ ollama>=0.31.2
 vllm>=0.25.0
 ```
 
+> ⚠️ **Known issue — `openhands` pip version string**: `cloud-1.46.0` is not a valid PyPI version identifier (hyphens are not permitted). Until a proper PyPI release exists, install via a direct GitHub release URL or a private index. Do not rely on `pip install openhands==cloud-1.46.0` succeeding in a clean environment.
+
 **Runtime targets** :
 - Python: `3.13.x`
 - Node.js: `24.18.0` LTS
@@ -136,6 +138,8 @@ These five modules must be implemented in the BFF **before Phase 1 feature work 
 
 ### 1. Loop Guard (`bff/services/loop_guard.py`)
 
+> ✅ **Corrected reference implementation** (July 13, 2026 audit): The original spec had an off-by-one bug — it counted history *before* appending the new fingerprint, causing loops to be detected on the 4th occurrence instead of the 3rd. The correct implementation appends first, then counts.
+
 ```python
 import hashlib
 from collections import deque
@@ -159,8 +163,10 @@ class LoopGuard:
 
     def is_looping(self, fp: ActionFingerprint) -> bool:
         h = self.fingerprint(fp)
-        count = sum(1 for x in self.history if x == h)
+        # IMPORTANT: append BEFORE counting so the threshold is evaluated
+        # against the full inclusive history (triggers on 3rd hit, not 4th).
         self.history.append(h)
+        count = sum(1 for x in self.history if x == h)
         return count >= self.threshold
 
     def suggest_escalation(self, fp: ActionFingerprint) -> str:
@@ -170,6 +176,10 @@ class LoopGuard:
             "rewrite": "delegate_to_human",
         }
         return escalation_map.get(fp.approach, "delegate_to_human")
+
+    def reset(self) -> None:
+        """Clear loop detection history (e.g., after a successful escalation)."""
+        self.history.clear()
 ```
 
 ### 2. Product Context Loader (`bff/services/context_loader.py`)
@@ -187,6 +197,8 @@ Reads `.openhands/context/` ADR directory and injects relevant documents into th
     └── personas/
         └── target-user.md
 ```
+
+> ⚠️ **Gap**: The `.openhands/` directory and all five context files must be created at repo root. Without them, `context_loader.py` silently injects nothing — a correctness failure that will not crash the BFF but will degrade agent planning quality.
 
 ### 3. Episodic Memory (`bff/services/episodic_memory.py`)
 
@@ -311,7 +323,7 @@ The agent must use these exact token values and must **never invent new token na
 All frontend contracts, API routes, mock fixtures, and agent context must use these exact domain object names .
 
 | Object | Purpose |
-|--------|---------| 
+|--------|---------|
 | `Run` | One live or historical execution session (maps to OpenHands `conversation`) |
 | `AgentPreset` | Reusable behavior: model, tools, policies, skills |
 | `Workspace` | Execution environment: `local`, `docker`, `remote_api` |
@@ -360,7 +372,7 @@ forge-oh/
         observability/route.ts
         secrets/route.ts
     components/
-      core/       (button, input, tabs, badge, table, panel,
+      core/       (button, input, tabs, badge, status-badge, table, panel,
                    empty-state, banner, modal, drawer, skeleton)
       navigation/ (sidebar, topbar, command-palette)
       domain/     (run-card, event-card, plan-node, command-block,
@@ -411,7 +423,7 @@ forge-oh/
       loop_guard.py
       episodic_memory.py
       conflict_checker.py
-      model_router.py        ← NEW: Ollama-first, vLLM fallback
+      model_router.py        ← Ollama-first, vLLM fallback
     openhands_client.py
   .openhands/
     context/
@@ -420,6 +432,19 @@ forge-oh/
       decisions/
       personas/
 ```
+
+***
+
+## BFF Startup — Critical ASGI Entry Point
+
+> ⚠️ **The canonical ASGI entry point is `app_with_sio`, NOT `app`.** If Uvicorn is started with `bff.main:app`, the Socket.IO server is silently bypassed and all WebSocket connections will fail.
+
+**Correct startup command:**
+```bash
+uvicorn bff.main:app_with_sio --host 0.0.0.0 --port 8001 --reload
+```
+
+This must be the command used in the Dockerfile, `Makefile`, and any CI/CD scripts. Never reference `bff.main:app` as a startup target.
 
 ***
 
@@ -465,6 +490,8 @@ export type RunDetailUIState = {
 
 ### Streaming Architecture (Socket.IO)
 
+> ⚠️ **Callback stability**: In `useRunStream.ts`, all callback parameters (`onEvent`, `onStatusChange`, etc.) must be wrapped in `useRef` internally before being referenced inside the `useEffect` dependency array. Passing inline arrow functions from the call site will cause the socket to disconnect and reconnect on every render — a serious performance and correctness bug.
+
 ```
 1. Load run metadata + bootstrap event history over HTTP
 2. Connect Socket.IO: conversation_id + latest_event_id
@@ -508,12 +535,26 @@ export type RunDetailUIState = {
 
 1. **App shell layout**: sidebar (collapsed 72px / expanded 248px), top bar (56px), content canvas, optional right inspector (384px). All dimensions from token values, not hardcoded.
 2. **`tokens.css`**: all color, typography, spacing, radius, and motion values as CSS custom properties — exactly matching the design system specification.
-3. **Core component primitives**: Button (Primary/Secondary/Tertiary/Destructive × Small/Medium/Large × all states), Input (Text/Search/Path/Secret/Select × all states), Tabs (Underline/Pill/Segmented), Badge/Chip/StatusBadge (all semantic colors), Table primitives, Panel, EmptyState, Banner, Modal, Drawer, Skeleton.
+3. **Core component primitives**: Button (Primary/Secondary/Tertiary/Destructive × Small/Medium/Large × all states), Input (Text/Search/Path/Secret/Select × all states), Tabs (Underline/Pill/Segmented), Badge/Chip/**StatusBadge** (all semantic colors — StatusBadge is a **separate** component from Badge, carrying the full run-state semantic color mapping), **Table** primitives (required — used by Runs list, Workspaces list, Secrets list), Panel, EmptyState, Banner, Modal, Drawer, Skeleton.
 4. **MSW mock fixtures**: for all API routes — runs, events, workspaces, traces, plugins, MCP, browser events, secrets. Fixture shapes must mirror live OpenHands payload shapes exactly.
 5. **Frontend route skeleton**: all routes rendered from mock data, with correct layout nesting and navigation.
 6. **Storybook 10.4.6**: all core components documented with all variants and states.
 7. **Playwright smoke harness**: shell renders, all routes resolve, sidebar navigation works, command palette opens.
 8. **BFF scaffold**: FastAPI app with all router stubs, `loop_guard.py`, `context_loader.py`, `episodic_memory.py`, `conflict_checker.py`, and `model_router.py` with Ollama-first / vLLM-fallback logic.
+
+### Phase 0 Open Items (as of July 13, 2026 Audit)
+
+The following Phase 0 deliverables are scaffolded but **not yet complete**:
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `.openhands/` context directory | ❌ Missing | Create `architecture.md`, `conventions.md`, `decisions/001`, `decisions/002`, `personas/target-user.md` |
+| MSW mock fixtures | ❌ Missing | Create fixture files in `src/tests/fixtures/` |
+| Zod schemas | ❌ Missing | Populate `src/lib/schemas/` with typed schemas for all 9 domain objects |
+| `Table` core component | ❌ Missing | Create `Table.tsx`, `Table.module.css`, `Table.stories.tsx` |
+| `StatusBadge` component | ❌ Missing | Create as a distinct component from `Badge` with run-state semantic color map |
+| Next.js API route stubs | ❌ Missing | Create stub `route.ts` files in `src/app/api/` |
+| Storybook version | ⚠️ v8 installed | `package.json` has `^8.6.14`; spec requires `^10.4.6` — upgrade before Phase 1 |
 
 ### Exit Criteria
 
@@ -523,6 +564,7 @@ export type RunDetailUIState = {
 - Token values match design system specification exactly.
 - Zero TypeScript errors, zero ESLint errors.
 - Ollama connection test passes with `devstral-small:24b`.
+- All Phase 0 Open Items above are resolved.
 
 ### Agent Prompt
 
@@ -534,6 +576,9 @@ Generate tokens.css with all color, typography, spacing, radius, and motion toke
 using exact values from the design specification.
 Build core component primitives: Button, Input, Tabs, Badge, StatusBadge, Table,
 Panel, EmptyState, Banner, Modal, Drawer, Skeleton.
+StatusBadge is a SEPARATE component from Badge — it maps all run states
+(idle/running/streaming/paused/awaiting_approval/succeeded/failed/blocked) to
+their canonical state tokens.
 Generate MSW fixtures for runs, events, workspaces, plugins, mcp, secrets.
 Set up Storybook 10.4.6 with stories for all core components showing all variants and states.
 Set up Playwright smoke tests for layout and navigation.
@@ -933,21 +978,30 @@ The plugin sends this to the Forge BFF, which transforms it into an OpenHands ta
 **Goal**: Ensure Ollama-first / vLLM-fallback routing is robust, observable, and tunable .
 
 **BFF `model_router.py`** logic:
+
 ```python
+import os
+
+DEVSTRAL_MODEL = os.getenv("DEVSTRAL_MODEL", "devstral-small:24b")
+FAST_MODEL     = os.getenv("FAST_MODEL",     "qwen3:14b")
+VLLM_FALLBACK_MODEL = os.getenv("VLLM_FALLBACK_MODEL", "mistral:7b")
+DEVSTRAL_CTX_LIMIT  = 28_000  # KV cache budget for Devstral 24B on RTX 5070
+
 async def route_request(task_complexity: str, context_length: int) -> str:
-    """Route to optimal local model."""
-    if context_length > 28000:
+    """Route to optimal local model. Never hardcode model names — use env vars."""
+    if context_length > DEVSTRAL_CTX_LIMIT:
         # Devstral 24B has no KV cache headroom — route to Qwen3 14B or vLLM
-        return await try_model("qwen3:14b", fallback="vllm")
+        return await try_model(FAST_MODEL, fallback=VLLM_FALLBACK_MODEL)
     if task_complexity == "agentic":
-        return await try_model("devstral-small:24b", fallback="vllm")
-    return await try_model("qwen3:14b", fallback="vllm")
+        return await try_model(DEVSTRAL_MODEL, fallback=VLLM_FALLBACK_MODEL)
+    return await try_model(FAST_MODEL, fallback=VLLM_FALLBACK_MODEL)
 
 async def try_model(primary: str, fallback: str) -> str:
     if await ollama_health_check(primary):
         return f"ollama/{primary}"
+    resolved_fallback = fallback or VLLM_FALLBACK_MODEL
     if await vllm_health_check():
-        return f"vllm/{fallback}"
+        return f"vllm/{resolved_fallback}"
     raise ModelUnavailableError("No local LLM available")
 ```
 
@@ -1008,6 +1062,7 @@ Constraints:
 - Feature flag this slice with FEATURE_[SLICE_NAME]_ENABLED.
 - Model routing: Ollama devstral-small:24b primary, qwen3:14b for long context,
   vLLM fallback. Never hardcode model names in frontend.
+- BFF must be started with: uvicorn bff.main:app_with_sio (NOT bff.main:app).
 ```
 
 ***
@@ -1026,6 +1081,7 @@ Constraints:
 | Secret exposure in browser | Low | Critical | BFF redaction layer; masked values only; raw values never returned  |
 | TS 6.0 strict mode breaking changes | Medium | Medium | Run `tsc --noEmit` before CI gates; fix all strict errors first  |
 | Ollama unavailable / GPU busy | Medium | High | vLLM fallback; health check in model_router.py  |
+| Socket reconnect storm (callback instability) | Medium | High | Wrap all `useRunStream` callbacks in `useRef` before use in `useEffect` deps |
 
 ***
 
@@ -1038,3 +1094,45 @@ Constraints:
 | **Future Phase 6** | LMS-aware orchestration: role-based permissions, saved prompt templates (lesson gen, rubric gen, code review), artifact return into LMS objects |
 | **Future Phase 7** | First-class Rigpa-LMS plugin: iframe or native panel, SSO/session handoff, per-course workspaces, instructor dashboards, audit history |
 | **Future Phase 8** | Autonomous workflows: scheduled course repo maintenance, batch exercise generation, student submission review queues, PR creation and approval workflows |
+
+***
+
+## Audit & Fixes Log
+
+### Phase 0 Audit — July 13, 2026
+
+Multi-pass audit of the `rmholston420/forge-oh` repo against this build plan. Code was read directly from the repository and treated as ground truth over any prior log entries.
+
+#### Verified Correct (Phase 0 Scaffold)
+
+| Area | Finding |
+|------|---------|
+| `package.json` frontend deps | All spec versions present and correctly pinned |
+| `src/styles/tokens.css` | All design tokens match spec exactly |
+| BFF services (5/5) | `loop_guard`, `context_loader`, `episodic_memory`, `conflict_checker`, `model_router` all present |
+| BFF routers | All required routers present; `lms.py` and `notifications.py` scaffolded ahead of schedule |
+| Dashboard routes | All 8 spec routes present |
+| Core component library | Button, Input, Badge, Banner, Tabs, Modal, Drawer, Skeleton, Panel, EmptyState — all with `.tsx`, `.module.css`, `.stories.tsx` triads |
+| Feature slice directories | All 18 slices scaffolded (plus bonus `run-replay`) |
+| `useRunStream.ts` | Correct 5-step streaming flow; `approval_required` event handled |
+| Dashboard shell | Sidebar/Topbar/CommandPalette/AuthGuard wired correctly; `⌘K` shortcut implemented |
+
+#### Bugs Fixed (confirmed in live code)
+
+| Bug | File | Fix Applied |
+|-----|------|------------|
+| Loop guard off-by-one (detected on 4th hit, not 3rd) | `bff/services/loop_guard.py` | Append-before-count order corrected; reference impl in this document updated to match |
+| vLLM fallback model hardcoded as literal `"vllm"` | `bff/services/model_router.py` | `VLLM_FALLBACK_MODEL` env var added; `try_model()` uses resolved value |
+| ASGI entry point undocumented (`app` vs `app_with_sio`) | `bff/main.py` | `app_with_sio` now documented with prominent warning comment; added to this document |
+| CORS + credentials conflict (`allow_origins=["*"]` + `allow_credentials=True`) | `bff/main.py` | Fixed in live code |
+
+#### Open Gaps (Phase 0 not yet complete)
+
+See the **Phase 0 Open Items** table above. These must be resolved before any Phase 1 slice begins.
+
+#### Positive Deviations (Beyond Spec)
+
+- `src/features/rigpa-lms/` scaffolded early (Slice 5C ahead of schedule)
+- `src/features/run-replay/` bonus feature not in the 18-slice plan
+- `src/lib/feature-flags/`, `src/lib/rbac/`, `src/lib/plugins/` present beyond Phase 0 requirements
+- `LoopGuard.reset()` method added (useful, not in original spec)
