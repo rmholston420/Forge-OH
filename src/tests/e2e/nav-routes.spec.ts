@@ -14,10 +14,10 @@ import { test, expect } from '@playwright/test';
 // route rendered ITS content (not the sidebar shell which is present on
 // every route). Patterns are anchored to strings unique to that route.
 const routes: { path: string; expect: RegExp }[] = [
-  { path: '/runs',              expect: /Search runs|Filter by status|No runs/i },
+  { path: '/runs',              expect: /All workspaces|All statuses|New Run|No runs/i },
   { path: '/agents',            expect: /Agent Presets/i },
   { path: '/workspaces',        expect: /Workspace|New Workspace|feature-flag/i },
-  { path: '/plugins',           expect: /Plugin|Filter by status|feature-flag/i },
+  { path: '/plugins',           expect: /Browse MCP Registry|Enabled|Disabled|No plugins|feature-flag/i },
   { path: '/tools-mcp',         expect: /Tools & MCP|MCP server/i },
   { path: '/observability',     expect: /Observability|Metrics dashboard/i },
   { path: '/settings',          expect: /Appearance|Model & Agent|Shortcuts/i },
