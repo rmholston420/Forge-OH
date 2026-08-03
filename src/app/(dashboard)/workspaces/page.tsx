@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { useWorkspaces, useDeleteWorkspace, useTestWorkspaceConnection } from '@/features/workspaces/hooks';
+import { useWorkspaces } from '@/features/workspaces/hooks';
 import { useWorkspacesStore } from '@/features/workspaces/store';
 import { WorkspaceCard } from '@/components/domain/WorkspaceCard';
 import { WorkspaceFormModal } from '@/components/domain/WorkspaceFormModal';
@@ -14,16 +14,10 @@ const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_WORKSPACES_ENABLED !== '
 export default function WorkspacesPage() {
   const { composerOpen, editingId, openComposer, closeComposer } = useWorkspacesStore();
   const { data: workspaces = [], isLoading, error } = useWorkspaces();
-  const deleteMutation = useDeleteWorkspace();
-  const testMutation = useTestWorkspaceConnection();
 
   if (!FEATURE_ENABLED) {
     return <Banner variant="info">Workspaces are feature-flagged. Set NEXT_PUBLIC_FEATURE_WORKSPACES_ENABLED=true.</Banner>;
   }
-
-  // Retained but currently unused — kept exported for future card actions.
-  void deleteMutation;
-  void testMutation;
 
   return (
     <div className={styles.page}>
