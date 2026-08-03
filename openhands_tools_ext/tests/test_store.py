@@ -123,6 +123,7 @@ class TestReads:
         assert result[0]["name"] == "hello"
         called = session.run.call_args
         assert "toLower(s.name) CONTAINS toLower($q)" in called.args[0]
+        assert "toLower(s.rel_path) CONTAINS toLower($q)" in called.args[0]
         assert called.kwargs["q"] == "hell"
         assert called.kwargs["repo"] == "repo1"
 

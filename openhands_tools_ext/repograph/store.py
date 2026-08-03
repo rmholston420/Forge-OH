@@ -228,11 +228,18 @@ class Neo4jStore:
         *,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """Case-insensitive substring match on Symbol.name."""
+        """Case-insensitive substring match on Symbol.name OR Symbol.rel_path.
+
+        Users search by symbol name AND by filename interchangeably ("where
+        is the run_metadata thing?"), so this matches either. When only the
+        path matches, we still return the symbol row; the caller can group
+        client-side by rel_path if they want a file-grouped UI.
+        """
         with self.driver.session(database=self.database) as session:
             rows = session.run(
                 "MATCH (s:Symbol {repo: $repo}) "
                 "WHERE toLower(s.name) CONTAINS toLower($q) "
+                "   OR toLower(s.rel_path) CONTAINS toLower($q) "
                 "RETURN s.rel_path AS rel_path, s.name AS name, "
                 "       s.category AS category, s.start_line AS start_line, "
                 "       s.end_line AS end_line, s.parent AS parent, "

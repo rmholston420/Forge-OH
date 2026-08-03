@@ -182,3 +182,17 @@ tree-sitter, tree-sitter-language-pack.
 
 **Files changed:** DEBUG_LOG.md (documenting the correct command for future
 dep-adding slices).
+
+## 2026-08-03 07:39 EDT — D.4 search endpoint only matched Symbol.name, not filename
+
+**Symptom:** On Colossus after `POST /index`, `GET /api/repograph/search?q=run_metadata` returned `[]` even though `bff/services/run_metadata_store.py` clearly exists with `RunMetadata` and `RunMetadataStore` classes.
+
+**Affected stage/plugin/port:** D.4 endpoint `GET /api/repograph/search`, backed by `Neo4jStore.search_by_name` (openhands_tools_ext/repograph/store.py).
+
+**Root cause:** The search Cypher only matched `Symbol.name`, but users naturally search interchangeably by symbol name AND filename ("where is the run_metadata thing?"). `run_metadata` is not the name of any symbol \u2014 it's a segment of a *filename*. So the search legitimately returned nothing but the UX is wrong.
+
+**Fix applied:** Widened the search predicate to `WHERE toLower(s.name) CONTAINS toLower($q) OR toLower(s.rel_path) CONTAINS toLower($q)`. Now filename substring matches also surface. Also updated the unit test in `openhands_tools_ext/tests/test_store.py::TestReads::test_search_by_name_shape` to assert both branches of the OR are in the Cypher.
+
+**Files changed:** openhands_tools_ext/repograph/store.py, openhands_tools_ext/tests/test_store.py.
+
+**Verification:** 77/77 tests still pass locally; will re-verify on Colossus after commit.
