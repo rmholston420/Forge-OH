@@ -1700,3 +1700,25 @@ The hook must be invoked with `OPENHANDS_PROJECT_DIR` pointing at the workspace 
 - Ruff clean.
 
 **Stop-condition status:** F.2 complete. F.3 (bge-code-v1 embedder wrapper) next.
+
+## 2026-08-03 09:05 EDT — Slice F.3: TrajectoryEmbedder (bge-code-v1)
+
+**Stage:** Step 8, Slice F.3.
+
+**What:** thin wrapper around `sentence-transformers` for embedding trajectory records. Lazy singleton, device autodetect (CUDA → CPU), pluggable loader for tests.
+
+**Files created:**
+- `openhands_tools_ext/trajectory/embedder.py` — `TrajectoryEmbedder` class, `build_query_text`, `build_record_text`, `get_default_embedder`, `reset_default_embedder`. Model default `BAAI/bge-code-v1` (1536-dim).
+- `openhands_tools_ext/tests/trajectory/test_embedder.py` — 18 tests using a `FakeEncoder` — never loads the real model.
+
+**Key design decisions:**
+- **Lazy load**: model instantiated on first `embed()`/`embed_batch()` call; ~5 GB and seconds cold-start, so we avoid paying that cost until we need it. `embed_batch([])` short-circuits with no load.
+- **Device selection order**: `FORGE_OH_EMBED_DEVICE` env → torch.cuda.is_available() ? "cuda" : "cpu". Torch import wrapped in try/except so tests run without it.
+- **Deterministic text prep**: `build_query_text(task, symptom)` and `build_record_text(record)` are pure functions that produce identical string projections symmetric between query- and record-side embedding, so cosine over these strings is meaningful.
+- **`normalize_embeddings=True`** at encode time → downstream cosine similarity is a dot product.
+
+**Tests:**
+- `.venv/bin/pytest openhands_tools_ext/` → 184 passed (was 166; +18 new).
+- Real-model smoke verified earlier this session on Colossus: `SentenceTransformer('BAAI/bge-code-v1', trust_remote_code=True)` loads on CUDA and produces 1536-dim outputs.
+
+**Stop-condition status:** F.3 complete. F.4 (retriever: semantic + symbol overlap co-ranked) next.
