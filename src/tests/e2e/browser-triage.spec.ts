@@ -83,7 +83,16 @@ test('triage runs page', async ({ page }) => {
 test('triage run detail page', async ({ page }) => {
   const monitor = attachBrowserMonitors(page);
 
-  await page.goto('/runs/run-new-001', { waitUntil: 'domcontentloaded' });
+  // Fetch a real run id from BFF so triage does not falsely trip on a 404
+  // for a hard-coded id that does not exist in real data.
+  const bff = process.env.PLAYWRIGHT_BFF_URL || 'http://127.0.0.1:8081';
+  const res = await page.request.get(`${bff}/api/runs`);
+  test.skip(!res.ok(), 'BFF /api/runs did not respond');
+  const body = await res.json();
+  const runs = (Array.isArray(body) ? body : body?.data ?? []) as Array<{ id: string }>;
+  test.skip(runs.length === 0, 'no runs on BFF — skipping run-detail triage');
+
+  await page.goto(`/runs/${runs[0].id}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
   await expect(page.locator('body')).toBeVisible();
 

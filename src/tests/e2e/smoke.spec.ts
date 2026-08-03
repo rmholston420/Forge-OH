@@ -19,9 +19,11 @@ test('all nav routes resolve without errors', async ({ page }) => {
   }
 });
 
-test('command palette opens with Cmd+K', async ({ page }) => {
+test('command palette opens with Cmd/Ctrl+K', async ({ page }) => {
   await page.goto('/runs');
-  await page.keyboard.press('Meta+k');
+  // Cmd on macOS, Ctrl elsewhere. Layout listens for either metaKey OR ctrlKey.
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.keyboard.press(`${mod}+KeyK`);
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Command palette' })).not.toBeVisible();
