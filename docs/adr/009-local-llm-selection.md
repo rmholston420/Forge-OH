@@ -93,6 +93,55 @@ default backend for both roles. Ollama remains available in
 `bff/services/model_router.py` as a fallback endpoint but is no longer
 the primary route. This is driven by §4 more than by raw speed.
 
+### 3a. Topology: dual-port + swap-on-demand supervisor
+
+A single RTX 5090 (~30 GiB usable) cannot hold both
+`qwen3.5-nvfp4` (coder) and `qwen3-thinking-2507-awq` (planner)
+resident simultaneously. Two options were considered:
+
+- **Single vLLM, one role at a time** — simpler process model, but
+  every role switch pays a full weight-reload cost (~30-60s) and the
+  BFF must serialize coder/planner traffic.
+- **Dual-port with swap-on-demand supervisor** — one vLLM launcher
+  per role, each on its own port (`:8501` coder, `:8502` planner);
+  only one is running at a time; a small supervisor script under
+  `ops/vllm_supervisor.sh` stops the idle role and starts the
+  requested role on the first BFF request that misses.
+
+**Decision: dual-port + supervisor.** Rationale:
+
+- BFF-side routing stays cache-friendly — coder and planner have
+  stable URLs; the supervisor handles the VRAM contention below the
+  routing layer.
+- Warm-hits stay fast (no per-request reload); only role transitions
+  pay the swap cost, and planner calls are infrequent enough that
+  most workloads sit in one role for extended stretches.
+- Failure isolation is cleaner: a crashed planner does not take down
+  the coder port config.
+
+The supervisor is F.19 scope; ADR-009 fixes only the topology choice.
+
+### 3b. Token budgets: coder 2048, planner 8192
+
+F.19-pre ran coder cells at `max_completion_tokens=2048` and planner
+cells at `4096`. Every thinking cell hit the 4096 ceiling on Prompt 3;
+c08 truncated mid-list, c05/c06/c07 returned empty final content after
+burning the budget in hidden reasoning.
+
+**Decision:** Coder budget stays at **2048** (no ceiling hits on any
+coder cell). Planner budget raised to **8192** as the default for the
+rewired router in F.19. Rationale:
+
+- 8192 is the smallest bump that gives the qwen3-thinking family room
+  to finish a 6-10 commit atomic plan after its reasoning trace.
+- Latency cost is bounded: only the tokens the model actually emits
+  are billed, and c08 was already the slowest cell — an 8192 ceiling
+  does not force it slower on shorter answers.
+- If the follow-up re-bench (§Follow-ups 1) shows c05 or c06 finishes
+  P3 cleanly at 8192 and is materially faster than c08, the planner
+  pick is revisited under a superseding ADR. Until then c08 is the
+  planner.
+
 ### 4. Retire qwen3.5-MoE from the non-thinking Coder path
 
 The Ollama `enable_thinking=false` toggle for qwen3.5-MoE is a no-op
@@ -152,16 +201,22 @@ Captured for future launchers, and appended to `DEBUG_LOG.md` under
   fans out multiple planner calls. Mitigation: enqueue planner work
   and stream progress; do not block coder work on planner completion.
 
-## Follow-ups (out of scope for F.19-pre)
+## Follow-ups
 
-1. Re-bench c05/c06/c07 with `max_completion_tokens=8192` to see if
-   any thinking cell dominates c08 on P3.
+1. **F.19-pre-b re-bench** (before F.19 wiring lands): re-run c05,
+   c06, c07 on Prompt 3 only with `max_completion_tokens=8192`. If
+   any finishes cleanly and outscores c08 on P3 (23), the planner
+   pick shifts to that cell under a superseding ADR. c08 remains the
+   planner default in the interim; F.19 wiring proceeds against c08
+   regardless of the re-bench outcome so the two efforts can run in
+   parallel.
 2. Ollama upstream tracking: watch for a fix to
    `chat_template_kwargs.enable_thinking` for qwen3.5-MoE. If
    corrected, revisit c03 as a fast-Coder candidate.
-3. Reconcile BFF port assignment (Forge-OH BFF was on 8000; the
-   `colossus-ops` skill lists 8081). Not blocking, but should be
-   settled before F.19 UI wiring.
+3. Reconcile BFF port assignment (Forge-OH BFF is on :8081; the
+   `colossus-ops` skill lists :8000). Decision: BFF stays on **8081**
+   (already wired end-to-end, F.18c verified). Update
+   `colossus-ops` skill in a separate pass.
 
 ---
 

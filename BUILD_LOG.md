@@ -2794,3 +2794,31 @@ nvfp4/awq launchers, and run a live 3-prompt smoke through the router.
   autodetect from `config.json.quantization_config`.
 - Usable Blackwell VRAM budget: ~30 GiB at
   `--gpu-memory-utilization 0.90`.
+
+## 2026-08-03 18:13 EDT — ADR-009 amended: topology + budgets locked
+
+**Stage:** F.19-pre closeout (post-verdict amendments).
+
+**Amendments to ADR-009:**
+
+- **§3a Topology:** dual-port + swap-on-demand supervisor. Coder on
+  `:8501`, planner on `:8502`, only one running at a time,
+  `ops/vllm_supervisor.sh` handles the swap (implementation in F.19).
+- **§3b Token budgets:** coder `max_tokens=2048` (unchanged), planner
+  raised to **8192** (from 4096). Directly addresses the P3
+  length-ceiling failures on c05/c06/c07 and the c08 mid-list
+  truncation.
+- **§Follow-ups:** F.19-pre-b re-bench added as an explicit parallel
+  workstream — c05/c06/c07 on P3 only at 8192. Does not block F.19.
+- **BFF port question:** resolved. Stays on `:8081`. `colossus-ops`
+  skill needs a follow-up correction (separate pass, out of scope
+  for F.19).
+
+**Files touched:**
+- `docs/adr/009-local-llm-selection.md` (amend §3a, §3b, §Follow-ups)
+- `SESSION_HANDOFF.md` (overwrite for F.19 start with decisions locked)
+- `BUILD_LOG.md` (this entry)
+
+**Stop condition status:** F.19-pre fully closed — verdict, ADR,
+topology, budgets, and open items all resolved. F.19 unblocked; F.19-pre-b
+scoped as parallel work.
