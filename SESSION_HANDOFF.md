@@ -1,34 +1,27 @@
-# SESSION HANDOFF — 2026-08-03 (post pass-2 audit)
+# SESSION HANDOFF — 2026-08-03 (visual QA passes 1–3 complete)
 
 ## Current stage
-Pass-2 audit complete. Real bugs in code were fixed in the previous commit
-(5e6a862). The remaining regressions in the second screenshot run were caused
-by the local BFF process not restarting after `git pull`. This commit
-hardens the dev loop so future runs cannot miss BFF code changes.
+Visual QA loop closed. All pages that were broken (Overview, Metrics, Browser,
+Marketplace, Secrets) now render correctly against fresh BFF code.
 
 ## Completed this session
-- Screenshot audit of agent/screenshots-20260803-053915:
-  - ✅ Plugin Marketplace renders (frontend defensive coerce sufficient).
-  - ✅ /secrets renders "No secrets" empty state (URL fix landed via HMR).
-  - 🔴 Metrics: shows "Failed to load metrics: [404] Not Found" — old BFF.
-  - 🔴 Browser: shows "Failed to load browser frames." — old BFF.
-  - 🔴 Overview: MessageEvent rows still blank — old BFF.
-- Diagnosis: forge-up.sh short-circuited on port_in_use → OLD BFF persisted.
-- Fix: forge-up.sh now kills prev BFF pid + relaunches uvicorn with --reload.
-  forge-screenshots.sh calls forge-up.sh before capture.
+- Pass 1: legacy-globals CSS restored; event normalizer added; run-metrics BFF endpoint added.
+- Pass 2 fixes committed (5e6a862):
+  - Plugin marketplace skills normalized to list[str] + defensive frontend coerce.
+  - `_message_summary` rewritten as multi-path extractor.
+  - `/secrets` fetches switched to `/api/secrets`.
+  - Metrics tab shows real errors and renders zeros as soon as data arrives.
+  - Playwright shot() wait bumped 400→1200ms.
+- Dev-loop hardening (068daf7, 41575cf):
+  - `forge-up.sh` always restarts BFF (kill-by-pidfile → kill-by-port cmdline signature) and relaunches with `--reload --reload-dir bff`.
+  - `forge-screenshots.sh` invokes `forge-up.sh` before Playwright.
+- Pass 3 (this audit) confirmed all fixes live on Colossus.
 
 ## Remaining before Definition of Done
-User runs on Colossus:
-```
-cd ~/dev/forge-oh && git pull && bash scripts/forge-test.sh && bash scripts/forge-screenshots.sh
-```
-This will:
-1. Kill the stale BFF process.
-2. Start a new BFF with the pass-2 code (metrics endpoint, event normalizer, plugin marketplace fix).
-3. Capture fresh screenshots — Overview should have text, Metrics/Browser should render, Marketplace still renders, Secrets still renders.
+None for this loop.
 
 ## Open questions
 None.
 
 ## Next action
-Same command as above.
+User's call.

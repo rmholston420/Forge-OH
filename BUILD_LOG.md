@@ -787,3 +787,15 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
 - Symptom: 068daf7 forge-up.sh only killed the previous BFF when a pid-file existed. Colossus had a pre-existing uvicorn on :8081 with no pid file, so forge-up emitted `BFF port 8081 held by unknown process; leaving it alone` and screenshots still ran against stale code.
 - Fix: after the pid-file path, look up PIDs on port 8081 via `ss -ltnp`, keep only ones whose cmdline matches `uvicorn.*bff\.main`, kill those. Non-BFF processes on the port are still left alone.
 - File touched: scripts/forge-up.sh.
+
+## 2026-08-03 05:49 EDT — Pass-3 audit ✅ ALL GREEN
+- Branch verified: agent/screenshots-20260803-054730 (fresh SHAs on all diff files vs prior run).
+- forge-up.sh output confirmed: `stopping stale BFF on :8081 (pid 2576260)` → `starting BFF on :8081 (with --reload)` → `BFF ready on :8081`.
+- Results:
+  - /plugins?tab=marketplace: 8 cards render (city-weather, magic-test, onboarding, openhands, pr-review, qa-changes, release-notes, vulnerability-remediation) with string skill badges.
+  - /secrets: "No secrets" empty state with key icon + Add Secret CTA.
+  - /runs/*/overview: SystemPromptEvent, user prompt text ("Use the file_editor tool…"), tool errors ("Missing required parameters for function 'file_editor': {'path'}"), observations, actions — all readable.
+  - /runs/*/metrics: 0 tokens · 3 tool calls · 2 files touched · <$0.01 · 14.4s duration.
+  - /runs/*/browser: globe icon + "No browser activity recorded yet." empty state.
+  - /runs/*/trace: 3 spans, file_editor ERROR (1ms), file_editor OK (1ms), finish OK (1ms), waterfall visible.
+- Definition of Done met for visual QA pass. No follow-up changes required.
