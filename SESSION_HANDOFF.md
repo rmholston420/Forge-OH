@@ -5,60 +5,78 @@ Overwrite this file at the end of every session. Reflects current state only.
 ---
 
 ## Current stage
-**OFF-PLAN F.18b** — router made backend-configurable + vLLM lifecycle scripts.
-Head-to-head Ollama vs vLLM bench is mid-flight; awaiting Phase 2 rerun after
-first vLLM Phase 2 attempt failed 52/52 because vLLM had been killed and
-never restarted.
+**F.18 COMPLETE.** vLLM is primary, Ollama is fallback. Router honors
+`LLM_PRIMARY_BACKEND=vllm` in `.env`, verified end-to-end via
+`/api/settings/model-routing`. Bench data archived at
+`~/.forge-oh/bench/20260803_1419/` — see BUILD_LOG 2026-08-03 14:32 EDT for
+the full 8×-18× vLLM speedup table.
+
+## Ambient
+- vLLM: RUNNING at :8500 (qwen3-coder-30b GGUF, 29 GB VRAM).
+- Ollama: STOPPED + systemd unit `disabled` (must be started manually now).
+- Agent-server: RUNNING at :8090 (pid 4168753).
+- BFF: RUNNING at :8081 (with F.18c dotenv fix in place).
+- Frontend: RUNNING at :3000.
+- GPU free: 3.1 GB / 32 GB (all in vLLM).
 
 ## What was completed this session
-- F.18 vLLM 0.10.2 standalone confirmed serving qwen3-coder-30b at :8500
-  (see BUILD_LOG 2026-08-03 13:45 EDT for the full failure archaeology).
-- 4 DEBUG_LOG entries added: venv orphaned by OS upgrade, GGUF bf16 rejection,
-  triton Python.h prereq, FlashInfer SM_120 whitelist gap.
-- Head-to-head bench script + runner authored in `~/dev/forge-oh/scripts/`
-  (NOT yet committed; `.gitignore` excludes `scripts/` — future scripts need
-  `git add -f`).
-- Ollama Phase 1 baseline captured:
-  `~/.forge-oh/bench/20260803_1343/ollama.csv` — 52/52 OK.
-  - short_code (c=1): TTFT 1.5s / total 7.0s / 10.9 tok/s
-  - code_review     : 1.0s / 12.7s / 12.5 tok/s
-  - refactor        : 1.6s / 38.4s / 12.1 tok/s
-  - long_context 8K : 10.6s / 16.8s / 3.9 tok/s
-- vLLM Phase 2 first attempt: 52/52 CONNECTION FAILURES (vLLM was down).
-- Router refactored: `LLM_PRIMARY_BACKEND` env knob (ollama|vllm), corrected
-  `VLLM_URL` and `VLLM_FALLBACK_MODEL` defaults, `/api/settings/model-routing`
-  exposes new fields, unit tests added, `.env.example` updated.
-- vLLM lifecycle scripts (`vllm_start.sh` rewritten, new `vllm_stop.sh`,
-  `vllm_status.sh`) — atomic cleanup so no ghost EngineCore workers.
+1. **F.18** — vLLM 0.10.2 serving qwen3-coder-30b GGUF, all Blackwell/SM_120
+   pitfalls documented in DEBUG_LOG (venv orphan, GGUF bf16 rejection,
+   triton Python.h, FlashInfer SM_120 whitelist).
+2. **F.18b** — Router refactored: `LLM_PRIMARY_BACKEND` env knob, corrected
+   defaults, `/v1/models` readiness probe, unit tests (11/11 pass),
+   vllm_start/stop/status.sh triad. Commit `025bc3f`.
+3. **F.18c** — Router now loads `.env` via `python-dotenv` at import so
+   `os.getenv()` sees config that pydantic-settings parses. Commit
+   `1a30e4a`.
+4. **Head-to-head bench** — 52/52 OK each backend. vLLM wins by 8×-18× on
+   every scenario and every concurrency level. Decision recorded in
+   BUILD_LOG.
+5. **Wiring** — `.env` set to `LLM_PRIMARY_BACKEND=vllm` +
+   `VLLM_URL=http://localhost:8500` + `VLLM_FALLBACK_MODEL=qwen3-coder-30b`.
+   BFF hard-restarted. Ollama systemd disabled + process killed.
+6. **Verified** — `/api/settings/model-routing` returns
+   `primaryBackend: vllm`, all 3 probes select `vllm/qwen3-coder-30b`.
 
-## What remains before the current DoD
-1. Confirm vLLM is up on Colossus (relaunch in progress — awaiting READY).
-2. Rerun Phase 2 bench cleanly, decide winner.
-3. Set `LLM_PRIMARY_BACKEND` in `.env.local` accordingly, restart BFF, smoke
-   test routing. No code change needed to swap.
-4. Return to plan Step 1 (real OpenHands agent-server on Colossus).
+## What remains before Definition of Done for the plan
+Return to Forge-OH-Action-Plan-v4 **Step 1**: real OpenHands agent-server
+exercise. Agent-server is up on :8090; need to smoke-test a real
+conversation through `POST /api/conversations` and confirm the LiteLLM
+`openai/qwen3-coder-30b` bridge routes to vLLM at :8500 end-to-end.
 
 ## Open questions / ambiguity
-- Bench decision (Ollama vs vLLM primary) pending Phase 2 data.
-- Bench scripts (`bench_ollama_vs_vllm.sh`, `bench_runner.py`) still
-  uncommitted — commit after they've been shaken out by the rerun.
+- Bench scripts `bench_ollama_vs_vllm.sh` and `bench_runner.py` are still
+  uncommitted (`~/dev/forge-oh/scripts/`). `.gitignore` excludes `scripts/`
+  — commit with `git add -f` once we're confident the scripts won't need
+  more changes.
+- Ollama fallback path in the router works, but Ollama cannot share VRAM
+  with vLLM. Real failover means stopping vLLM first, starting Ollama, and
+  we don't have automation for that yet. Acceptable for now (vLLM proven
+  stable), but flag for a future ADR: "how do we handle vLLM crash
+  recovery when only one backend fits in VRAM?"
 
 ## Exact next action
-On Colossus, once vLLM shows READY (or after checking with
-`./scripts/vllm_status.sh`):
+Fire a real conversation through the agent-server → BFF → vLLM path:
 
 ```bash
-# Fresh bench dir to avoid mixing old failures
-BENCH_DIR=~/.forge-oh/bench/$(date +%Y%m%d_%H%M)
-mkdir -p "$BENCH_DIR"
-BENCH_DIR="$BENCH_DIR" bash ~/dev/forge-oh/scripts/bench_ollama_vs_vllm.sh
+cd ~/dev/forge-oh
 
-# Then summarize
-python3 ~/dev/forge-oh/scripts/bench_summarize.py "$BENCH_DIR"
+# Confirm all four services healthy
+~/dev/forge-oh/scripts/vllm_status.sh
+curl -sf http://127.0.0.1:8090/health && echo " agent-server OK"
+curl -sf http://127.0.0.1:8081/api/settings/model-routing >/dev/null && echo "BFF OK"
+
+# Then run the smoke test (need to check what BFF endpoint kicks off a
+# conversation — likely POST /api/runs or /api/conversations).
+grep -rn 'route_request\|create_conversation\|POST.*conversation' bff/routers/ | head -10
 ```
 
-## Ambient at session end
-- vLLM: relaunching at :8500 (via updated `vllm_start.sh`).
-- Ollama: stopped (killed for clean Phase 2 rerun).
-- BFF: stopped.
-- Colossus VRAM prior to relaunch: 722 MiB used / 31 GB free.
+Once we identify the entrypoint, submit a "hello, run `ls`" task and
+confirm the agent picks up a vLLM-backed response.
+
+## Key files/refs
+- Bench: `~/.forge-oh/bench/20260803_1419/{ollama,vllm}.csv`
+- vLLM log: `~/.forge-oh/vllm.log`
+- BFF log: `~/dev/forge-oh/.forge-logs/bff.log`
+- Agent-server log: `~/dev/forge-oh/.forge-logs/agent-server.log`
+- Commits this session: `463ac02`, `025bc3f`, `1a30e4a` on main.

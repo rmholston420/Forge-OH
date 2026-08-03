@@ -2657,3 +2657,85 @@ pending (Phase 2 rerun in progress).
 **Next:** Rerun Phase 2 bench cleanly (vLLM just relaunched), pick winner,
 export `LLM_PRIMARY_BACKEND` in `.env.local` accordingly, then resume Step 1
 of the plan.
+
+---
+
+## 2026-08-03 14:32 EDT — F.18 DECISION: vLLM primary, bench archived
+
+**Stage / plugin / port:** OFF-PLAN F.18 closeout — head-to-head Ollama vs
+vLLM bench complete; primary backend selected.
+
+**Bench:** `~/.forge-oh/bench/20260803_1419/` (ollama.csv + vllm.csv, 52
+requests each, same qwen3-coder:30b / qwen3-coder-30b GGUF blob).
+Ollama phase reused from earlier 20260803_1343 baseline (identical
+methodology). vLLM Phase 2 run after Ollama phase, one at a time (28.8 GB
+VRAM footprint means they can't coexist).
+
+### Results (avg per-request tok/s, all runs OK: 52/52 each backend)
+
+| test          | c=1 tok/s               | c=8 tok/s               | 8× total   |
+|---------------|-------------------------|-------------------------|------------|
+| short_code    | ollama 10.9 → vLLM 197  | ollama 4.4 → vLLM 71    | ~16× vLLM  |
+| code_review   | ollama 12.5 → vLLM 216  | ollama 4.4 → vLLM 73    | ~17× vLLM  |
+| refactor      | ollama 12.1 → vLLM 203  | ollama 4.2 → vLLM 73    | ~17× vLLM  |
+| long_context  | ollama  3.9 → vLLM  31  | ollama 3.3 → vLLM 59    | ~18× vLLM  |
+
+### TTFT (c=1)
+
+| test          | ollama | vLLM  | speedup |
+|---------------|--------|-------|---------|
+| short_code    | 1.5s   | 0.05s | 28×     |
+| code_review   | 1.0s   | 0.04s | 26×     |
+| refactor      | 1.6s   | 0.16s | 10×     |
+| long_context  | 10.6s  | 1.70s |  6×     |
+
+**Decision:** vLLM is now primary. Ollama remains configured as the
+fallback path but is stopped in normal operation because it cannot share
+VRAM with vLLM (both need ~18-29 GB on the RTX 5090's 32 GB).
+
+**Wiring:**
+- `.env` gained:
+  ```
+  LLM_PRIMARY_BACKEND=vllm
+  VLLM_URL=http://localhost:8500
+  VLLM_FALLBACK_MODEL=qwen3-coder-30b
+  ```
+- Ollama systemd service `disabled` (won't auto-start on boot).
+- Ollama process killed. Router probes now show `ollamaPrimaryHealthy=false`
+  cleanly, all requests select `vllm/qwen3-coder-30b`.
+
+**F.18c bug fixed en route:** `bff/services/model_router.py` used
+`os.getenv()` for its config, but pydantic-settings' `.env` load never
+exports parsed values into `os.environ`. So the router silently ignored
+`.env`-only vars, and `primaryBackend` was stuck at "ollama". Fixed by
+calling `python-dotenv`'s `load_dotenv(".env", override=False)` at import
+time (dotenv already a transitive dep via pydantic-settings). Shell-
+exported env still wins.
+
+**Verified end-to-end:**
+```
+GET /api/settings/model-routing
+{
+  "primaryBackend": "vllm",
+  "vllmHealthy": true,
+  "ollamaPrimaryHealthy": false,
+  "probes": [
+    { "selected": "vllm/qwen3-coder-30b" },
+    { "selected": "vllm/qwen3-coder-30b" },
+    { "selected": "vllm/qwen3-coder-30b" }
+  ]
+}
+```
+
+**Files touched:**
+- `.env` (LLM_/VLLM_ vars set; local-only, not committed)
+- `bff/services/model_router.py` (dotenv-at-import fix — commit 1a30e4a)
+
+**Stop condition:** vLLM serves all 3 probe scenarios via the router,
+Ollama can be brought back manually as a fallback when needed. Reached
+2026-08-03 14:32 EDT.
+
+**Next:** Return to plan Step 1 — real OpenHands agent-server exercise
+against the vLLM-backed router. Agent-server is already up on :8090; need
+to fire a real conversation through /api/conversations and confirm the
+LiteLLM openai/qwen3-coder-30b bridge to vLLM works end-to-end.
