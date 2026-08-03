@@ -3149,3 +3149,18 @@ the container log.
 
 **Stop condition:** coder READY on :8501 within 420s and
 `/v1/models` returns `qwen3.6-35b-nvfp4`.
+
+## 2026-08-03 19:04 EDT — F.19.1b DONE (full smoke green)
+
+**Stage:** F.19.1b live Docker smoke — CLOSED.
+
+**Result:** full swap-on-demand cycle verified on Colossus.
+- Planner :8511 READY in 132s (qwen3-thinking-2507-awq)
+- Coder :8501 READY in 240s (qwen3.6-35b-nvfp4) — via swap
+- `down` cleaned both; `status: live_role=none`; `docker ps -a` empty
+
+vLLM Docker image: `vllm/vllm-openai:latest` currently 0.26.0.
+420s READY_TIMEOUT is comfortable.
+
+**Stop condition met.** Router rewire (F.19.2a/b/c) already merged.
+Proceeding to F.19.3 (test expansion + `route_request` removal).
