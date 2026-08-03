@@ -1646,3 +1646,33 @@ The hook must be invoked with `OPENHANDS_PROJECT_DIR` pointing at the workspace 
 - Tag `v1.0-alpha2` on this commit.
 - On Colossus: run `.oh-venv/bin/pytest openhands_tools_ext/` (should be 127 pass); run `npm test src/tests/unit/VerifyStepCard.test.tsx src/tests/unit/VerifyIterationsWidget.test.tsx` (should be 12 pass); run `PLAYWRIGHT_REAL_BFF=1 npm run test:e2e -- src/tests/e2e/repograph-panel.spec.ts` for the Slice D screenshots.
 - After Colossus green, register the STOP hook in the agent-server's `.openhands/hooks.toml` per the recipe in E.4's BUILD_LOG entry.
+
+## 2026-08-03 08:52 EDT — Slice F.1: TrajectoryRecord schema (Rec #3 case-retrieval kickoff)
+
+**Stage:** Step 8 (post-alpha2), Slice F (research doc Rec #3 — Trajectory Memory & Case-Retrieval System).
+
+**What:** structured schema for one completed run's trajectory. Python Pydantic model + TS Zod schema + parity tests, mirroring the Slice E.1 pattern.
+
+**Files created:**
+- `openhands_tools_ext/trajectory/__init__.py`
+- `openhands_tools_ext/trajectory/schema.py` — `TrajectoryRecord`, `TrajectoryDiff`, `TrajectoryStatus`; constants `TRAJECTORY_API_PREFIX`, `DEFAULT_RETRIEVAL_K`, `SEMANTIC_WEIGHT=0.7`, `SYMBOL_WEIGHT=0.3`; helper `make_trajectory_id`.
+- `src/lib/schemas/trajectory.ts` — mirrored Zod, references `VerificationStepSchema`.
+- `openhands_tools_ext/tests/trajectory/__init__.py`, `test_schema.py` — 14 tests including frontend parity.
+
+**Files modified:**
+- `src/lib/schemas/index.ts` — re-export trajectory.
+
+**Locked design decisions (from earlier scope confirmation this session):**
+- Embedding model: `BAAI/bge-code-v1` (1536d, sentence-transformers, CUDA). Verified loadable on Colossus with dim=1536.
+- Storage: `~/.forge-oh/trajectories.db` (SQLite), separate from BFF DB, symmetric with `verify-state.json`.
+- Retrieval: semantic + RepoGraph-symbol overlap co-ranked (0.7/0.3).
+- Writer trigger: distinct run-completion hook (not the STOP hook that runs VerifyLoop).
+- Widget placement: Overview tab, top, proactive display before agent context.
+
+**Ports/adapters:** none this slice. Ledger entry deferred until an actual OSS port lands (candidates: nothing planned — case-based reasoning implementation is our own).
+
+**Tests:**
+- `.venv/bin/pytest openhands_tools_ext/` → 141 passed (was 127; +14 new).
+- `.venv/bin/ruff check` and `format --check` both clean on the new modules.
+
+**Stop-condition status:** F.1 complete. F.2 (SQLite store) is next.

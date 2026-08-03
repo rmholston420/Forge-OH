@@ -9,3 +9,4 @@ export * from './command';
 export * from './artifact';
 export * from './repograph';
 export * from './verify';
+export * from './trajectory';
