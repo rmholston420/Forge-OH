@@ -1722,3 +1722,33 @@ The hook must be invoked with `OPENHANDS_PROJECT_DIR` pointing at the workspace 
 - Real-model smoke verified earlier this session on Colossus: `SentenceTransformer('BAAI/bge-code-v1', trust_remote_code=True)` loads on CUDA and produces 1536-dim outputs.
 
 **Stop-condition status:** F.3 complete. F.4 (retriever: semantic + symbol overlap co-ranked) next.
+
+## 2026-08-03 09:10 EDT — Slice F.4: TrajectoryRetriever (co-ranked semantic + symbol overlap)
+
+**Stage:** Step 8, Slice F.4.
+
+**What:** retrieval over `TrajectoryStore` combining semantic cosine (0.7) with RepoGraph-symbol Jaccard overlap (0.3), per weights locked at Slice F kickoff.
+
+**Files created:**
+- `openhands_tools_ext/trajectory/retriever.py` — `TrajectoryRetriever` class, `RetrievalHit` frozen dataclass, pure `cosine`/`jaccard`/`combine` scoring helpers.
+- `openhands_tools_ext/tests/trajectory/test_retriever.py` — 29 tests: scoring helpers (edge cases: empty vec, orthogonal, length mismatch, empty jaccard, dedup); retriever behavior (ranking, top-k truncation, verified-only default, repo-key filter, symbol overlap tiebreaker, exclude_run_ids, symptom prompt composition, `RetrievalHit` shape).
+
+**Public API:**
+```python
+retrieve(task_description, *, symptom="", k=3, verified_only=True,
+         repo_key=None, current_symbols=None, exclude_run_ids=None)
+    -> list[RetrievalHit]
+```
+
+**Design notes:**
+- **In-memory scan** over all matching records. At MVP scale (thousands max) this is fine; if it becomes hot, swap to numpy matmul without touching the public API.
+- **Records without embeddings are skipped** — writer runs may enqueue them before the indexer catches up.
+- **Cosine clamped to [0, 1]** for the convex combination so the combined score stays in [0, 1]; the raw cosine (which can be negative) is still exposed on `RetrievalHit.semantic_score`.
+- **Symbol overlap = 0 when either side is empty** — an unindexed run shouldn't spuriously match every empty-symbol record.
+- **`verified_only=True` default** protects against propagating bad patterns from failed prior runs.
+
+**Tests:**
+- `.venv/bin/pytest openhands_tools_ext/` → 213 passed (was 184; +29 new).
+- Ruff clean.
+
+**Stop-condition status:** F.4 complete. F.5 (run-completion writer hook that materializes a `TrajectoryRecord` from BFF events) next.
