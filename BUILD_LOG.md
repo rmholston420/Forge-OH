@@ -572,3 +572,13 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - Real title from agent-server: "📝 Create stage4-final.txt with DoD proof"
   - 1 file 'modified', content identical (fork inherited, no re-edit) → +0/-0 exact
 - ZERO stubs remain in the entire BFF. Every OpenHands surface is now real.
+
+## 2026-08-03 01:37 EDT — Task 2 CLOSED (Playwright/HTTP verifier for Stage 7)
+- Added scripts/e2e-stage7.ts. Pure-HTTP verifier (no browser needed) that
+  exercises every Stage-7 BFF endpoint against a live agent-server + BFF.
+- Coverage: 7A (5 endpoints), 7B (fork), 7C (mcp list/register/delete),
+  7D (plugins list/marketplace), 7E (secrets list/create/delete),
+  7F (3 observability endpoints), 7G (compare using fork from 7B).
+- Global assertion: no endpoint returns { stub: true }.
+- Verified on Colossus: 18/18 PASS.
+- Run: node --experimental-strip-types ./scripts/e2e-stage7.ts
