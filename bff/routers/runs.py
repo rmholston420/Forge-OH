@@ -17,8 +17,11 @@ Slice 7A (derived from event stream):
   GET  /runs/{id}/commands   → bash ActionEvent + ObservationEvent pairs
   GET  /runs/{id}/artifacts  → file_editor mutating ActionEvents
 
+Slice 7B (real passthrough):
+  POST /runs/{id}/fork       → agent-server POST /api/conversations/{id}/fork
+
 Still stub (later Stage 7 slices):
-  /runs/compare, /runs/{id}/traces, /runs/{id}/fork
+  /runs/compare, /runs/{id}/traces
 
 Contract:
   run_id == conversation_id (agent-server UUID). No SQLite mapping layer.
@@ -606,4 +609,27 @@ async def reject_run(run_id: str, body: Optional[RejectRunRequest] = None) -> di
 
 @router.post("/runs/{run_id}/fork")
 async def fork_run(run_id: str) -> dict:
-    return {"ok": True, "run_id": run_id, "forked_id": f"{run_id}-fork-1", "stub": True}
+    """Fork a conversation via agent-server.
+
+    Upstream: POST /api/conversations/{conversation_id}/fork
+    Response shape (frontend contract): {ok, run_id, forked_id}.
+    """
+    client = get_client()
+    try:
+        resp = await client.post(f"/api/conversations/{run_id}/fork")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="run not found")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
+    payload = resp.json() or {}
+    # Upstream returns a ConversationInfo-shaped object; the fork's id is under
+    # 'id' (matching the create-conversation contract).
+    forked_id = payload.get("id") or payload.get("conversation_id") or payload.get("fork_id")
+    if not forked_id:
+        raise HTTPException(
+            status_code=502,
+            detail=f"agent-server fork response missing id: {str(payload)[:200]}",
+        )
+    return {"ok": True, "run_id": run_id, "forked_id": forked_id}
