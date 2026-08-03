@@ -20,8 +20,11 @@ Slice 7A (derived from event stream):
 Slice 7B (real passthrough):
   POST /runs/{id}/fork       → agent-server POST /api/conversations/{id}/fork
 
-Still stub (later Stage 7 slices):
-  /runs/compare, /runs/{id}/traces
+Slice 7F (derived from event stream):
+  GET  /runs/{id}/traces     → spans from ActionEvents + MessageEvents
+
+Still stub (later stage):
+  /runs/compare
 
 Contract:
   run_id == conversation_id (agent-server UUID). No SQLite mapping layer.
@@ -363,37 +366,9 @@ async def get_run_plan(run_id: str) -> dict:
     return {"data": build_plan(events, run_id)}
 
 
-async def _fetch_all_events(run_id: str) -> list[dict[str, Any]]:
-    """Page through /api/conversations/{run_id}/events/search (limit=100 per page)."""
-    client = get_client()
-    items: list[dict[str, Any]] = []
-    page_id: Optional[str] = None
-    # Safety: cap total pages to avoid runaway on malformed cursors.
-    for _ in range(200):
-        params: dict[str, Any] = {"limit": 100, "sort_order": "TIMESTAMP"}
-        if page_id:
-            params["page_id"] = page_id
-        try:
-            resp = await client.get(
-                f"/api/conversations/{run_id}/events/search",
-                params=params,
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
-        if resp.status_code == 404:
-            raise HTTPException(status_code=404, detail="run not found")
-        resp.raise_for_status()
-        payload = resp.json() or {}
-        if isinstance(payload, list):
-            items.extend(payload)
-            break
-        batch = payload.get("items") or payload.get("data") or payload.get("events") or []
-        items.extend(batch)
-        next_page = payload.get("next_page_id") or payload.get("nextPageId")
-        if not next_page or not batch:
-            break
-        page_id = next_page
-    return items
+# _fetch_all_events was moved to bff.services.event_fetch for reuse by the
+# observability router; this thin alias keeps existing call sites working.
+from bff.services.event_fetch import fetch_all_events as _fetch_all_events  # noqa: E402
 
 
 @router.get("/runs/{run_id}/files")
@@ -430,7 +405,12 @@ async def get_run_commands(run_id: str) -> dict:
 
 @router.get("/runs/{run_id}/traces")
 async def get_run_traces(run_id: str) -> dict:
-    return {"data": [], "stub": True}
+    """Return spans for the given run (single trace per conversation)."""
+    from bff.services.trace_reconstruction import build_spans  # local import (avoids cycle at module load)
+
+    events = await _fetch_all_events(run_id)
+    spans = build_spans(events, run_id)
+    return {"data": spans}
 
 
 # ---------------------------------------------------------------------------
