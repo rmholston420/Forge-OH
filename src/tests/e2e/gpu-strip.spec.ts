@@ -110,7 +110,7 @@ test.describe('GPU strip — visual capture', () => {
     await page.goto(`${FRONTEND_URL}/runs`, { waitUntil: 'domcontentloaded' });
     await gpuResponse;
 
-    const strip = page.getByRole('status', { name: 'GPU status' });
+    const strip = page.getByRole('status', { name: /GPU (health|status)/ });
     await expect(strip).toBeVisible({ timeout: 10_000 });
     await expect
       .poll(async () => (await strip.innerText()).replace(/\s+/g, ''), { timeout: 10_000 })
