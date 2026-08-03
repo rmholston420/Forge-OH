@@ -9,7 +9,7 @@
  *   scripts/debug-out/runs.png                — screenshot of /runs
  *   scripts/debug-out/runs-report.json        — console/network summary
  */
-import { chromium, type ConsoleMessage, type Request, type Response } from 'playwright';
+import { chromium, type ConsoleMessage, type Request, type Response } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
