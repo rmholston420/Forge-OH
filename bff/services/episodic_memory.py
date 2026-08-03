@@ -113,7 +113,7 @@ async def get_recent_events(
             "metadata": json.loads(row["metadata"]),
             "created_at": row["created_at"],
         }
-        for row in reversed(rows)
+        for row in reversed(list(rows))
     ]
 
 

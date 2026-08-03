@@ -570,7 +570,7 @@ async def reject_run(run_id: str, body: Optional[RejectRunRequest] = None) -> di
     #   the user's intent ("reject this run"), we then attempt to hard-cancel
     #   via /interrupt. If the conversation is already idle/finished, /interrupt
     #   yields 400 which we silently swallow.
-    payload = {"accept": False}
+    payload: dict[str, Any] = {"accept": False}
     if body and body.reason:
         payload["reason"] = body.reason
     respond = await _call_lifecycle(
