@@ -72,9 +72,21 @@ test.beforeAll(async ({ request }) => {
   }
 
   const missing: string[] = [];
-  const bffRes = await request.get(`${BFF_URL}/api/gpu`).catch(() => null);
+  const bffRes = await request.get(`${BFF_URL}/api/gpu`).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.log('[gpu-strip] BFF probe threw:', e instanceof Error ? e.message : String(e));
+    return null;
+  });
+  // eslint-disable-next-line no-console
+  console.log('[gpu-strip] BFF status:', bffRes ? bffRes.status() : 'null');
   if (!bffRes || !bffRes.ok()) missing.push(`BFF ${BFF_URL}/api/gpu`);
-  const feRes = await request.get(FRONTEND_URL).catch(() => null);
+  const feRes = await request.get(FRONTEND_URL).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.log('[gpu-strip] FE probe threw:', e instanceof Error ? e.message : String(e));
+    return null;
+  });
+  // eslint-disable-next-line no-console
+  console.log('[gpu-strip] FE status:', feRes ? feRes.status() : 'null', 'URL=', FRONTEND_URL);
   if (!feRes || feRes.status() >= 500) missing.push(`frontend ${FRONTEND_URL}`);
   test.skip(missing.length > 0, `preconditions unmet: ${missing.join(', ')}`);
 });
