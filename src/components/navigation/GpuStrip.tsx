@@ -11,13 +11,16 @@
  * `critical_c` bands (52 C / 88 C for RTX 5090) for a yellow
  * midband.
  *
- * When `available === false` or the fetch itself fails, we render a
- * single grey "GPU n/a" chip instead of throwing.
+ * Clicking a chip opens a 300 s sparkline popover (GpuChipPopover)
+ * anchored to that chip. When `available === false` or the fetch
+ * itself fails, we render a single grey "GPU n/a" chip instead of
+ * throwing.
  */
 
 import React from 'react';
 import styles from './GpuStrip.module.css';
 import { bffFetch } from '@/lib/http/bff-client';
+import { GpuChipPopover, type MetricKey } from './GpuChipPopover';
 
 interface GpuSample {
   index: number;
@@ -85,9 +88,53 @@ function fmt(v: number | null | undefined, digits = 0): string {
   return typeof v === 'number' ? v.toFixed(digits) : '\u2014';
 }
 
+interface ChipProps {
+  metric: MetricKey;
+  label?: string;
+  value: number | null | undefined;
+  unit: string;
+  level: Level;
+  extraClass?: string;
+  onOpen: (metric: MetricKey, rect: DOMRect) => void;
+  activeMetric: MetricKey | null;
+}
+
+const Chip: React.FC<ChipProps> = ({
+  metric,
+  label,
+  value,
+  unit,
+  level,
+  extraClass,
+  onOpen,
+  activeMetric,
+}) => {
+  const ref = React.useRef<HTMLButtonElement | null>(null);
+  const cls = [styles.chip, styles[level], extraClass].filter(Boolean).join(' ');
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={cls}
+      aria-haspopup="dialog"
+      aria-expanded={activeMetric === metric}
+      aria-label={`Open ${metric} history`}
+      onClick={() => {
+        if (ref.current) onOpen(metric, ref.current.getBoundingClientRect());
+      }}
+    >
+      {label ? <span className={styles.label}>{label}</span> : null}
+      <span className={styles.value}>{fmt(value, 0)}</span>
+      <span className={styles.unit}>{unit}</span>
+    </button>
+  );
+};
+
 export const GpuStrip: React.FC = () => {
   const [snap, setSnap] = React.useState<GpuSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [activeMetric, setActiveMetric] = React.useState<MetricKey | null>(null);
+  const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -119,6 +166,12 @@ export const GpuStrip: React.FC = () => {
       if (timer) clearTimeout(timer);
     };
   }, []);
+
+  const handleOpen = (metric: MetricKey, rect: DOMRect) => {
+    setActiveMetric((cur) => (cur === metric ? null : metric));
+    setAnchorRect(rect);
+  };
+  const handleClose = () => setActiveMetric(null);
 
   if (error || !snap || !snap.available) {
     return (
@@ -169,27 +222,89 @@ export const GpuStrip: React.FC = () => {
       (snap.power_cutoff_w !== null ? ` (cutoff ${snap.power_cutoff_w} W)` : ''),
   ].join('\n');
 
+  // Threshold config per metric for the popover's reference lines.
+  const thresholdsFor = (m: MetricKey) => {
+    switch (m) {
+      case 'temperature_c':
+        return {
+          warn: snap.warn_c,
+          cutoff: snap.cutoff_c,
+          critical: Math.min(snap.cutoff_c, snap.critical_c),
+        };
+      case 'utilization_pct':
+        return { warn: UTIL_WARN_PCT, critical: snap.util_cutoff_pct };
+      case 'vram_pct':
+        return { warn: VRAM_WARN_PCT, critical: snap.vram_cutoff_pct };
+      case 'power_w':
+        return {
+          warn: snap.power_cutoff_w !== null ? snap.power_cutoff_w * 0.9 : undefined,
+          critical: snap.power_cutoff_w,
+        };
+    }
+  };
+
+  const unitFor = (m: MetricKey): string => {
+    switch (m) {
+      case 'temperature_c':
+        return '°C';
+      case 'utilization_pct':
+      case 'vram_pct':
+        return '%';
+      case 'power_w':
+        return ' W';
+    }
+  };
+
   return (
-    <div className={styles.strip} role="status" aria-label="GPU health" title={title}>
-      <span className={`${styles.chip} ${styles[tempLevel]}`}>
-        <span className={styles.label}>T</span>
-        <span className={styles.value}>{fmt(peaks.temperature_c, 0)}</span>
-        <span className={styles.unit}>C</span>
-      </span>
-      <span className={`${styles.chip} ${styles[utilLevel]}`}>
-        <span className={styles.label}>U</span>
-        <span className={styles.value}>{fmt(peaks.utilization_pct, 0)}</span>
-        <span className={styles.unit}>%</span>
-      </span>
-      <span className={`${styles.chip} ${styles[vramLevel]}`}>
-        <span className={styles.label}>V</span>
-        <span className={styles.value}>{fmt(peaks.vram_pct, 0)}</span>
-        <span className={styles.unit}>%</span>
-      </span>
-      <span className={`${styles.chip} ${styles[powerLevel]} ${styles.power}`}>
-        <span className={styles.value}>{fmt(peaks.power_w, 0)}</span>
-        <span className={styles.unit}>W</span>
-      </span>
-    </div>
+    <>
+      <div className={styles.strip} role="status" aria-label="GPU health" title={title}>
+        <Chip
+          metric="temperature_c"
+          label="T"
+          value={peaks.temperature_c}
+          unit="C"
+          level={tempLevel}
+          onOpen={handleOpen}
+          activeMetric={activeMetric}
+        />
+        <Chip
+          metric="utilization_pct"
+          label="U"
+          value={peaks.utilization_pct}
+          unit="%"
+          level={utilLevel}
+          onOpen={handleOpen}
+          activeMetric={activeMetric}
+        />
+        <Chip
+          metric="vram_pct"
+          label="V"
+          value={peaks.vram_pct}
+          unit="%"
+          level={vramLevel}
+          onOpen={handleOpen}
+          activeMetric={activeMetric}
+        />
+        <Chip
+          metric="power_w"
+          value={peaks.power_w}
+          unit="W"
+          level={powerLevel}
+          extraClass={styles.power}
+          onOpen={handleOpen}
+          activeMetric={activeMetric}
+        />
+      </div>
+      {activeMetric && (
+        <GpuChipPopover
+          metric={activeMetric}
+          anchorRect={anchorRect}
+          onClose={handleClose}
+          thresholds={thresholdsFor(activeMetric)}
+          label={activeMetric}
+          unit={unitFor(activeMetric)}
+        />
+      )}
+    </>
   );
 };

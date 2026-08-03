@@ -2528,3 +2528,10 @@ Slice F.16-UI (always-visible GPU strip):
 - Playwright screenshot spec passes on `next start`-served build (Turbopack HMR socket blocks hydration in fresh headless Chromium; production build has no HMR). Chip + header PNGs auto-committed to `screenshots/`.
 - GpuStrip unit-label contrast bumped (var(--color-text-secondary) + opacity 0.85) so °C/%/W remain visible against dark topbar without dominating the value.
 - F.16 slice CLOSED. G.1 slice CLOSED. F.17 CUT.
+
+## 2026-08-03 12:20 EDT — F.16 sparkline popover (option 2)
+
+- New: `src/components/navigation/GpuChipPopover.tsx` + `.module.css`. Recharts LineChart in a 320×~180 portal-mounted dialog. Consumes `/api/gpu/history?window_sec=300`, refreshes every 2 s while open. Escape / outside-click closes. `role="dialog"` + `aria-label`.
+- Refactored `GpuStrip.tsx`: chips are now `<button>` elements with hover / focus-visible states. Clicking a chip toggles its popover; ARIA `aria-haspopup="dialog"` + `aria-expanded` per chip.
+- Threshold reference lines: warn dashed yellow, critical dashed red. Y domain clamped to [0, 100] for percentage metrics.
+- New: `src/tests/e2e/gpu-popover.spec.ts`. Clicks temperature chip, awaits `/api/gpu/history`, screenshots popover to `screenshots/gpu-popover-temperature.png`, auto-pushes under `PLAYWRIGHT_GPU_STRIP_PUSH=1`.
