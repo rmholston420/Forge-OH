@@ -6,6 +6,14 @@ import { test, expect } from '@playwright/test';
 test.describe('Plugins', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/plugins');
+    // Retry once if the Next.js dev-mode compile placeholder is showing.
+    const body = (await page.locator('body').textContent()) ?? '';
+    if (/This page couldn[\u2019']?t load/i.test(body)) {
+      await page.waitForTimeout(1500);
+      await page.reload();
+    }
+    // Wait until the Installed tab has finished mounting.
+    await page.getByRole('tab', { name: 'Installed' }).waitFor({ state: 'visible' });
   });
 
   test('page loads without app error', async ({ page }) => {

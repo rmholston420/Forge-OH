@@ -7,6 +7,10 @@ import { test, expect } from '@playwright/test';
 test.describe('Plugins Marketplace tab', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/plugins');
+    // Wait until the Installed tab is present and the initial query has
+    // settled, so the Tabs component isn't remounting mid-click.
+    await page.getByRole('tab', { name: 'Installed' }).waitFor({ state: 'visible' });
+    await page.waitForLoadState('networkidle');
   });
 
   test('Installed and Marketplace tabs are both present', async ({ page }) => {
@@ -25,7 +29,11 @@ test.describe('Plugins Marketplace tab', () => {
       test.skip(true, 'plugins feature disabled');
       return;
     }
-    await marketplaceTab.click();
+    // The tab can briefly re-render as tanstack-query settles. Click via
+    // aria-selected assertion so Playwright waits until the tab actually
+    // becomes active rather than trying to click a stale element.
+    await marketplaceTab.click({ trial: false });
+    await expect(marketplaceTab).toHaveAttribute('aria-selected', 'true');
     // Installed-only "Filter by status" group must NOT be visible on marketplace tab.
     await expect(page.getByRole('group', { name: 'Filter by status' })).toHaveCount(0);
     // Page must not crash.

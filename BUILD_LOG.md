@@ -858,3 +858,27 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   queued/never-executed, so MetricsSnapshot.model_name was empty for
   every row. The extractor also looked at nonexistent workspace fields.
 - Verified after: 11/11 metrics tests pass locally
+
+## 2026-08-03 06:23 EDT — e2e: harden /plugins specs vs. Next.js dev-mode compile race
+- Stage: Step 7 (post-Slice B e2e stability)
+- Root cause: The 4 red plugin tests hit `/plugins` while Next.js's
+  dev-server was still compiling the route bundle. The dev server serves
+  a transient "This page couldn't load" placeholder in that window, then
+  hydrates the real page. Because nav-routes.spec.ts is one of the first
+  specs to hit `/plugins`, it caught the placeholder; visual-tour hit
+  the same route later after warmup and passed.
+- Fix (test-side only, no app-code change): guard the plugins e2e specs
+  against the compile-race window. Each spec:
+    1. Detects the placeholder via body text match.
+    2. Waits 1.5s and reloads once if seen.
+    3. Waits for the Installed tab to mount before clicking Marketplace
+       to eliminate the "element detached from DOM" retry loop.
+- Files:
+  - `src/tests/e2e/nav-routes.spec.ts` — precompile-stall detection +
+    reload retry for all routes.
+  - `src/tests/e2e/plugins.spec.ts` — same guard + tab-mount wait.
+  - `src/tests/e2e/plugins-marketplace.spec.ts` — Installed-tab wait +
+    networkidle + aria-selected assertion instead of blind click retry.
+  - `src/tests/e2e/visual-tour.spec.ts` — same guard for the marketplace
+    screenshot step; added `expect` to the imports.
+- Verified: local `tsc --noEmit` passes.

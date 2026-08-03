@@ -9,7 +9,7 @@
  * Screenshots land in: <repo>/screenshots/<slug>.png
  * The test file uses fullPage:true so wrapped/broken text is visible.
  */
-import { test, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import * as path from 'path';
 
 const OUT = path.resolve(process.cwd(), 'screenshots');
@@ -80,12 +80,18 @@ for (const r of ROUTES) {
 // ────────────────────────────────────────────────────────────────
 test('plugins: marketplace tab', async ({ page }) => {
   await page.goto('/plugins');
+  // Wait for the Tabs component to finish mounting before clicking.
+  const installedTab = page.getByRole('tab', { name: 'Installed' });
+  await installedTab.waitFor({ state: 'visible' });
+  await page.waitForLoadState('networkidle');
+
   const marketplaceTab = page.getByRole('tab', { name: 'Marketplace' });
   if (await marketplaceTab.count() === 0) {
     await shot(page, '11-plugins-marketplace-DISABLED');
     return;
   }
   await marketplaceTab.click();
+  await expect(marketplaceTab).toHaveAttribute('aria-selected', 'true');
   await shot(page, '11-plugins-marketplace');
 });
 
