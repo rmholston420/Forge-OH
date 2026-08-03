@@ -447,3 +447,13 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - `grep -c '"stub"'` = 0 across all three endpoints
 - Contract match: PlanNode[]/TerminalCommand[]/Artifact[] per src/lib/schemas/{plan,terminal,artifact}.ts
 - Remaining Stage 7 slices: 7B fork, 7C MCP, 7D plugins, 7E secrets, 7F traces (BFF-owned SQLite).
+
+## 2026-08-03 01:03 EDT — Slice 7B CLOSED (fork via agent-server)
+- Stage: 7B — real fork endpoint passthrough.
+- Changed: bff/routers/runs.py fork_run() now POSTs to agent-server /api/conversations/{id}/fork.
+- Verified on Colossus:
+  - POST /api/runs/b983c992.../fork → HTTP 200 {ok, run_id, forked_id=5602f560...}
+  - Fork exists in agent-server conversation list; status='idle' (correct per upstream: fresh event loop).
+  - Event history inherited: 19 events on fork == 19 events on source.
+  - stub-count = 0.
+- Non-blocking observation: forks of pre-Stage-6 runs inherit working_dir='workspace/runs/pending'. Post-Stage-6 runs (which use real workspace paths) will produce forks with real paths.
