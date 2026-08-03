@@ -9,6 +9,7 @@ import {
   stopRun,
   approveRun,
   rejectRun,
+  forkRun,
 } from './api';
 import type { CreateRunRequest } from './schemas';
 import { QUERY_KEYS } from '@/lib/query/query-keys';
@@ -91,5 +92,20 @@ export function useRejectRun() {
     mutationFn: (vars: { runId: string; reason?: string }) =>
       rejectRun(vars.runId, vars.reason),
     onSuccess: (_data, vars) => invalidateRun(qc, vars.runId),
+  });
+}
+
+export function useForkRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => forkRun(runId),
+    onSuccess: (data, runId) => {
+      invalidateRun(qc, runId);
+      // The forked run is a fresh row in the list; ensure it is fetched.
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.runs.list() });
+      if (data?.forked_id) {
+        qc.invalidateQueries({ queryKey: QUERY_KEYS.runs.detail(data.forked_id) });
+      }
+    },
   });
 }

@@ -64,3 +64,10 @@ export async function rejectRun(runId: string, reason?: string): Promise<Lifecyc
   );
   return unwrap(result);
 }
+
+export type ForkAck = { ok: boolean; run_id: string; forked_id: string };
+
+export async function forkRun(runId: string): Promise<ForkAck> {
+  const result = await bffPost<ForkAck>(ENDPOINTS.RUNS.fork(runId), {});
+  return unwrap(result);
+}

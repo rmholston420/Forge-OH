@@ -1,5 +1,6 @@
 'use client';
 import React, { useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useRunDetail, useRunEvents } from '@/features/run-detail/hooks';
 import {
   usePauseRun,
@@ -7,6 +8,7 @@ import {
   useStopRun,
   useApproveRun,
   useRejectRun,
+  useForkRun,
 } from '@/features/runs/hooks';
 import { useRunDetailStore, type RunDetailStore } from '@/features/run-detail/store';
 import { useRunStream } from '@/lib/streaming/useRunStream';
@@ -83,6 +85,8 @@ export default function RunDetailPage({
   const stopMut = useStopRun();
   const approveMut = useApproveRun();
   const rejectMut = useRejectRun();
+  const forkMut = useForkRun();
+  const router = useRouter();
 
   const {
     selectedTab, setSelectedTab,
@@ -151,8 +155,16 @@ export default function RunDetailPage({
             resumeMut.isPending ||
             stopMut.isPending ||
             approveMut.isPending ||
-            rejectMut.isPending
+            rejectMut.isPending ||
+            forkMut.isPending
           }
+          onFork={() => {
+            forkMut.mutate(run.id, {
+              onSuccess: (data) => {
+                if (data?.forked_id) router.push(`/runs/${data.forked_id}`);
+              },
+            });
+          }}
           onPause={() => {
             // One toggle drives both Pause and Resume based on current status.
             if (run.status === 'paused') resumeMut.mutate(run.id);
