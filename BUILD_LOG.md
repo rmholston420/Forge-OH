@@ -2103,3 +2103,60 @@ ls -la ~/.forge-oh/trajectories.db  # should grow after each run
   writes work today but with fewer fields.
 - Retention policy for ``trajectories.db``.
 - Indexer drain schedule.
+
+## 2026-08-03 09:50 EDT — Slice F.10: agent-server topology change (docker → .oh-venv)
+
+**Stage:** Slice F.9 follow-up. When F.9 wired the STOP hooks into the
+create_body, the hooks were dispatched into a docker container that had
+neither ``openhands_tools_ext`` installed nor a bind mount to the host
+workspace, so both hooks would silently no-op. This slice drops the
+docker container and runs the agent-server directly in ``.oh-venv``.
+
+**Decision (from a direct question in the session):** Option A —
+"Run agent-server in .oh-venv (drop docker)." Chosen because:
+* Local-first, single-user project brief.
+* Zero mount / image-rebuild churn.
+* ``.oh-venv`` already has ``openhands_tools_ext`` installed, so hook
+  subprocesses resolve their module paths for free.
+
+**Files modified:**
+- ``scripts/forge-up.sh`` — agent-server now started via
+  ``python -m openhands.agent_server --host 127.0.0.1 --port $AGENT_PORT``
+  under ``.oh-venv`` with a pidfile at
+  ``.forge-logs/agent-server.pid``. Also removes any legacy
+  ``forge-oh-agent-server`` docker container up front so :8090 doesn't
+  stay held. Header docblock updated to explain the topology change.
+- ``scripts/forge-down.sh`` — added pidfile + port kill for the
+  agent-server and kept the docker cleanup as a legacy fallback.
+- ``scripts/run_openhands_agent_server.sh`` — repurposed as a
+  foreground launcher for the ``.oh-venv`` agent-server (replaces the
+  old ``docker run`` invocation).
+- ``scripts/forge-up.sh`` also exports ``FORGE_OH_TRAJECTORY_DB``
+  (defaulting to ``$HOME/.forge-oh/trajectories.db``) so the BFF, the
+  agent-server, and the trajectory STOP hook all agree on a single DB
+  path. Without this, the hook (which runs with
+  ``OPENHANDS_PROJECT_DIR`` set) would write to
+  ``$WORKSPACE/.forge-oh/trajectories.db`` per the store's resolution
+  order in ``default_db_path()``, while the BFF (no project dir) would
+  read ``~/.forge-oh/trajectories.db``.
+
+**No new tests:** this slice is purely a runtime plumbing change to
+existing shell scripts. All backend tests (270 offline-safe) still
+pass; no application code touched.
+
+**Sanity check on Colossus after pulling:**
+```
+cd ~/dev/forge-oh
+git pull --ff-only
+scripts/forge-down.sh && scripts/forge-up.sh
+# Confirm topology:
+cat .forge-logs/agent-server.pid   # should be a live pid
+docker ps | grep forge-oh-agent-server   # should be empty
+ls -la ~/.forge-oh/                       # should exist (created by forge-up)
+# Then run a task end-to-end and check:
+sqlite3 ~/.forge-oh/trajectories.db \
+  'SELECT trajectory_id, task_description, final_status FROM trajectories ORDER BY created_at DESC LIMIT 5;'
+```
+
+**Stop-condition status:** Hooks now run against live agent activity
+under the correct interpreter and against the correct filesystem.

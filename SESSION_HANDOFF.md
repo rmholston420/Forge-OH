@@ -1,17 +1,21 @@
 # SESSION_HANDOFF.md
 
 ## Current stage
-**Slice F complete + runtime wiring live.** Every conversation the BFF
-creates now registers both STOP hooks. Rec #3 case-retrieval memory
-runs end-to-end against real agent activity.
+**Slice F complete + hooks running against live agent activity under
+the right topology.** Agent-server now runs directly in ``.oh-venv``
+(dropped docker), so STOP hook subprocesses can import
+``openhands_tools_ext`` and write to the host workspace.
 
 ## Completed this session
 - **F.1–F.7** all shipped (see earlier BUILD_LOG entries).
-- **F.8** ADR-008 + Playwright E2E — commit `de8c837`, tag
-  `v1.0-alpha3`.
+- **F.8** ADR-008 + Playwright E2E — commit ``de8c837``, tag
+  ``v1.0-alpha3``.
 - **F.9** Runtime hook wiring — inline ``hook_config`` on every
   ``POST /api/conversations`` + workspace ``.openhands/hooks.json`` +
-  10 new backend tests.
+  10 new backend tests — commit ``e2e7350``.
+- **F.10** Agent-server topology change — docker container replaced
+  with ``.oh-venv`` process; shared ``FORGE_OH_TRAJECTORY_DB`` env pin
+  so BFF, agent-server, and hook all point at the same SQLite file.
 
 ## Test totals
 - Backend offline-safe: 270 passed.
@@ -21,20 +25,24 @@ runs end-to-end against real agent activity.
 - E2E: 2 specs (skip-guarded on live BFF + scratch-DB env).
 
 ## Big picture — all three recommendations shipped and live
-- **Rec #1** — RepoGraph (Slice D) — `v1.0-alpha1`
-- **Rec #2** — VerifyLoop (Slice E) — `v1.0-alpha2`
-- **Rec #3** — Trajectory Memory (Slice F) — `v1.0-alpha3` + runtime wiring
+- **Rec #1** — RepoGraph (Slice D) — ``v1.0-alpha1``
+- **Rec #2** — VerifyLoop (Slice E) — ``v1.0-alpha2``
+- **Rec #3** — Trajectory Memory (Slice F) — ``v1.0-alpha3`` + runtime wiring
 
 ## Live sanity check on Colossus
 ```
 cd ~/dev/forge-oh
 git pull --ff-only
 scripts/forge-down.sh && scripts/forge-up.sh
-# In the UI: create a run and let it finish.
-# Verify hook writes:
+
+# Topology check:
+cat .forge-logs/agent-server.pid   # live pid
+docker ps | grep forge-oh-agent-server   # empty
+
+# Run a task in the UI, let it finish, then:
 cat workspaces/*/.forge-oh/verify-state.json 2>/dev/null | head
-# Trajectory hook writes:
-sqlite3 ~/.forge-oh/trajectories.db 'SELECT trajectory_id, task_description, final_status FROM trajectories ORDER BY created_at DESC LIMIT 5;'
+sqlite3 ~/.forge-oh/trajectories.db \
+  'SELECT trajectory_id, task_description, final_status FROM trajectories ORDER BY created_at DESC LIMIT 5;'
 ```
 
 ## Open questions
@@ -49,7 +57,6 @@ None blocking. Deferred to future work:
   without ``FORGE_OH_TRAJECTORY_INDEX_INLINE=1``.
 
 ## Next action
-Options for the next slice:
 1. Sidecar producer — closes the last gap in the trajectory pipeline
    so records are richly populated instead of minimally seeded from the
    STOP event.

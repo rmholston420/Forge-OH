@@ -2,7 +2,8 @@
 # forge-down.sh — stop everything forge-up.sh started
 #
 # Kills PIDs stored in .forge-logs/*.pid, then any lingering listeners
-# on the known ports as a fallback. Stops the agent-server docker container.
+# on the known ports as a fallback. Also removes the legacy agent-server
+# docker container if one is still around from a pre-Slice-F.9 topology.
 #
 # Usage: bash scripts/forge-down.sh
 set -uo pipefail
@@ -15,7 +16,6 @@ LOG_DIR="$REPO_ROOT/.forge-logs"
 BFF_PORT="${BFF_PORT:-8081}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 AGENT_PORT="${OPENHANDS_AGENT_SERVER_PORT:-8090}"
-AGENT_CONTAINER="forge-oh-agent-server"
 
 log()  { printf '\033[36m[forge-down]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[forge-down]\033[0m %s\n' "$*"; }
@@ -53,24 +53,25 @@ kill_port() {
   fi
 }
 
-# ---- Frontend + BFF ------------------------------------------------------
-kill_pidfile "$LOG_DIR/frontend.pid" "Next.js"
-kill_pidfile "$LOG_DIR/bff.pid"       "BFF"
+# ---- Frontend + BFF + agent-server (pidfile path) -----------------------
+kill_pidfile "$LOG_DIR/frontend.pid"     "Next.js"
+kill_pidfile "$LOG_DIR/bff.pid"          "BFF"
+kill_pidfile "$LOG_DIR/agent-server.pid" "agent-server"
+
+# ---- Port fallback for anything still bound -----------------------------
 kill_port    "$FRONTEND_PORT"          "Next.js"
 kill_port    "$BFF_PORT"               "BFF"
+kill_port    "$AGENT_PORT"             "agent-server"
 
-# ---- Agent-server (docker) ----------------------------------------------
-if docker ps --format '{{.Names}}' | grep -q "^${AGENT_CONTAINER}$"; then
-  log "stopping agent-server container ${AGENT_CONTAINER}"
-  docker stop "$AGENT_CONTAINER" >/dev/null 2>&1 || true
-  docker rm   "$AGENT_CONTAINER" >/dev/null 2>&1 || true
-else
-  # Fallback: any container publishing the agent port
-  local_ids="$(docker ps --filter "publish=${AGENT_PORT}" --format '{{.ID}}' 2>/dev/null || true)"
-  if [ -n "$local_ids" ]; then
-    log "stopping other docker container(s) on :${AGENT_PORT}: $local_ids"
-    # shellcheck disable=SC2086
-    docker stop $local_ids >/dev/null 2>&1 || true
+# ---- Legacy docker container cleanup ------------------------------------
+# The pre-F.9 topology ran the agent-server as a docker container. If one
+# is still around (e.g. a stale process from before the topology change),
+# tear it down so the port doesn't stay held.
+if command -v docker >/dev/null 2>&1; then
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^forge-oh-agent-server$'; then
+    log "removing legacy docker container forge-oh-agent-server"
+    docker stop forge-oh-agent-server >/dev/null 2>&1 || true
+    docker rm   forge-oh-agent-server >/dev/null 2>&1 || true
   fi
 fi
 
