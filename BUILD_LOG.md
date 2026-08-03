@@ -2160,3 +2160,49 @@ sqlite3 ~/.forge-oh/trajectories.db \
 
 **Stop-condition status:** Hooks now run against live agent activity
 under the correct interpreter and against the correct filesystem.
+
+## 2026-08-03 09:52 EDT — Slice F.11: live E2E for STOP hook plumbing
+
+**Stage/plugin/port:** Forge-OH kernel, Slice F (Trajectory Memory), Rec #3, E2E-level integration test.
+
+**Files touched:**
+- `src/tests/e2e/hooks-live.spec.ts` — new; drives a real run through
+  the BFF and asserts both STOP hooks fired.
+
+**What was built:**
+- End-to-end spec that:
+  1. Ensures at least one workspace exists (creates one via
+     `POST /api/workspaces` if the list is empty).
+  2. Creates a real run via `POST /api/runs` with a trivial one-shot
+     prompt (`"Respond with exactly the single word ok and then
+     finish. Do not call any tools."`).
+  3. Polls `GET /api/runs/{id}` until the run reaches a terminal
+     status (`succeeded`/`failed`/`stopped`) or a 4-minute timeout
+     expires (configurable via `LIVE_HOOKS_E2E_TIMEOUT_MS`).
+  4. If the response carries a `workspacePath`, asserts
+     `$WORKSPACE/.forge-oh/verify-state.json` exists and parses as JSON
+     — confirmation that the **verify** STOP hook fired.
+  5. Reads `$FORGE_OH_TRAJECTORY_DB` (default
+     `~/.forge-oh/trajectories.db`) via a `sqlite3` python subprocess
+     and asserts a row with `run_id = <this run>` exists — confirmation
+     that the **trajectory** STOP hook fired and hit the shared DB path
+     pinned by F.10.
+- Guarded behind `LIVE_HOOKS_E2E=1`. Without it every test in the file
+  skips with a clear reason, so it is safe to leave in the default
+  suite and CI runners. Environment: `PLAYWRIGHT_PYTHON` overrides the
+  python interpreter used for the sqlite subprocess (defaults to
+  `~/dev/forge-oh/.oh-venv/bin/python`).
+
+**Verified locally:**
+- `npx tsc --noEmit` — clean.
+- `npx playwright test src/tests/e2e/hooks-live.spec.ts --list` picks
+  up both tests.
+- `npx playwright test src/tests/e2e/hooks-live.spec.ts
+  --reporter=line` without the env gate → 2 skipped, no failures.
+
+**ADRs/ledger:** none — pure test addition.
+
+**Stop-condition status:** F.10 topology change + F.11 E2E now give us
+a mechanical way to prove the hook wiring after every future change.
+Slice F itself remains at `v1.0-alpha3`; this is a follow-up quality
+gate, not a new capability.
