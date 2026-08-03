@@ -2308,3 +2308,108 @@ end-to-end complete for the async-embedding path: hook writes rows
 with the real prompt (F.12), scheduler embeds them in the background
 (F.13). `LIVE_HOOKS_E2E=1` E2E from F.11 will now populate
 searchable rows on every completed run.
+
+## 2026-08-03 10:32 EDT — Slice F.14: final_status inference at STOP hook
+
+**Stage/plugin/port:** Forge-OH kernel, Slice F (Trajectory Memory),
+Rec #3, trajectory STOP hook status attribution.
+
+**Files touched:**
+- `openhands_tools_ext/trajectory/hook.py` — new `_infer_final_status`
+  that combines sidecar override + verify verdict + STOP-hook default.
+- `openhands_tools_ext/tests/trajectory/test_hook.py` — updated two
+  existing tests to match new semantics; added 6 tests for new
+  status paths.
+
+**What was built:**
+
+Live F.13 rows landed with `final_status="unknown"` even for
+successful runs. Root cause: `_verdict_to_status` mapped
+`"no-step"`/`"skip"`/missing verdict → UNKNOWN. But the trajectory
+STOP hook only fires when the SDK reports
+`execution_status == FINISHED` — i.e. the agent called `finish` on
+its own. In that regime, an absent verify verdict is verify being
+silent, not the run being ambiguous.
+
+New precedence, highest first:
+
+1. `sidecar["final_status"]` if it decodes to a valid
+   `TrajectoryStatus` — lets F.15 producers force an explicit
+   terminal state (e.g. an abort producer emitting `"aborted"`).
+2. Explicit verify verdict: `pass` → SUCCESS, `fail`/`error` →
+   FAILED.
+3. Default: SUCCESS. STOP-hook FINISHED-only invariant justifies
+   it, and downstream `verified_only=True` retrieval still filters
+   out the explicit-failure rows.
+4. UNKNOWN reserved for a well-formed verify-state.json with an
+   unrecognized verdict string — a genuine data-quality signal.
+
+**Verified:**
+- 121 trajectory-package tests pass (`openhands_tools_ext/tests/trajectory/`).
+- 434 offline-safe backend tests pass (baseline 409; +25 total this
+  session).
+- Ruff clean.
+
+**ADRs/ledger:** none — semantics change is documented in the
+`_infer_final_status` docstring and BUILD_LOG.
+
+**Stop-condition status:** F.14 done. Rows created on Colossus from
+here on will carry the correct terminal status.
+
+## 2026-08-03 10:35 EDT — Slice F.15: sidecar signal-field producers
+
+**Stage/plugin/port:** Forge-OH kernel, Slice F (Trajectory Memory),
+Rec #3, sidecar enrichment via the BFF event relay.
+
+**Files touched:**
+- `bff/services/sidecar_producers.py` — new service module.
+- `bff/services/event_relay.py` — one-shot workspace lookup at
+  relay startup; per-event tap into `update_from_event`; accumulator
+  reset on terminal status.
+- `bff/tests/test_sidecar_producers.py` — 19 tests.
+
+**What was built:**
+
+F.12 seeded `task_description`; F.14 fixed `final_status`. Every
+other sidecar-consumed field (`plan`, `symptom`, `diffs`,
+`repograph_symbols`) was still empty. F.15 adds producers keyed off
+the event stream already flowing through `event_relay._run_loop`:
+
+- **plan**: reuses `action_reconstruction.build_plan` so the
+  trajectory-side plan can't diverge from the frontend-side plan.
+- **diffs**: reuses `file_diff_reconstruction.build_summaries` and
+  coerces to the `TrajectoryDiff` shape (`path`, `lines_added`,
+  `lines_removed`, `summary`).
+- **symptom**: scans events (freshest wins) for a `symptom`,
+  `verify_symptom`, or `failure_reason` string on the top-level
+  envelope or the common nested containers.
+- **repograph_symbols**: order-preserving union of `symbols` /
+  `symbol_ids` / `query_symbols` extracted from
+  `repograph.search`/`repograph.symbol_lookup` actions.
+
+Architecture:
+
+- Per-conversation in-memory event accumulator (module-level dict),
+  bounded to 5000 events with amortized-O(1) oldest-drop.
+- All producers are best-effort — every exception is caught inside
+  `update_from_event`; the relay loop is unconditionally shielded.
+- Sidecar merges are performed by `update_sidecar` (F.12) which
+  already runs under `fcntl.LOCK_EX`, so parallel writers can't
+  corrupt the file.
+- The relay resolves the workspace `working_dir` once at startup
+  and reuses it for every event. Miss → producers short-circuit.
+- On terminal status the relay calls
+  `sidecar_producers.reset_accumulator(cid)` so a long-running BFF
+  can't leak memory across many completed runs.
+
+**Verified:**
+- 19 new producer tests pass.
+- 434 offline-safe backend tests pass. Ruff clean.
+
+**ADRs/ledger:** none — additive service. Wiring into
+`event_relay` is documented inline.
+
+**Stop-condition status:** F.15 done. Trajectory records created
+from here on will carry plan (when the agent emitted one), diffs
+(when files were edited), symptom (when verify or a tool named
+one), and repograph_symbols (when RepoGraph was queried).

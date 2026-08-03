@@ -33,6 +33,7 @@ import logging
 from typing import Any
 
 from bff.openhands_client import get_client
+from bff.services import sidecar_producers
 
 log = logging.getLogger(__name__)
 
@@ -58,17 +59,44 @@ def _pick_interval(status: str) -> float:
     return _FAST_INTERVAL if status in _ACTIVE_STATUSES else _SLOW_INTERVAL
 
 
-async def _fetch_status(cid: str) -> str | None:
-    """Return the current execution_status for a conversation, or None on 404."""
+async def _fetch_conversation(cid: str) -> dict[str, Any] | None:
+    """Return the full conversation JSON for ``cid`` (or None on 404).
+
+    Used both for status polling and for one-shot workspace lookup
+    at F.15 sidecar-producer setup time.
+    """
     try:
         resp = await get_client().get(f"/api/conversations/{cid}")
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
-        return resp.json().get("execution_status")
+        return resp.json() or {}
     except Exception as exc:
-        log.warning("relay[%s]: status fetch failed: %s", cid, exc)
+        log.warning("relay[%s]: conversation fetch failed: %s", cid, exc)
         return None
+
+
+async def _fetch_status(cid: str) -> str | None:
+    """Return the current execution_status for a conversation, or None on 404."""
+    conv = await _fetch_conversation(cid)
+    if conv is None:
+        return None
+    return conv.get("execution_status")
+
+
+def _extract_working_dir(conv: dict[str, Any] | None) -> str:
+    """Pull the workspace ``working_dir`` from a conversation JSON.
+
+    Returns "" when unavailable so the sidecar producers can short-
+    circuit without raising.
+    """
+    if not isinstance(conv, dict):
+        return ""
+    ws = conv.get("workspace")
+    if not isinstance(ws, dict):
+        return ""
+    wd = ws.get("working_dir")
+    return wd if isinstance(wd, str) else ""
 
 
 async def _fetch_page(cid: str, page_id: str | None) -> tuple[list[dict], str | None]:
@@ -108,6 +136,17 @@ async def _run_loop(cid: str) -> None:
     last_status: str | None = None
     page_id: str | None = None
     total_events = 0
+    # F.15: resolve the workspace once at startup so sidecar producers
+    # know where to write. The conversation is created by BFF before
+    # start_relay is called, so this lookup is expected to succeed.
+    # A miss is non-fatal — producers simply short-circuit.
+    initial_conv = await _fetch_conversation(cid)
+    working_dir = _extract_working_dir(initial_conv)
+    if not working_dir:
+        log.info(
+            "relay[%s]: no working_dir resolved; sidecar producers disabled",
+            cid,
+        )
     log.info("relay[%s]: starting", cid)
     try:
         while True:
@@ -147,6 +186,19 @@ async def _run_loop(cid: str) -> None:
                 if isinstance(ev, dict) and "runId" not in ev:
                     ev["runId"] = cid
                 await _emit(room, "event", ev)
+                # F.15: feed the event into sidecar producers so
+                # plan/symptom/diffs/repograph_symbols stay current
+                # for the STOP hook to consume. Failure is
+                # swallowed inside update_from_event; this call is
+                # unconditionally safe even when working_dir is "".
+                if working_dir and isinstance(ev, dict):
+                    sidecar_producers.update_from_event(
+                        cid=cid,
+                        workspace=working_dir,
+                        # Forge-OH: session_id == conversation id.
+                        session_id=cid,
+                        event=ev,
+                    )
             if next_page:
                 page_id = next_page
 
@@ -157,6 +209,10 @@ async def _run_loop(cid: str) -> None:
                     status,
                     total_events,
                 )
+                # F.15: drop the event accumulator for this cid so a
+                # long-running BFF process doesn't leak memory across
+                # many completed runs.
+                sidecar_producers.reset_accumulator(cid)
                 return
 
             await asyncio.sleep(_pick_interval(status))

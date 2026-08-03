@@ -1,49 +1,42 @@
 # Forge-OH — Session Handoff
 
-**Last updated:** 2026-08-03 10:00 EDT
+**Last updated:** 2026-08-03 10:38 EDT
 
 ## Current build-sequencing stage
 
 Slice F (Trajectory Memory, Rec #3). Kernel side of the pipeline is
-end-to-end wired.
+end-to-end wired AND signal fields are populated.
 
 ## What was completed this session
 
-- **F.12** — trajectory sidecar producer (`bff/services/sidecar.py`,
-  wired in `bff/routers/runs.py`). BFF now seeds
-  `$WORKSPACE/.forge-oh/trajectory-sidecar.json` at conversation
-  create with `session_id` + `task_description`. Trajectory STOP hook
-  reads this and produces rows with the real user prompt instead of
-  an empty string. 19 unit tests + 2 router tests.
-- **F.13** — trajectory drain scheduler
-  (`bff/services/trajectory_drain.py`, wired into `bff/main.py`
-  lifespan). Background async task calls
-  `TrajectoryIndexer.index_pending()` every 60 s (configurable via
-  `FORGE_OH_TRAJECTORY_DRAIN_INTERVAL` / `FORGE_OH_TRAJECTORY_DRAIN_BATCH`).
-  `POST /api/trajectories/drain` forces an immediate pass and
-  returns metrics. 19 unit tests + 3 endpoint tests.
+- **F.12** — sidecar producer for `task_description` (seeded at
+  conversation-create in `bff/routers/runs.py`).
+- **F.13** — background drain scheduler in the BFF lifespan +
+  `POST /api/trajectories/drain` endpoint.
+- **F.14** — fixed `final_status` attribution in the STOP hook.
+  Introduces `_infer_final_status`: sidecar-override > verify verdict
+  > STOP-hook default (SUCCESS) > UNKNOWN (unrecognized verdict only).
+- **F.15** — sidecar producers for `plan`, `diffs`, `symptom`, and
+  `repograph_symbols`. Wired into `event_relay._run_loop`; each
+  event is fed through `bff/services/sidecar_producers.update_from_event`.
+  Per-conversation accumulator, bounded to 5000 events, reset on
+  terminal status.
 
-**Test totals:** 409 passing offline-safe backend (baseline 387;
-+22 new). 0 regressions. 14 pre-existing localhost-only failures
-unchanged (`test_mcp_router`, `test_observability_router`,
-`test_plugins_router`). Ruff clean.
+**Test totals:** 434 passing offline-safe backend (baseline 387;
++47 across F.12/F.13/F.14/F.15). 0 regressions. 14 pre-existing
+localhost-only failures unchanged (`test_mcp_router`,
+`test_observability_router`, `test_plugins_router`). Ruff clean.
 
 ## What remains before the current DoD is met
 
-Slice F kernel work is done. Full-loop E2E confirmation on Colossus
-still needed:
+Slice F kernel work is done. Full-loop live verification on
+Colossus needs a fresh run to confirm all four fields populate.
 
 1. Pull latest on Colossus (`~/dev/forge-oh/`) and restart the BFF
-   so the drain scheduler is running.
-2. Re-run `scripts/forge-up.sh` and issue a live run through the
-   agent-server.
-3. After the run finishes, confirm the row in
-   `~/.forge-oh/trajectories.db` has (a) a non-empty
-   `task_description` and (b) a non-null `embedding` blob (via
-   `POST /api/trajectories/drain` for an immediate pass, or wait
-   60 s).
-4. Then re-run the live E2E (`LIVE_HOOKS_E2E=1 pnpm playwright test`
-   in `frontend/`).
+   so both the drain scheduler AND the new event-tap are live.
+2. Fire one run via curl (or the UI) with a real prompt.
+3. After the agent finishes (natural `finish` call → STOP hook
+   fires), force-drain and inspect the sidecar + DB row.
 
 ## Open questions / ambiguities awaiting your answer
 
@@ -51,37 +44,47 @@ None currently.
 
 ## Deferred items (non-blocking)
 
-- Fix verify hook so it actually writes `verify-state.json`
-  (workspaces/*/.forge-oh/ empty on live runs — trajectory rows still
-  work because trajectory hook doesn't depend on verify state).
 - Retention policy ADR for `trajectories.db`.
-- Additional sidecar producers (planner, verify symptom, repograph
-  symbols, diffs) — can layer on top using
-  `sidecar.update_sidecar()`.
+- Backfill: attribute the two pre-F.12 orphan rows (task_description
+  empty).
+- If any F.15 producer proves noisy in practice (e.g. RepoGraph
+  action `kind` naming drifts), the map at the top of
+  `sidecar_producers.py` is the single place to adjust.
 - Fresh recommendation outside Rec 1/2/3.
 
 ## Exact next action to take
 
-Pull on Colossus and run the live E2E:
+On Colossus:
 
 ```bash
 cd ~/dev/forge-oh
 git pull --ff-only
-# restart BFF so the F.13 drain scheduler picks up on lifespan startup
-pkill -f 'uvicorn bff.main:app' || true
+pkill -9 -f 'uvicorn bff.main:app' || true
 scripts/forge-up.sh
-# in another terminal, once BFF healthy:
-cd ~/dev/forge-oh/frontend
-LIVE_HOOKS_E2E=1 pnpm playwright test
-```
 
-After the run completes, force an immediate embed and inspect the DB:
+# Fire a fresh live run via curl:
+RESP=$(curl -s -X POST http://127.0.0.1:8081/api/runs \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"F.14 F.15 verify","agentPresetId":"ap-1","workspaceId":"18c99443b23c452899010095abd5f29b","taskPrompt":"write a python one-liner that prints hello world"}')
+CID=$(echo "$RESP" | jq -r '.data.id')
+echo "conversation: $CID"
 
-```bash
-curl -s -X POST http://127.0.0.1:8000/api/trajectories/drain | jq
+# Watch the sidecar populate in real time
+watch -n 2 "cat /home/rmholston/dev/forge-oh/.forge-oh/trajectory-sidecar.json | jq ."
+
+# When done (agent finishes on its own), force drain + check DB:
+curl -s -X POST http://127.0.0.1:8081/api/trajectories/drain | jq
 sqlite3 ~/.forge-oh/trajectories.db \
-  "SELECT run_id, task_description, length(embedding) FROM trajectories ORDER BY started_at DESC LIMIT 3;"
+  "SELECT substr(run_id,1,8), task_description, final_status,
+          length(diffs_json), length(plan), symptom,
+          length(embedding)
+   FROM trajectories ORDER BY created_at DESC LIMIT 3;"
 ```
 
-Both `task_description` non-empty AND `length(embedding) > 0` is the
-Slice F Definition of Done.
+Slice F DoD met when the newest row has:
+
+- non-empty `task_description`
+- `final_status` = `success` (not `unknown`)
+- non-null `embedding` (`length(embedding) > 0`)
+- best-effort populated `plan` / `diffs_json` / `symptom` when those
+  signals were emitted by the run
