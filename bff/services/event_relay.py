@@ -65,7 +65,7 @@ async def _fetch_status(cid: str) -> str | None:
             return None
         resp.raise_for_status()
         return resp.json().get("execution_status")
-    except Exception as exc:  # noqa: BLE001 — never crash the relay
+    except Exception as exc:
         log.warning("relay[%s]: status fetch failed: %s", cid, exc)
         return None
 
@@ -90,7 +90,7 @@ async def _fetch_page(cid: str, page_id: str | None) -> tuple[list[dict], str | 
         items = data.get("items") or data.get("data") or data.get("events") or []
         next_page = data.get("next_page_id") or data.get("nextPageId")
         return items, next_page
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("relay[%s]: events fetch failed: %s", cid, exc)
         return [], page_id
 
@@ -172,6 +172,6 @@ async def shutdown_all() -> None:
     for task in list(_tasks.values()):
         try:
             await task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+        except (asyncio.CancelledError, Exception):
             pass
     _tasks.clear()

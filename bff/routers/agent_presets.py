@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
@@ -61,7 +61,7 @@ class UpdateRequest(BaseModel):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 _PRESETS: dict[str, AgentPreset] = {

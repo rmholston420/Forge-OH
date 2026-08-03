@@ -146,7 +146,7 @@ async def list_runs(
             params={"limit": pageSize, "sort_order": "CREATED_AT_DESC"},
         )
         resp.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("list_runs: agent-server unreachable: %s", exc)
         return {"data": [], "pageInfo": {"total": 0, "page": page, "pageSize": pageSize}}
 
@@ -206,7 +206,7 @@ async def create_run(body: CreateRunRequest) -> dict:
                 if w.get("id") == body.workspaceId:
                     working_dir = w["path"]
                     break
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("create_run: workspace lookup failed, using default: %s", exc)
 
     # 3) Create conversation on agent-server.
@@ -264,7 +264,7 @@ async def create_run(body: CreateRunRequest) -> dict:
                     "create_run: setting AlwaysConfirm on %s failed: %s %s",
                     cid, pol_resp.status_code, pol_resp.text[:200],
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("create_run: confirmation_policy call failed: %s", exc)
 
     # 3) Kick off in background.
@@ -273,7 +273,7 @@ async def create_run(body: CreateRunRequest) -> dict:
         # 409 = already running (idempotent) — treat as success.
         if run_resp.status_code not in (200, 409):
             run_resp.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("create_run: /api/conversations/%s/run failed: %s", cid, exc)
 
     # 4) Start the Socket.IO relay for this conversation.
@@ -466,7 +466,7 @@ async def _call_lifecycle(
         raise HTTPException(status_code=502, detail=f"agent-server error {resp.status_code}: {resp.text[:200]}")
     try:
         return resp.json() or {}
-    except Exception:  # noqa: BLE001
+    except Exception:
         return {}
 
 
@@ -522,7 +522,7 @@ async def resume_run(run_id: str) -> dict:
                     if st in ("running",):
                         # Still finishing the prior turn; loop.
                         continue
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             # State suggests it should be resumable now; loop retries /run.
 
@@ -596,7 +596,7 @@ async def reject_run(run_id: str, body: RejectRunRequest | None = None) -> dict:
             interrupt_note = f"no interrupt needed: {r.text[:120]}"
         else:
             interrupt_note = f"interrupt HTTP {r.status_code}: {r.text[:120]}"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("reject_run: post-reject interrupt failed: %s", exc)
         interrupt_note = f"interrupt error: {exc}"
 

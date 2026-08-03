@@ -179,7 +179,7 @@ async def register_mcp(body: RegisterMcpRequest) -> dict[str, Any]:
     # Best-effort probe so first-list shows real status.
     try:
         await _probe_and_cache(body.name, server)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return _reshape(body.name, server)
 
