@@ -65,7 +65,7 @@ export function ForkRunModal({ runId, runTitle, open, onClose }: Props) {
         )}
 
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 0 }}>
-          A fork copies the run's workspace snapshot, agent preset, and context prompt.
+          A fork copies the run&apos;s workspace snapshot, agent preset, and context prompt.
           It starts in <strong>queued</strong> state — you can edit the prompt before starting.
         </p>
 
