@@ -177,11 +177,26 @@ async def create_run(body: CreateRunRequest) -> dict:
 
     litellm_model = _translate_model(routed)
 
-    # 2) Create conversation on agent-server.
-    working_dir_placeholder = str(_WORKSPACE_ROOT / "pending")
+    # 2) Resolve working_dir from the selected workspace on agent-server.
+    #    Stage 6: workspaces are stored on agent-server (GET /api/workspaces).
+    #    Fall back to _WORKSPACE_ROOT/pending if the id can't be resolved
+    #    (e.g. legacy runs referencing seeded fixture ids).
+    client = get_client()
+    working_dir = str(_WORKSPACE_ROOT / "pending")
+    try:
+        ws_resp = await client.get("/api/workspaces")
+        if ws_resp.status_code < 400:
+            for w in (ws_resp.json() or {}).get("workspaces", []):
+                if w.get("id") == body.workspaceId:
+                    working_dir = w["path"]
+                    break
+    except Exception as exc:  # noqa: BLE001
+        log.warning("create_run: workspace lookup failed, using default: %s", exc)
+
+    # 3) Create conversation on agent-server.
     create_body = {
         "workspace": {
-            "working_dir": working_dir_placeholder,
+            "working_dir": working_dir,
             "kind": "LocalWorkspace",
         },
         "initial_message": {
@@ -207,7 +222,6 @@ async def create_run(body: CreateRunRequest) -> dict:
         "title": body.title,
     }
 
-    client = get_client()
     try:
         create_resp = await client.post("/api/conversations", json=create_body)
         create_resp.raise_for_status()

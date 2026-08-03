@@ -368,3 +368,19 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - .env.local.example \u2014 sample NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
 - Stop condition honored: /runs POST with requireApproval:true drives conversation to waiting_for_confirmation; approve resumes; reject hard-cancels via /interrupt. No cloud/multi-user coupling introduced.
 - Next: Stage 6 (Workspaces \u2014 per-conversation working_dir isolation).
+
+## 2026-08-03 00:24 EDT \u2014 Stage 6 (Workspaces) backend: passthrough to agent-server
+- Stage: 6 (Workspaces \u2014 backend half).
+- Discovery: openhands 1.40.0 agent-server exposes GET/POST/DELETE /api/workspaces plus /api/workspaces/parents. WorkspaceItem schema is minimal: {id, name, path, parentPath?}. No status, envVars, or disk-usage \u2014 those were all made-up fields in the BFF stub.
+- Changes to bff/routers/workspaces.py (full rewrite):
+  - Dropped in-memory _WORKSPACES.
+  - Dropped docker/e2b/modal from type enum \u2014 now Literal["local"] only (kept the field so existing UI Zod schema doesn't 422 during transition; scheduled to drop in the frontend cleanup commit).
+  - GET/GET-by-id/POST/PATCH/DELETE now proxy to agent-server. PATCH is emulated as delete+re-add since agent-server has no update endpoint.
+  - New workspace paths default to $FORGE_WORKSPACES_ROOT (default ~/dev/forge-oh/workspaces/<slug>) when the caller omits path.
+  - test_workspace_connection() is now a real check: path exists, is dir, is read+writable by BFF.
+  - reset_workspace endpoint removed \u2014 destructive, not in DoD.
+- Changes to bff/routers/runs.py create_run():
+  - Now looks up body.workspaceId via GET /api/workspaces on agent-server and uses that workspace's path as working_dir. Falls back to _WORKSPACE_ROOT/pending only if lookup fails.
+  - This makes the UI's workspace picker actually control where the agent operates \u2014 the point of the whole slice.
+- Files changed: bff/routers/workspaces.py, bff/routers/runs.py.
+- Verification pending: BFF restart on Colossus, then curl smoke of /api/workspaces + POST/DELETE round-trip.
