@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from bff.middleware.rbac import require_role
 
 router = APIRouter(prefix='/agent-presets', tags=['agent-presets'])
 
@@ -73,8 +72,7 @@ _PRESETS: dict[str, AgentPreset] = {
         model='gpt-4o', maxSteps=150, maxCost=8.0, isDefault=True,
         toolAllowlist=['filesystem', 'bash', 'browser'],
         loopGuard=LoopGuardConfig(enabled=True, windowSize=20, threshold=3),
-        createdAt=_now(), updatedAt=_now(),
-    ),
+        createdAt=_now(), updatedAt=_now()),
     'ap-2': AgentPreset(
         id='ap-2', name='Research Agent',
         description='Optimised for web research and document synthesis.',
@@ -82,8 +80,7 @@ _PRESETS: dict[str, AgentPreset] = {
         model='claude-opus-4', maxSteps=80, maxCost=12.0,
         toolAllowlist=['browser', 'search'],
         loopGuard=LoopGuardConfig(enabled=True, windowSize=15, threshold=2),
-        createdAt=_now(), updatedAt=_now(),
-    ),
+        createdAt=_now(), updatedAt=_now()),
 }
 
 
@@ -109,12 +106,11 @@ def get_preset(preset_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post('', response_model=AgentPreset)
-def create_preset(body: CreateRequest, _: str = Depends(require_role('write'))):
+def create_preset(body: CreateRequest):
     p = AgentPreset(
         id=str(uuid4()), isDefault=False,
         createdAt=_now(), updatedAt=_now(),
-        **body.model_dump(),
-    )
+        **body.model_dump())
     _PRESETS[p.id] = p
     return p
 
@@ -122,9 +118,7 @@ def create_preset(body: CreateRequest, _: str = Depends(require_role('write'))):
 @router.patch('/{preset_id}', response_model=AgentPreset)
 def update_preset(
     preset_id: str,
-    body: UpdateRequest,
-    _: str = Depends(require_role('write')),
-):
+    body: UpdateRequest):
     p = _PRESETS.get(preset_id)
     if not p:
         raise HTTPException(404, 'Preset not found')
@@ -134,7 +128,7 @@ def update_preset(
 
 
 @router.delete('/{preset_id}')
-def delete_preset(preset_id: str, _: str = Depends(require_role('write'))):
+def delete_preset(preset_id: str):
     p = _PRESETS.get(preset_id)
     if not p:
         raise HTTPException(404, 'Preset not found')
@@ -145,7 +139,7 @@ def delete_preset(preset_id: str, _: str = Depends(require_role('write'))):
 
 
 @router.post('/{preset_id}/duplicate', response_model=AgentPreset)
-def duplicate_preset(preset_id: str, _: str = Depends(require_role('write'))):
+def duplicate_preset(preset_id: str):
     p = _PRESETS.get(preset_id)
     if not p:
         raise HTTPException(404, 'Preset not found')
@@ -161,7 +155,7 @@ def duplicate_preset(preset_id: str, _: str = Depends(require_role('write'))):
 
 
 @router.post('/{preset_id}/set-default', response_model=AgentPreset)
-def set_default(preset_id: str, _: str = Depends(require_role('write'))):
+def set_default(preset_id: str):
     p = _PRESETS.get(preset_id)
     if not p:
         raise HTTPException(404, 'Preset not found')

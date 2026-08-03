@@ -30,9 +30,8 @@ LABEL org.opencontainers.image.licenses="MIT"
 # 1. Entry point is bff.main:app_with_sio (the Socket.IO ASGI wrapper), NOT bff.main:app.
 #    Starting with bff.main:app silently bypasses Socket.IO; all WebSocket connections fail.
 #
-# 2. --workers 1 is intentional. The in-memory _TOKENS dict in bff/auth_state.py is
-#    process-local. With multiple workers, a token issued by worker-A will 401 on worker-B.
-#    Replace _TOKENS with Redis or JWT before increasing worker count.
+# 2. --workers 1 is intentional. In-memory router state (secrets, mcp servers, plugins, etc.)
+#    is process-local. Do not scale workers until state is externalised.
 CMD ["uvicorn", "bff.main:app_with_sio", \
      "--host", "0.0.0.0", \
      "--port", "8081", \

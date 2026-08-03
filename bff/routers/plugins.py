@@ -10,11 +10,10 @@ TODO(foh-phase2):
 - Align auth, secrets, and lifecycle semantics with Rigpa-LMS needs
 
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from bff.middleware.rbac import require_role
 
 router = APIRouter(prefix="/plugins", tags=["plugins"])
 
@@ -35,19 +34,19 @@ _PLUGINS: dict[str, InstalledPlugin] = {}
 
 
 @router.get("")
-def list_plugins(_: None = Depends(require_role("read"))):
+def list_plugins():
     return list(_PLUGINS.values())
 
 
 @router.post("/install")
-def install_plugin(body: InstallPluginRequest, _: None = Depends(require_role("write"))):
+def install_plugin(body: InstallPluginRequest):
     plugin = InstalledPlugin(pluginId=body.pluginId, version=body.version, enabled=True)
     _PLUGINS[body.pluginId] = plugin
     return plugin
 
 
 @router.delete("/{plugin_id}")
-def uninstall_plugin(plugin_id: str, _: None = Depends(require_role("delete"))):
+def uninstall_plugin(plugin_id: str):
     if plugin_id not in _PLUGINS:
         raise HTTPException(status_code=404, detail="Plugin not found")
     del _PLUGINS[plugin_id]
@@ -55,7 +54,7 @@ def uninstall_plugin(plugin_id: str, _: None = Depends(require_role("delete"))):
 
 
 @router.post("/{plugin_id}/enable")
-def enable_plugin(plugin_id: str, _: None = Depends(require_role("write"))):
+def enable_plugin(plugin_id: str):
     plugin = _PLUGINS.get(plugin_id)
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found")
@@ -64,7 +63,7 @@ def enable_plugin(plugin_id: str, _: None = Depends(require_role("write"))):
 
 
 @router.post("/{plugin_id}/disable")
-def disable_plugin(plugin_id: str, _: None = Depends(require_role("write"))):
+def disable_plugin(plugin_id: str):
     plugin = _PLUGINS.get(plugin_id)
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found")

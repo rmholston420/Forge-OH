@@ -81,3 +81,63 @@ first port lands in a later step.
 - OpenHands agent-server also exposes `POST /v1/chat/completions` and
   `GET /v1/models` (its own OpenAI-compatible endpoint). Not used yet;
   distinct from Ollama's `/v1`.
+
+## 2026-08-02 21:55 EDT — Step 2 executed: auth/RBAC/LMS strip (expanded scope)
+- **Stage:** Forge-OH Action Plan v4 Step 2 — remove auth/RBAC/LMS scaffolding to unblock stub-replacement work
+- **Scope confirmed by user before execution:** delete backend auth+rbac+lms, delete frontend auth+rigpa-lms, strip AuthGuard/CanDo/RoleChip wrappers from all feature files, prune coupled tests
+
+### Backend deletions
+- `bff/middleware/rbac.py`, `bff/routers/auth.py`, `bff/routers/lms.py`, `bff/auth_state.py`
+- Tests coupled to `auth_state._TOKENS` or `/api/auth/demo-login` (rewrite in Step 3+):
+  - `bff/tests/test_rbac.py`, `test_auth.py`, `test_auth_router.py`, `test_lms.py`, `test_lms_router.py`
+  - `bff/tests/test_runs_router.py`, `test_workspaces_router.py`, `test_secrets.py`
+  - `bff/tests/test_agent_presets_router.py`, `test_secrets_router.py`
+
+### Backend edits
+- `bff/main.py` — removed `auth` and `lms` router imports+includes; updated docstring
+- `bff/settings.py` — dropped `secret_key`, `token_ttl_hours`, `feature_rigpa_lms_enabled`
+- `bff/tests/utils.py` — removed `auth`+`lms` from multi-router test app
+- `bff/routers/{runs,workspaces,mcp,plugins,agent_presets}.py` — stripped every `Depends(require_role(...))` parameter and `bff.middleware.rbac` import; also removed now-unused `Depends` import
+- `bff/routers/secrets.py` — removed `bff.auth_state._TOKENS` import; neutralised `if token not in _TOKENS` guard to `pass` (endpoints still callable; real auth returns in later stage)
+- `bff/Dockerfile` — updated `--workers 1` comment (no longer references deleted `_TOKENS`)
+
+### Frontend deletions (folders)
+- `src/components/auth/` (AuthGuard, CanDo, RoleChip)
+- `src/app/(auth)/` (login page), `src/app/api/auth/` (NextAuth catch-all)
+- `src/features/rigpa-lms/`
+- `src/lib/auth/`, `src/lib/rbac/`, `src/lib/schemas/auth.ts`, `src/types/next-auth.d.ts`
+
+### Frontend deletions (unit tests)
+- `src/tests/unit/rbac-permissions.test.ts`, `rbac-withPermission.test.tsx`
+- `src/tests/unit/auth-RoleChip.test.tsx`, `auth-schemas.test.ts`, `auth-schemas-edge-cases.test.ts`
+- `src/tests/unit/LoginPage.test.tsx`, `AuthGuard.test.tsx`, `CanDo.test.tsx`, `usePermissions.test.ts`
+- `src/tests/unit/rigpa-lms-schemas.test.ts`, `rigpa-lms-store.test.ts`, `schemas.test.ts` (LMS-only)
+
+### Frontend edits
+- `src/app/providers.tsx` — dropped `SessionProvider` (NextAuth removed)
+- `src/lib/http/bff-client.ts` — dropped `getSession()` Bearer-token injection; default BFF port fixed to 8081
+- `src/app/(dashboard)/layout.tsx` — removed top-level `<AuthGuard>` wrapper
+- Feature files (10) — removed `<CanDo permission=...>` wrappers, kept children inline; removed `CanDo`/`Permission` imports:
+  - `plugins/PluginsPage.tsx`
+  - `mcp/McpPage.tsx`, `mcp/McpServerCard.tsx`
+  - `workspaces/WorkspaceCard.tsx`, `workspaces/WorkspacesPage.tsx`
+  - `secrets/SecretsPage.tsx`, `secrets/SecretRow.tsx`
+  - `agent-presets/AgentPresetsPage.tsx`, `agent-presets/AgentPresetCard.tsx`
+- `src/tests/mocks/handlers.ts` — removed `/api/lms/*` handlers and rigpa-lms fixtures import
+
+### Ports/adapters affected
+- Backend routers still expose same paths; RBAC layer removed → all endpoints are now open (single-user local dev per project instructions)
+- BFF client no longer sends `Authorization: Bearer` header (BFF ignores it anyway)
+
+### Verification
+- `python3 -m compileall bff/` → clean
+- Sweep for residuals (`auth_state`, `_TOKENS`, `require_role`, `middleware.rbac`, `next-auth`, `useRequireAuth`, `<AuthGuard>`, `<CanDo>`, `<RoleChip>`, imports from `@/lib/auth`, `@/lib/rbac`, `@/lib/schemas/auth`, `@/components/auth`, `@/features/rigpa-lms`) → **zero residuals** across `bff/` and `src/` (production code and tests)
+
+### Stop condition
+- Step 2 DoD (per Forge-OH-Action-Plan-v4 lines 100-104): dev server + BFF must boot without `auth`/`lms` routers. Sandbox cannot verify (no `socketio` / node deps installed). **User must run `git pull` on Colossus, then `cd bff && uvicorn bff.main:app_with_sio --port 8081` and `pnpm dev` in repo root to confirm.**
+
+### Deferred to Step 3
+- `bff/openhands_client.py` duplicate (canonical) vs `bff/services/openhands_client.py` (shim) — resolve during runs-router rewrite
+- Stub `POST /api/runs` still returns hardcoded run — Step 3 wires it to real conversation lifecycle
+- Fresh router tests for `runs`, `workspaces`, `secrets`, `agent_presets` — write against real behaviour, not seeded tokens
+

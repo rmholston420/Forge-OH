@@ -9,10 +9,9 @@ CRITICAL — two constraints that must never be changed without a migration plan
    wrapper), NOT ``bff.main:app``.  Starting uvicorn with ``bff.main:app``
    silently bypasses the Socket.IO server; all WebSocket connections fail.
 
-2. ``--workers 1`` is intentional.  The in-memory ``_TOKENS`` dict in
-   ``bff/auth_state.py`` is process-local.  With multiple workers a token
-   issued by worker-A will 401 on worker-B.  Replace ``_TOKENS`` with
-   Redis or JWT before increasing the worker count.
+2. ``--workers 1`` is intentional.  In-memory router state (secrets, mcp
+   servers, plugins, etc.) is process-local.  Do not scale workers until
+   state is externalised.
 """
 from contextlib import asynccontextmanager
 import os
@@ -23,8 +22,6 @@ import socketio
 
 from bff.routers import (
     agent_presets,
-    auth,
-    lms,
     mcp,
     metrics,
     notifications,
@@ -70,9 +67,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api")
 app.include_router(agent_presets.router, prefix="/api")
-app.include_router(lms.router, prefix="/api")
 app.include_router(secrets.router, prefix="/api")
 app.include_router(mcp.router, prefix="/api")
 app.include_router(metrics.router, prefix="/api")

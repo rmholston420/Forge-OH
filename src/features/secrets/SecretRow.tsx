@@ -1,8 +1,6 @@
 'use client';
 import { useRotateSecret, useDeleteSecret } from './hooks';
 import { useSecretsStore } from './store';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 import { formatDate } from '@/lib/utils/format';
 import type { Secret } from './schemas';
 
@@ -34,8 +32,7 @@ export function SecretRow({ secret }: { secret: Secret }) {
         <time dateTime={secret.updatedAt}>{formatDate(secret.updatedAt)}</time>
       </td>
       <td className="secret-actions">
-        <CanDo permission={Permission.SECRETS_WRITE}>
-          <button
+        <button
             className="btn btn-sm"
             onClick={() =>
               rotate.mutate({ id: secret.id, newValue: prompt('Enter new value') ?? '' })
@@ -50,7 +47,6 @@ export function SecretRow({ secret }: { secret: Secret }) {
           >
             Delete
           </button>
-        </CanDo>
       </td>
     </tr>
   );

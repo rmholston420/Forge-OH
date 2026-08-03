@@ -3,8 +3,6 @@ from fastapi.testclient import TestClient
 
 from bff.routers import (
     agent_presets,
-    auth,
-    lms,
     secrets,
     mcp,
     metrics,
@@ -19,9 +17,7 @@ from bff.routers import (
 
 def create_test_app() -> FastAPI:
     app = FastAPI()
-    app.include_router(auth.router,          prefix="/api")
     app.include_router(agent_presets.router, prefix="/api")
-    app.include_router(lms.router,           prefix="/api")
     app.include_router(secrets.router,       prefix="/api")
     app.include_router(mcp.router,           prefix="/api")
     app.include_router(metrics.router,       prefix="/api")

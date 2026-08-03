@@ -12,12 +12,6 @@ import { mockEvents } from '../fixtures/events.fixture';
 import { mockSecrets } from '../fixtures/secrets.fixture';
 import { mockPlugins } from '../fixtures/plugins.fixture';
 import { mockMCPServers } from '../fixtures/mcp.fixture';
-import {
-  mockRigpaContext,
-  mockContextInjectionResponse,
-  mockPackageResponse,
-} from '../../features/rigpa-lms/fixtures';
-
 // NEXT_PUBLIC_BFF_URL — canonical BFF port is 8081.
 const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
@@ -156,19 +150,4 @@ export const handlers = [
     HttpResponse.json({ data: [] })
   ),
 
-  // -------------------------------------------------------------------------
-  // Rigpa-LMS (Slice 5C)
-  // -------------------------------------------------------------------------
-  http.post(`${BFF}/api/lms/context`, () =>
-    HttpResponse.json(mockContextInjectionResponse, { status: 201 })
-  ),
-  http.get(`${BFF}/api/lms/context/:sessionId`, ({ params }) => {
-    if (params.sessionId === SEED.lms.session1) {
-      return HttpResponse.json(mockRigpaContext);
-    }
-    return new HttpResponse(null, { status: 404 });
-  }),
-  http.post(`${BFF}/api/lms/package`, () =>
-    HttpResponse.json(mockPackageResponse)
-  ),
 ];

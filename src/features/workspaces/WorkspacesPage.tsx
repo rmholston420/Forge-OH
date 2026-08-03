@@ -4,8 +4,6 @@ import { useWorkspacesStore } from './store';
 import { WorkspaceCard } from './WorkspaceCard';
 import { WorkspaceFormDrawer } from './WorkspaceFormDrawer';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 import type { WorkspaceType } from './schemas';
 
 const FILTER_TABS: { label: string; value: WorkspaceType | 'all' }[] = [
@@ -28,11 +26,9 @@ export default function WorkspacesPage() {
     <div className="workspaces-page">
       <div className="page-header">
         <h1>Workspaces</h1>
-        <CanDo permission={Permission.WORKSPACES_CREATE}>
-          <button className="btn btn-primary" onClick={openCreateDrawer}>
+        <button className="btn btn-primary" onClick={openCreateDrawer}>
             New workspace
           </button>
-        </CanDo>
       </div>
 
       <div className="filter-tabs" role="tablist" aria-label="Filter workspaces by type">
@@ -60,11 +56,9 @@ export default function WorkspacesPage() {
           <div className="empty-state-icon">🗂️</div>
           <h3>{filterType === 'all' ? 'No workspaces yet' : `No ${filterType} workspaces`}</h3>
           <p>Workspaces are isolated environments for agent runs.</p>
-          <CanDo permission={Permission.WORKSPACES_CREATE}>
-            <button className="btn btn-primary" onClick={openCreateDrawer}>
+          <button className="btn btn-primary" onClick={openCreateDrawer}>
               Create workspace
             </button>
-          </CanDo>
         </div>
       ) : (
         <div className="workspace-grid">

@@ -2,8 +2,6 @@
 import { usePresets } from './hooks';
 import { useAgentPresetStore } from './store';
 import { AgentPresetCard } from './AgentPresetCard';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 
 export default function AgentPresetsPage() {
   const { data: presets = [], isLoading } = usePresets();
@@ -18,11 +16,9 @@ export default function AgentPresetsPage() {
             {presets.length} preset{presets.length !== 1 ? 's' : ''} configured
           </p>
         </div>
-        <CanDo permission={Permission.SETTINGS_WRITE}>
-          <button className="btn btn-primary" onClick={openCreateDrawer}>
+        <button className="btn btn-primary" onClick={openCreateDrawer}>
             New preset
           </button>
-        </CanDo>
       </div>
 
       {isLoading ? (
@@ -36,11 +32,9 @@ export default function AgentPresetsPage() {
           <div className="empty-state-icon">🤖</div>
           <h3>No agent presets yet</h3>
           <p>Presets define the model, tools, and guardrails each run uses.</p>
-          <CanDo permission={Permission.SETTINGS_WRITE}>
-            <button className="btn btn-primary" onClick={openCreateDrawer}>
+          <button className="btn btn-primary" onClick={openCreateDrawer}>
               Create first preset
             </button>
-          </CanDo>
         </div>
       ) : (
         <div className="preset-grid">

@@ -38,13 +38,6 @@ class Settings(BaseSettings):
     openhands_persist_dir: str | None = None
     oh_secret_key: str | None = None
 
-    # Auth
-    secret_key: str = "change-me-in-production"
-    token_ttl_hours: int = 8
-
-    # Feature flags
-    feature_rigpa_lms_enabled: bool = False
-
     # Observability
     otel_exporter_otlp_endpoint: str = ""
     log_level: str = "INFO"

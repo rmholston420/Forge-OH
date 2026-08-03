@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/navigation/Sidebar';
 import { Topbar } from '@/components/navigation/Topbar';
 import { CommandPalette } from '@/components/navigation/CommandPalette';
-import { AuthGuard } from '@/components/auth/AuthGuard';
 import { useAppStore } from '@/lib/state/app-store';
 import styles from './dashboard.module.css';
 
@@ -30,8 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [toggleCommandPalette]);
 
   return (
-    <AuthGuard>
-      <div className={styles.shell}>
+    <div className={styles.shell}>
         <Sidebar collapsed={!sidebarExpanded} onToggle={toggleSidebar} />
         <Topbar onCommandPaletteOpen={() => setCommandPaletteOpen(true)} />
         <main
@@ -50,6 +48,5 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           ]}
         />
       </div>
-    </AuthGuard>
   );
 }

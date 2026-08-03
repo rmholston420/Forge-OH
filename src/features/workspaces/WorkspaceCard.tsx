@@ -1,8 +1,6 @@
 'use client';
 import { useResetWorkspace, useDeleteWorkspace } from './hooks';
 import { useWorkspacesStore } from './store';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 import type { Workspace } from './schemas';
 
 const TYPE_STYLES: Record<string, string> = {
@@ -62,31 +60,25 @@ export function WorkspaceCard({ workspace: ws }: { workspace: Workspace }) {
       </div>
 
       <div className="workspace-card-actions">
-        <CanDo permission={Permission.WORKSPACES_EDIT}>
-          <button
+        <button
             className="btn btn-sm"
             onClick={() => openEditDrawer(ws.id)}
           >
             Edit
           </button>
-        </CanDo>
-        <CanDo permission={Permission.WORKSPACES_RESET}>
-          <button
+        <button
             className="btn btn-sm btn-ghost"
             onClick={() => reset.mutate(ws.id)}
             disabled={reset.isPending || ws.status === 'active'}
           >
             Reset
           </button>
-        </CanDo>
-        <CanDo permission={Permission.WORKSPACES_DELETE}>
-          <button
+        <button
             className="btn btn-sm btn-danger"
             onClick={() => openConfirmDelete(ws.id, ws.name)}
           >
             Delete
           </button>
-        </CanDo>
       </div>
     </article>
   );

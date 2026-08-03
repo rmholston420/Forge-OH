@@ -1,8 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { usePlugins, usePingPlugin } from '@/lib/plugins/hooks';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 
 export default function PluginsPage() {
   const { data: plugins = [], isLoading } = usePlugins();
@@ -30,9 +28,7 @@ export default function PluginsPage() {
         <div className="empty-state-icon">🔌</div>
         <h3>No plugins registered</h3>
         <p>Register a Rigpa-LMS plugin to enable bidirectional event bridging.</p>
-        <CanDo permission={Permission.PLUGINS_TOGGLE}>
-          <button className="btn btn-primary">Register plugin</button>
-        </CanDo>
+        <button className="btn btn-primary">Register plugin</button>
       </div>
     );
   }
@@ -41,9 +37,7 @@ export default function PluginsPage() {
     <div className="plugins-page">
       <div className="plugins-header">
         <h1>Plugins</h1>
-        <CanDo permission={Permission.PLUGINS_TOGGLE}>
-          <button className="btn btn-primary">Register plugin</button>
-        </CanDo>
+        <button className="btn btn-primary">Register plugin</button>
       </div>
 
       <div className="plugins-grid">
@@ -75,18 +69,14 @@ export default function PluginsPage() {
             </div>
 
             <div className="plugin-actions">
-              <CanDo permission={Permission.MCP_PING}>
-                <button
+              <button
                   className="btn btn-sm"
                   onClick={() => handlePing(plugin.id)}
                   disabled={ping.isPending}
                 >
                   Ping
                 </button>
-              </CanDo>
-              <CanDo permission={Permission.PLUGINS_CONFIGURE}>
-                <button className="btn btn-sm btn-ghost">Configure</button>
-              </CanDo>
+              <button className="btn btn-sm btn-ghost">Configure</button>
             </div>
           </div>
         ))}

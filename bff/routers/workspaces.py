@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Literal
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from bff.middleware.rbac import require_role
 
 router = APIRouter(prefix='/workspaces', tags=['workspaces'])
 
@@ -59,14 +58,12 @@ _WORKSPACES: dict[str, Workspace] = {
         id='ws-1', name='Default Local', type='local', status='idle',
         createdAt=_now(), updatedAt=_now(), runCount=12,
         diskUsageMb=340, diskLimitMb=2048,
-        description='Default local workspace for quick runs',
-    ),
+        description='Default local workspace for quick runs'),
     'ws-2': Workspace(
         id='ws-2', name='Docker Sandbox', type='docker', status='idle',
         createdAt=_now(), updatedAt=_now(), runCount=5,
         diskUsageMb=1200, diskLimitMb=2048,
-        description='Isolated Docker environment',
-    ),
+        description='Isolated Docker environment'),
 }
 
 
@@ -85,15 +82,12 @@ def get_workspace(workspace_id: str):
 
 @router.post('', response_model=Workspace)
 def create_workspace(
-    body: CreateWorkspaceRequest,
-    _: None = Depends(require_role('write')),
-):
+    body: CreateWorkspaceRequest):
     ws = Workspace(
         id=str(uuid4()), status='provisioning',
         createdAt=_now(), updatedAt=_now(),
         runCount=0, diskUsageMb=0,
-        **body.model_dump(),
-    )
+        **body.model_dump())
     _WORKSPACES[ws.id] = ws
     return ws
 
@@ -101,9 +95,7 @@ def create_workspace(
 @router.patch('/{workspace_id}', response_model=Workspace)
 def update_workspace(
     workspace_id: str,
-    body: UpdateWorkspaceRequest,
-    _: None = Depends(require_role('write')),
-):
+    body: UpdateWorkspaceRequest):
     ws = _WORKSPACES.get(workspace_id)
     if not ws:
         raise HTTPException(404, 'Workspace not found')
@@ -114,9 +106,7 @@ def update_workspace(
 
 @router.delete('/{workspace_id}')
 def delete_workspace(
-    workspace_id: str,
-    _: None = Depends(require_role('delete')),
-):
+    workspace_id: str):
     if workspace_id not in _WORKSPACES:
         raise HTTPException(404, 'Workspace not found')
     del _WORKSPACES[workspace_id]
@@ -125,9 +115,7 @@ def delete_workspace(
 
 @router.post('/{workspace_id}/reset', response_model=Workspace)
 def reset_workspace(
-    workspace_id: str,
-    _: None = Depends(require_role('write')),
-):
+    workspace_id: str):
     ws = _WORKSPACES.get(workspace_id)
     if not ws:
         raise HTTPException(404, 'Workspace not found')

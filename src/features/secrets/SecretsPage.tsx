@@ -2,8 +2,6 @@
 import { useSecrets } from './hooks';
 import { useSecretsStore } from './store';
 import { SecretRow } from './SecretRow';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 import type { SecretScope } from './schemas';
 
 const SCOPE_FILTERS: { label: string; value: SecretScope | 'all' }[] = [
@@ -31,11 +29,9 @@ export default function SecretsPage() {
             {secrets.length} secret{secrets.length !== 1 ? 's' : ''} stored
           </p>
         </div>
-        <CanDo permission={Permission.SECRETS_WRITE}>
-          <button className="btn btn-primary" onClick={openAddDrawer}>
+        <button className="btn btn-primary" onClick={openAddDrawer}>
             Add secret
           </button>
-        </CanDo>
       </div>
 
       <div className="security-notice" role="note">
@@ -63,9 +59,7 @@ export default function SecretsPage() {
           <div className="empty-state-icon">🔑</div>
           <h3>No secrets found</h3>
           <p>Store API keys, tokens, and credentials your agents need at runtime.</p>
-          <CanDo permission={Permission.SECRETS_WRITE}>
-            <button className="btn btn-primary" onClick={openAddDrawer}>Add secret</button>
-          </CanDo>
+          <button className="btn btn-primary" onClick={openAddDrawer}>Add secret</button>
         </div>
       ) : (
         <div className="secrets-table-wrapper">

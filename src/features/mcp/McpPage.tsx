@@ -2,8 +2,6 @@
 import { useMcpServers } from './hooks';
 import { useMcpStore } from './store';
 import { McpServerCard } from './McpServerCard';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 import type { McpStatus } from './schemas';
 
 const STATUS_FILTERS: { label: string; value: McpStatus | 'all' }[] = [
@@ -32,11 +30,9 @@ export default function McpPage() {
             {servers.length} server{servers.length !== 1 ? 's' : ''} · {totalTools} tools available
           </p>
         </div>
-        <CanDo permission={Permission.MCP_TOGGLE}>
-          <button className="btn btn-primary" onClick={openRegisterDrawer}>
+        <button className="btn btn-primary" onClick={openRegisterDrawer}>
             Register server
           </button>
-        </CanDo>
       </div>
 
       <div className="filter-tabs" role="tablist" aria-label="Filter by status">
@@ -64,11 +60,9 @@ export default function McpPage() {
           <div className="empty-state-icon">🔌</div>
           <h3>{statusFilter === 'all' ? 'No MCP servers registered' : `No ${statusFilter} servers`}</h3>
           <p>MCP servers expose tools that agents can call during runs.</p>
-          <CanDo permission={Permission.MCP_TOGGLE}>
-            <button className="btn btn-primary" onClick={openRegisterDrawer}>
+          <button className="btn btn-primary" onClick={openRegisterDrawer}>
               Register server
             </button>
-          </CanDo>
         </div>
       ) : (
         <div className="mcp-grid">

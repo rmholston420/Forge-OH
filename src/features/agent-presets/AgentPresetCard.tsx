@@ -1,8 +1,6 @@
 'use client';
 import { useSetDefaultPreset, useDuplicatePreset, useDeletePreset } from './hooks';
 import { useAgentPresetStore } from './store';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 import type { AgentPreset } from './schemas';
 
 const MODEL_BADGES: Record<string, { label: string; cls: string }> = {
@@ -49,8 +47,7 @@ export function AgentPresetCard({ preset }: { preset: AgentPreset }) {
       </div>
 
       <div className="preset-card-actions">
-        <CanDo permission={Permission.SETTINGS_WRITE}>
-          <button className="btn btn-sm" onClick={() => openEditDrawer(preset.id)}>Edit</button>
+        <button className="btn btn-sm" onClick={() => openEditDrawer(preset.id)}>Edit</button>
           <button
             className="btn btn-sm btn-ghost"
             onClick={() => duplicate.mutate(preset.id)}
@@ -69,7 +66,6 @@ export function AgentPresetCard({ preset }: { preset: AgentPreset }) {
             disabled={preset.isDefault}
             title={preset.isDefault ? 'Cannot delete the default preset' : 'Delete preset'}
           >Delete</button>
-        </CanDo>
       </div>
     </article>
   );

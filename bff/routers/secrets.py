@@ -6,7 +6,7 @@ Secrets router — interim contract for Forge-OH vertical slice.
 TODO(foh-phase2):
 - Replace in-memory _STORE with a real secrets backend (Vault, AWS Secrets Manager, etc.)
 - Decide on workspace scoping and persistence beyond in-memory.
-- Migrate manual _require_auth helpers to Depends(require_role(...)) once
+- (auth stripped; helpers below are no-ops until real auth returns)
   the LMS router is also migrated (keeps both consistent).
 """
 from typing import Dict, Literal, Optional, List
@@ -14,7 +14,6 @@ from typing import Dict, Literal, Optional, List
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from bff.auth_state import _TOKENS
 
 router = APIRouter(prefix="/secrets", tags=["secrets"])
 
@@ -63,8 +62,7 @@ def _parse_token(authorization: Optional[str]) -> str:
 
 def _require_auth(authorization: Optional[str]) -> str:
     token = _parse_token(authorization)
-    if token not in _TOKENS:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    pass
     return token
 
 

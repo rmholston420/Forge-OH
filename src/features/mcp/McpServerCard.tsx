@@ -1,8 +1,6 @@
 'use client';
 import { usePingMcpServer, useToggleMcpServer, useDeleteMcpServer } from './hooks';
 import { useMcpStore } from './store';
-import { CanDo } from '@/components/auth/CanDo';
-import { Permission } from '@/lib/rbac/permissions';
 import type { McpServer } from './schemas';
 
 const STATUS_CLASSES: Record<string, string> = {
@@ -60,17 +58,14 @@ export function McpServerCard({ server }: { server: McpServer }) {
       )}
 
       <div className="mcp-card-actions">
-        <CanDo permission={Permission.MCP_PING}>
-          <button
+        <button
             className="btn btn-sm"
             onClick={() => ping.mutate(server.id)}
             disabled={ping.isPending}
           >
             Ping
           </button>
-        </CanDo>
-        <CanDo permission={Permission.MCP_TOGGLE}>
-          <button
+        <button
             className="btn btn-sm btn-ghost"
             onClick={() => toggle.mutate(server.id)}
             disabled={toggle.isPending}
@@ -78,15 +73,12 @@ export function McpServerCard({ server }: { server: McpServer }) {
           >
             {server.enabled ? 'Disable' : 'Enable'}
           </button>
-        </CanDo>
-        <CanDo permission={Permission.MCP_TOGGLE}>
-          <button
+        <button
             className="btn btn-sm btn-danger"
             onClick={() => setConfirmDeleteId(server.id)}
           >
             Remove
           </button>
-        </CanDo>
       </div>
     </article>
   );

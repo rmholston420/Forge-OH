@@ -10,12 +10,11 @@ TODO(foh-phase2):
 - Align routes and payloads with final Forge-OH MCP UX
 
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from uuid import uuid4
 
-from bff.middleware.rbac import require_role
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -50,18 +49,17 @@ _SERVERS: dict[str, McpServer] = {
         command="npx -y @modelcontextprotocol/server-filesystem /tmp",
         status="connected",
         toolCount=8,
-        tags=["files", "local"],
-    )
+        tags=["files", "local"])
 }
 
 
 @router.get("/servers")
-def list_servers(_: None = Depends(require_role("read"))):
+def list_servers():
     return list(_SERVERS.values())
 
 
 @router.post("/servers")
-def register_server(body: RegisterRequest, _: None = Depends(require_role("write"))):
+def register_server(body: RegisterRequest):
     if body.transport in ("sse", "http") and not body.url:
         raise HTTPException(status_code=422, detail="url required")
     server = McpServer(id=str(uuid4()), status="connecting", toolCount=0, **body.model_dump())
@@ -70,7 +68,7 @@ def register_server(body: RegisterRequest, _: None = Depends(require_role("write
 
 
 @router.delete("/servers/{server_id}")
-def delete_server(server_id: str, _: None = Depends(require_role("delete"))):
+def delete_server(server_id: str):
     if server_id not in _SERVERS:
         raise HTTPException(status_code=404, detail="Server not found")
     del _SERVERS[server_id]
@@ -78,7 +76,7 @@ def delete_server(server_id: str, _: None = Depends(require_role("delete"))):
 
 
 @router.get("/servers/{server_id}/tools")
-def list_tools(server_id: str, _: None = Depends(require_role("read"))):
+def list_tools(server_id: str):
     if server_id not in _SERVERS:
         raise HTTPException(status_code=404, detail="Server not found")
     return {"data": []}
