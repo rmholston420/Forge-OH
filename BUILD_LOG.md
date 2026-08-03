@@ -258,3 +258,20 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   Reason: agent runs in sandbox with /workspace/* paths outside BFF's filesystem namespace. Event stream carries full new_content (and old_content on str_replace/insert), so it is the only correct source of truth for per-run diffs. Also naturally scoped per run_id.
 - Supported commands: create, str_replace, insert, undo_edit. view is ignored (read-only). is_error=True observations are dropped.
 - Stop condition: no "stub": True in Files core flow — MET on backend. Frontend already wired (unchanged), pending end-to-end verify.
+
+## 2026-08-02 23:24 EDT — Stage 4 CLOSED (backend DoD met)
+- Stage: 4 (Second vertical slice — Files/diff view) — DoD met on backend.
+- Definition of Done: no "stub": True in Files core flow — MET.
+- Verification (all against real qwen3.6:35b-a3b agent runs on Colossus, no mocks):
+  - Run 50b9f1b4 (initial): FileEditorObservation with create /workspace/hello.txt → GET /runs/{id}/files returned [{path:/workspace/hello.txt, status:added, additions:1, deletions:0}].
+  - Run b983c992 (deliberate double-invocation): agent's first create call failed (malformed path with XML markup embedded, is_error=True), retried and succeeded. Reconstruction correctly filtered the errored observation and folded only the successful one — final /files entry is the good one; detail modified matches "Stage 4 DoD proof".
+  - Both URL-encoded (%2Fworkspace%2F...) and raw-relative (workspace/...) path forms return the same detail response.
+- Frontend: unchanged; Files tab already wired to GET /api/runs/{id}/files and /files/{path}. Full browser-level render assertion pending a run where the prompt actually reaches the agent (see DEBUG_LOG note).
+- Files touched:
+  - bff/services/file_diff_reconstruction.py (new)
+  - bff/routers/runs.py (wire files + files/{path} + _fetch_all_events pager; tolerate abs/rel path)
+  - scripts/e2e-run.ts (extended for Stage 4)
+  - BUILD_LOG.md, DEBUG_LOG.md
+- Ports/adapters: BFF → agent-server /api/conversations/{cid}/events/search (existing, no shape change)
+- Commits (chronological): ef97219 (initial slice), 46acf9b (path tolerance), 28040ab (e2e extension), pending closure commit.
+- Stage 3 leftover status: workspace_dir_placeholder shared "workspace/runs/pending" is now known to be irrelevant — the agent writes to /workspace/* in a sandboxed filesystem outside the BFF process namespace, and file tracking is event-driven. No fix needed for Stage 4; can be tidied later.
