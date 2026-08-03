@@ -1,6 +1,6 @@
 import type { Secret, CreateSecretRequest } from './schemas';
 
-const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchSecrets(scope?: string): Promise<Secret[]> {
   const url = scope ? `${BASE}/secrets?scope=${scope}` : `${BASE}/secrets`;

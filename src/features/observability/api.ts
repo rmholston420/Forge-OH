@@ -1,6 +1,6 @@
 import type { RunMetrics } from '@/lib/schemas/metric';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchRunMetrics(runId: string): Promise<RunMetrics> {
   const res = await fetch(`${BFF}/api/runs/${runId}/metrics`);

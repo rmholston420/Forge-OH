@@ -1,6 +1,6 @@
 import type { Plugin, InstallPlugin } from '@/lib/schemas/plugin';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchPlugins(): Promise<Plugin[]> {
   const res = await fetch(`${BFF}/api/plugins`);

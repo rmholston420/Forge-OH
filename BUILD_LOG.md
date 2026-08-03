@@ -173,3 +173,15 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 ### Deferred to Step 3 (docs only)
 - Next 16 warnings (`experimental.typedRoutes` -> `typedRoutes`; `middleware` -> `proxy`) — non-blocking, cosmetic
 
+
+## 2026-08-02 22:04 EDT — Step 2 follow-up: fix BFF_URL defaults (8000 -> 8081) and CORS credentials
+- **Symptom (persistent 500 after previous fix):** `GET /api/runs 500 SyntaxError: Unexpected token '<'` still occurred because the frontend actually calls its OWN Next server-side proxy routes under `src/app/api/**/route.ts` — those forward to BFF, but every route hardcoded `BFF_URL` default to `:8000` (project's real port is `:8081`). Also `src/lib/api/client.ts` fell back to `window.location.origin` (i.e. :3000) when `NEXT_PUBLIC_BFF_URL` was unset.
+- **Root cause:** Two-tier proxy chain — browser hits Next `/api/*` route handlers, which proxy to BFF via `BFF_URL`. Every file used wrong default port (`8000` vs canonical `8081`) and no `.env.local` was created.
+- **Fixes (bulk):**
+  - `src/lib/api/client.ts` — dropped `window.location.origin` fallback; defaults to `http://localhost:8081`. Removed `credentials: 'include'` (BFF CORS is `allow_credentials=False` with wildcard origin).
+  - Bulk-updated 25 files: replaced `'http://localhost:8000'` -> `'http://localhost:8081'` across all `src/app/api/**/route.ts`, all `src/features/**/api.ts`, and `src/lib/streaming/socket.ts`, `src/lib/hooks/useRunStream.ts`.
+  - `.env.local.example` — added `BFF_URL` (server-side) alongside `NEXT_PUBLIC_BFF_URL` (browser-side); both point at `:8081`.
+
+### Verification
+- Sweep for `localhost:8000` and `window.location.origin` in `src/**` (excluding tests) → zero residuals
+

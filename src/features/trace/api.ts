@@ -1,6 +1,6 @@
 import type { Trace } from '@/lib/schemas/trace';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchTrace(runId: string): Promise<Trace | null> {
   const res = await fetch(`${BFF}/api/runs/${runId}/trace`);

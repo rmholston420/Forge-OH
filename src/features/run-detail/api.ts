@@ -1,7 +1,7 @@
 import type { RunSummary } from '@/lib/schemas/run';
 import type { ToolEvent } from '@/lib/schemas/event';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchRun(runId: string): Promise<RunSummary> {
   const res = await fetch(`${BFF}/api/runs/${runId}`);

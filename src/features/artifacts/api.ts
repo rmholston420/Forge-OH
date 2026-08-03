@@ -1,6 +1,6 @@
 import type { Artifact } from '@/lib/schemas/artifact';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchRunArtifacts(runId: string): Promise<Artifact[]> {
   const res = await fetch(`${BFF}/api/runs/${runId}/artifacts`);

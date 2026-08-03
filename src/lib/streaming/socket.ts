@@ -1,7 +1,7 @@
 'use client';
 import { io, type Socket } from 'socket.io-client';
 
-export const BFF_WS = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+export const BFF_WS = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 let socket: Socket | null = null;
 

@@ -19,7 +19,7 @@ import type { RunEvent } from '@/lib/schemas/event';
 
 const BFF_URL =
   process.env.NEXT_PUBLIC_BFF_URL ??
-  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8081');
+  'http://localhost:8081';
 
 export function useRunStream(
   runId: string | null,

@@ -23,9 +23,7 @@ import type { ApiResult } from './response';
  * MSW handlers, so dev, test, and production all share a single env var.
  * Default port 8081 is the canonical BFF port for this project.
  */
-const BFF_BASE =
-  process.env.NEXT_PUBLIC_BFF_URL ??
-  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8081');
+const BFF_BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 // ---------------------------------------------------------------------------
 // Internal fetch wrapper
@@ -50,7 +48,6 @@ async function request<T>(
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      credentials: 'include',
     });
   } catch (networkErr) {
     return {
@@ -117,7 +114,7 @@ export function bffDelete<T = Record<string, never>>(
 
 export async function bffDownload(path: string): Promise<Blob> {
   const url = path.startsWith('http') ? path : `${BFF_BASE}${path}`;
-  const res = await fetch(url, { credentials: 'include' });
+  const res = await fetch(url);
   if (!res.ok) throw await parseApiError(res);
   return res.blob();
 }

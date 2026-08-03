@@ -5,7 +5,7 @@ import { derivePlanState } from './derivePlanState';
 import type { PlaybackSpeed } from './schemas';
 
 async function fetchRunEvents(runId: string) {
-  const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+  const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
   const r = await fetch(`${BASE}/runs/${runId}/events`);
   if (!r.ok) throw new Error('Failed to fetch events');
   return r.json();

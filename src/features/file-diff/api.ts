@@ -1,6 +1,6 @@
 import type { FileDiff, FileDiffSummary } from '@/lib/schemas/file-diff';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchRunFiles(runId: string): Promise<FileDiffSummary[]> {
   const res = await fetch(`${BFF}/api/runs/${runId}/files`);

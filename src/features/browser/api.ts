@@ -1,6 +1,6 @@
 import type { BrowserFrame } from '@/lib/schemas/browser';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchBrowserFrames(runId: string): Promise<BrowserFrame[]> {
   const res = await fetch(`${BFF}/api/runs/${runId}/browser`);

@@ -1,6 +1,6 @@
 import type { McpServer, RegisterMcpServerRequest } from './schemas';
 
-const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchMcpServers(): Promise<McpServer[]> {
   const res = await fetch(`${BASE}/mcp`);

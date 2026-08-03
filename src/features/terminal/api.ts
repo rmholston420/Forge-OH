@@ -1,6 +1,6 @@
 import type { TerminalCommand } from '@/lib/schemas/terminal';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 export async function fetchRunCommands(runId: string): Promise<TerminalCommand[]> {
   const res = await fetch(`${BFF}/api/runs/${runId}/commands`);
