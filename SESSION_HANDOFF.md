@@ -1,66 +1,41 @@
-# Session Handoff — 2026-08-03 10:48 EDT
+# Forge-OH — Session Handoff
 
-## Current stage / plugin / port
-Step 8, slices **F.14 + F.15 fixups** — BFF sidecar + hook alignment
-with the real OpenHands agent-server event schema.
+## Current stage
+F.16 shipped. G.1 (self-testing spec) not yet started.
 
 ## Completed this session
-- **F.14 fixup:** `openhands_tools_ext.trajectory.hook._VERDICT_MAP`
-  now accepts past-tense verdicts (`passed`, `skipped`, `failed`,
-  `errored`) as well as the imperative forms already handled. Three
-  new hook tests cover the past-tense paths.
-- **F.15 fixup:** `bff/services/sidecar_producers.py` producers
-  rewritten against the real event schema:
-  - Symptom probes `ObservationEvent.observation.is_error` and
-    `TerminalObservation.exit_code`, flattens
-    `observation.content[]`, and parses
-    `HookExecutionEvent.stdout` JSON for verify verdicts.
-  - Diffs read the correct `file_diff_reconstruction.build_summaries`
-    keys (`additions`/`deletions`).
-  - RepoGraph symbols now match on nested
-    `event.action.kind == "RepoGraph*Action"`.
-  - Legacy flat-shape probes retained as fallbacks so a future
-    schema change can't silently regress.
-- Tests rewritten to use real `ObservationEvent` / `ActionEvent` /
-  `HookExecutionEvent` envelopes; added 8 schema-aware cases.
-- Full offline-safe suite: **446 passed / 23 deselected**, no
-  regressions. Ruff clean on touched files.
-- BUILD_LOG.md updated with F.14-fixup and F.15-fixup entries.
+- F.16 GPU monitor: BFF poller + `/api/gpu`, `/api/gpu/history`; PRE-tool hook.
+- Guards: temp (default 83 C), power (opt-in, recommend 435 W on 5090), VRAM (opt-in), util (opt-in). Precedence: thermal → power → VRAM → util.
+- Bands: warn=52 C, critical=88 C surfaced in snapshot for frontend rendering.
+- Wired into `bff/main.py` lifespan and `bff/services/hook_config.py` + `.openhands/hooks.json`.
+- Tests: 48 new F.16 tests green; full offline suite 482 passed / 23 deselected (mcp/observability/plugins routers require agent-server on :8090).
+- Fixed happy-path smoke spec (`src/tests/e2e/f15-fixups.spec.ts`).
 
-## Remaining before Definition of Done is met
-1. Commit F.14 fixup and F.15 fixup as two commits.
-2. Push both to `git-agent-proxy.perplexity.ai/rmholston420/Forge-OH.git`.
-3. Colossus verifies: pull, restart BFF, fire a fresh run, drain
-   events, confirm the trajectory row shows `final_status=success`
-   AND a populated `symptom` (from any failing observation or
-   verify verdict) plus `diffs` (if files were edited).
+## Remaining before DoD (F.16)
+- Colossus verification: pull, restart BFF, `curl 127.0.0.1:8081/api/gpu`, rerun `f15-fixups.spec.ts`. Set `FORGE_GPU_POWER_CUTOFF_W=435` in `~/.forge-oh/bff.env` for the 5090.
 
-## Open questions / ambiguities
-None blocking. Deferred items still deferred (see below).
+## Open questions / ambiguity
+- vLLM vs Ollama routing — deferred to F.18 (separate slice; F.16 unaffected).
 
-## Exact next action
-Commit + push the two fixup commits. Then paste the Colossus
-verification recipe.
+## Next action
+1. Colossus verification recipe (below).
+2. Build G.1 — Playwright spec that has Forge-OH add a new test case to `bff/tests/test_sidecar_producers.py::TestSymptomProducer`, then asserts pytest gains a passing test on that file. Path: `src/tests/e2e/g1-self-testing.spec.ts`.
 
-## Deferred (non-blocking)
-1. Backfill `task_description` for pre-F.12 orphan trajectory rows
-   (`6df11ecb`, `dc84e8a5`).
-2. Retention policy ADR for `~/.forge-oh/trajectories.db`.
-3. Fresh recommendation slate outside Recs #1–#3.
-4. Verify `action_reconstruction.build_plan` against a real
-   `TaskTrackerAction` event (no preset emits one today).
-5. Add a RepoGraph tool to a preset so
-   `repograph_symbols` producer has something to extract in real
-   runs.
-
-## Environment
-- Mirror: `/home/user/workspace/forge-oh-mirror/` on `main`
-  (uncommitted F.14+F.15 fixups on top of `a09fc45`).
-- Colossus: `~/dev/forge-oh/` — needs to pull the upcoming
-  fixup commits.
-- Trajectory DB: `~/.forge-oh/trajectories.db`.
-- Sidecar: `.forge-oh/trajectory-sidecar.json` keyed by
-  `session_id` (== conversation id).
-- Verify state: `.forge-oh/verify-state.json`.
-- Ports: BFF :8081, agent-server :8090, Next.js :3000.
-- Agent preset: `ap-1` ("General Dev").
+## Colossus verification recipe
+```bash
+cd ~/forge-oh && git pull
+# Optional: enable power guard (recommended)
+grep -q FORGE_GPU_POWER_CUTOFF_W ~/.forge-oh/bff.env 2>/dev/null || \
+  echo 'FORGE_GPU_POWER_CUTOFF_W=435' >> ~/.forge-oh/bff.env
+# Restart BFF
+pkill -f 'uvicorn bff.main:app' || true
+set -a; source ~/.forge-oh/bff.env 2>/dev/null || true; set +a
+nohup .oh-venv/bin/uvicorn bff.main:app --host 127.0.0.1 --port 8081 \
+  >~/.forge-oh/bff.log 2>&1 &
+sleep 2
+# Snapshot + history
+curl -s 127.0.0.1:8081/api/gpu | python -m json.tool
+curl -s '127.0.0.1:8081/api/gpu/history?window_sec=60' | python -m json.tool | head
+# Smoke
+cd src && npx playwright test tests/e2e/f15-fixups.spec.ts
+```

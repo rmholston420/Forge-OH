@@ -1,4 +1,17 @@
 {
+  "pre_tool_use": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "name": "forge-oh-gpu-thermal",
+          "command": "python -m openhands_tools_ext.gpu.hook",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
   "stop": [
     {
       "matcher": "*",

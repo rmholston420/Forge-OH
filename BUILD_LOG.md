@@ -2465,3 +2465,25 @@ Verified via the paste sample captured this session (`/home/user/workspace/uploa
 **ADRs/ledger:** none — schema fix, no new port.
 
 **Stop-condition status:** F.15 producers now match the real OH event schema. Sidecar rows for future runs will carry `symptom` (from any error observation or failing verify), `diffs` (from FileEditorObservation), `plan` (when a TaskTrackerAction is emitted — no preset uses it yet), and `repograph_symbols` (when a RepoGraph action fires — no preset uses it yet).
+
+## 2026-08-03 11:40 EDT — F.16 GPU monitor (thermal + power + VRAM + util)
+
+- Stage/plugin: F.16 (backend telemetry + PRE-tool hook)
+- New: `bff/services/gpu_monitor.py` (nvidia-smi CSV poller, ring buffer, snapshot).
+- New: `bff/routers/gpu.py` (`GET /api/gpu`, `GET /api/gpu/history?window_sec=`).
+- New: `openhands_tools_ext/gpu/hook.py` PRE-tool hook.
+- Wired into `bff/main.py` lifespan; hook registered in `bff/services/hook_config.py` and mirrored `.openhands/hooks.json`.
+- Cutoffs (all env-configurable):
+  - temp: default 83 C (bands warn=52, critical=88 per user's card).
+  - power: `FORGE_GPU_POWER_CUTOFF_W`, unset by default; recommend 435 W on RTX 5090 (sustained >=435 W overheats fast).
+  - vram / util: unset by default.
+- Hook precedence: thermal → power → VRAM → utilization. Fall-open on unreachable BFF or `available=false`.
+- Snapshot payload keys: `available`, `cutoff_c`, `warn_c`, `critical_c`, `vram_cutoff_pct`, `util_cutoff_pct`, `power_cutoff_w`, `poll_sec`, `gpus[]`, `peaks{temperature_c, utilization_pct, vram_pct, power_w}`, `unavailable`.
+- Tests: 48 F.16 tests green (gpu_monitor 26, gpu_router 12, hook_config +1, hook 9). Full offline suite 482 passed / 23 deselected (mcp/observability/plugins routers require agent-server on :8090).
+- Also fixed happy-path smoke spec (`src/tests/e2e/f15-fixups.spec.ts`) to use unique `hello_${stamp}.py` per run.
+- Deferred: F.18 (vLLM as router backend alternative to Ollama). Frontend sparkline UI to consume `/api/gpu`.
+
+## 2026-08-03 11:41 EDT — Smoke spec: unique path per run
+
+- Stage: F.15 fixup.
+- File: `src/tests/e2e/f15-fixups.spec.ts` — happy-path now writes `hello_${Date.now()}.py` to avoid "already exists" failure on repeat runs.

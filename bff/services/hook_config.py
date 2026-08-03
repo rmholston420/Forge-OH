@@ -1,21 +1,30 @@
 """Runtime hook wiring for Forge-OH conversations.
 
 The BFF injects a ``hook_config`` block into every ``POST /api/conversations``
-body so the agent-server registers two STOP hooks against every conversation
-it creates:
+body so the agent-server registers the following hooks against every
+conversation it creates:
 
-1. ``openhands_tools_ext.verify.hook`` — VerifyLoop (Slice E).
-2. ``openhands_tools_ext.trajectory.hook`` — Trajectory Memory writer (Slice F).
+* ``pre_tool_use``:
+    1. ``openhands_tools_ext.gpu.hook`` — thermal cutoff guard (F.16).
+       Blocks the turn (exit 2) when the hottest GPU is at or above
+       ``FORGE_GPU_TEMP_CUTOFF_C``; falls open when the BFF poller is
+       unavailable so a broken poller can't stall every conversation.
 
-Both are ``HookType.COMMAND`` subprocess hooks. The SDK spawns them with
+* ``stop``:
+    1. ``openhands_tools_ext.verify.hook`` — VerifyLoop (Slice E).
+    2. ``openhands_tools_ext.trajectory.hook`` — Trajectory Memory
+       writer (Slice F).
+
+All are ``HookType.COMMAND`` subprocess hooks. The SDK spawns them with
 the ``HookEvent`` payload on stdin and ``OPENHANDS_PROJECT_DIR`` /
-``OPENHANDS_SESSION_ID`` in the environment; both hooks already know how
-to read that contract.
+``OPENHANDS_SESSION_ID`` in the environment; every hook already knows
+how to read that contract.
 
 Hook ordering: the OpenHands SDK runs hooks in list order and does NOT
-short-circuit on the ``stop`` event, so both hooks always execute. Verify
-must run FIRST because the trajectory hook reads verify-state.json to
-learn the run's final status. The list order below reflects that.
+short-circuit on the ``stop`` event, so both stop hooks always execute.
+Verify must run FIRST because the trajectory hook reads
+``verify-state.json`` to learn the run's final status. The list order
+below reflects that.
 
 The Python interpreter used for the subprocess is chosen in this order:
 1. ``FORGE_OH_HOOK_PYTHON`` env var (explicit override).
@@ -44,6 +53,19 @@ def build_hook_config() -> dict:
     """
     py = _hook_python()
     return {
+        "pre_tool_use": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "name": "forge-oh-gpu-thermal",
+                        "command": f"{py} -m openhands_tools_ext.gpu.hook",
+                        "timeout": 5,
+                    },
+                ],
+            }
+        ],
         "stop": [
             {
                 "matcher": "*",
@@ -62,5 +84,5 @@ def build_hook_config() -> dict:
                     },
                 ],
             }
-        ]
+        ],
     }

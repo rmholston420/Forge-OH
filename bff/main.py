@@ -28,6 +28,7 @@ from bff.routers import (
     agent_presets,
     bash,
     git,
+    gpu,
     mcp,
     metrics,
     notifications,
@@ -40,7 +41,7 @@ from bff.routers import (
     trajectories,
     workspaces,
 )
-from bff.services import episodic_memory, event_relay, trajectory_drain
+from bff.services import episodic_memory, event_relay, gpu_monitor, trajectory_drain
 
 
 @asynccontextmanager
@@ -64,8 +65,19 @@ async def lifespan(app: FastAPI):
         logging.getLogger(__name__).warning(
             "trajectory drain scheduler failed to start: %s", exc
         )
+    # Slice F.16: start the GPU thermal / utilization poller. Failure
+    # is non-fatal (dev laptops without nvidia-smi should still boot).
+    try:
+        await gpu_monitor.start()
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "gpu monitor failed to start: %s", exc
+        )
     yield
     # Graceful shutdown.
+    await gpu_monitor.stop()
     await trajectory_drain.stop_scheduler()
     await event_relay.shutdown_all()
     await oh_shutdown()
@@ -104,6 +116,7 @@ app.include_router(plugins.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(bash.router, prefix="/api")
 app.include_router(git.router, prefix="/api")
+app.include_router(gpu.router)  # already prefixed /api/gpu inside the router
 app.include_router(repograph.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(trajectories.router, prefix="/api")

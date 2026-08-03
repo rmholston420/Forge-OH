@@ -128,13 +128,21 @@ test.beforeAll(async ({ request }) => {
 });
 
 test.describe('F.14 / F.15 fixup verification', () => {
-  test('happy path: hello.py create + run populates diffs, no symptom', async ({
+  test('happy path: fresh file create + run populates diffs, no symptom', async ({
     request,
   }) => {
+    // Use a per-run unique filename so a prior verification run's
+    // artifact can't make `create` legitimately error out. That is
+    // exactly what happened on the first Colossus run of this spec
+    // (F.15 producer correctly surfaced the FileEditorObservation
+    // error — the assertion was the bug, not the producer).
+    const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const relPath = `hello_${stamp}.py`;
+    const absPath = `/workspace/${relPath}`;
     const cid = await createRun(
       request,
-      'F.15 fixup — happy path',
-      'Create /workspace/hello.py that prints hello world, then run it.',
+      `F.15 fixup — happy path (${relPath})`,
+      `Create ${absPath} that prints hello world, then run it.`,
     );
     const status = await waitForTerminal(request, cid);
     expect(status).toBe('succeeded');
@@ -143,8 +151,8 @@ test.describe('F.14 / F.15 fixup verification', () => {
     const row = readTrajectoryRow(cid);
 
     expect(row.final_status).toBe('success');
-    expect(row.task_description).toContain('hello.py');
-    expect(row.symptom).toBe(''); // no observation errored
+    expect(row.task_description).toContain(relPath);
+    expect(row.symptom).toBe(''); // no observation errored on a fresh path
     expect(row.plan).toBe(''); // ap-1 has no TaskTrackerAction — expected
 
     const diffs = JSON.parse(row.diffs_json) as Array<{
@@ -154,10 +162,13 @@ test.describe('F.14 / F.15 fixup verification', () => {
       summary: string;
     }>;
     expect(diffs.length).toBeGreaterThan(0);
-    const hello = diffs.find((d) => d.path.endsWith('hello.py'));
-    expect(hello, `hello.py missing from diffs: ${row.diffs_json}`).toBeTruthy();
-    expect(hello!.lines_added).toBeGreaterThanOrEqual(1);
-    expect(hello!.summary).toBe('added');
+    const created = diffs.find((d) => d.path.endsWith(relPath));
+    expect(
+      created,
+      `${relPath} missing from diffs: ${row.diffs_json}`,
+    ).toBeTruthy();
+    expect(created!.lines_added).toBeGreaterThanOrEqual(1);
+    expect(created!.summary).toBe('added');
 
     const symbols = JSON.parse(row.repograph_symbols_json) as string[];
     expect(symbols).toEqual([]);

@@ -81,6 +81,25 @@ class TestBuildHookConfig:
         assert len(model.stop[0].hooks) == 2
         assert model.stop[0].hooks[0].type == HookType.COMMAND
         assert model.stop[0].hooks[1].type == HookType.COMMAND
+        # Slice F.16: PRE-tool GPU thermal guard.
+        assert len(model.pre_tool_use) == 1
+        assert len(model.pre_tool_use[0].hooks) == 1
+        assert model.pre_tool_use[0].hooks[0].type == HookType.COMMAND
+
+    def test_pre_tool_use_registers_gpu_thermal_hook(self) -> None:
+        """Slice F.16: PRE-tool guard must be present with matcher='*'."""
+        cfg = build_hook_config()
+        pre = cfg["pre_tool_use"]
+        assert len(pre) == 1
+        assert pre[0]["matcher"] == "*"
+        hooks = pre[0]["hooks"]
+        assert len(hooks) == 1
+        gpu = hooks[0]
+        assert gpu["name"] == "forge-oh-gpu-thermal"
+        assert gpu["type"] == "command"
+        assert gpu["command"].endswith("-m openhands_tools_ext.gpu.hook")
+        # Snappy — hits localhost BFF and returns.
+        assert 1 <= gpu["timeout"] <= 10
 
     def test_matches_shipped_workspace_hooks_json(self) -> None:
         """The inline hook_config must stay in sync with .openhands/hooks.json."""
@@ -90,25 +109,31 @@ class TestBuildHookConfig:
         workspace_hooks = json.loads((repo_root / ".openhands" / "hooks.json").read_text())
 
         # Compare structural shape (name + module suffix + type + matcher +
-        # timeout). We intentionally ignore the interpreter path — the
-        # workspace file uses bare `python` for portability while the inline
-        # config uses `sys.executable` for correctness.
-        def _shape(config: dict) -> list:
-            return [
-                {
-                    "matcher": m["matcher"],
-                    "hooks": [
-                        {
-                            "type": h["type"],
-                            "name": h["name"],
-                            "module": h["command"].split("-m ")[-1],
-                            "timeout": h["timeout"],
-                        }
-                        for h in m["hooks"]
-                    ],
-                }
-                for m in config["stop"]
-            ]
+        # timeout) across every matcher key present. We intentionally
+        # ignore the interpreter path — the workspace file uses bare
+        # `python` for portability while the inline config uses
+        # `sys.executable` for correctness.
+        def _shape(config: dict) -> dict:
+            result: dict[str, list] = {}
+            for key in ("pre_tool_use", "stop"):
+                if key not in config:
+                    continue
+                result[key] = [
+                    {
+                        "matcher": m["matcher"],
+                        "hooks": [
+                            {
+                                "type": h["type"],
+                                "name": h["name"],
+                                "module": h["command"].split("-m ")[-1],
+                                "timeout": h["timeout"],
+                            }
+                            for h in m["hooks"]
+                        ],
+                    }
+                    for m in config[key]
+                ]
+            return result
 
         assert _shape(build_hook_config()) == _shape(workspace_hooks)
 
