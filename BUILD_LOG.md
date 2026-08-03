@@ -2992,3 +2992,78 @@ the pushed launchers.
 
 **Next:** re-run smoke; if green, resume F.19.2b (`runs.py` migration
 to `route_by_role`).
+
+## 2026-08-03 18:44 EDT — F.19.2b: runs.py migrated to route_by_role
+
+**Stage:** F.19 sub-slice 2b — real-request path uses the new role API.
+
+**Delivered:**
+- `bff/routers/runs.py`:
+  - Import switched from `route_request` to `route_by_role, RoleRoute`.
+  - `CreateRunRequest` gains optional `role: str | None = None` field
+    (additive; frontend contract preserved).
+  - New `_TASK_COMPLEXITY_TO_ROLE` map + `_resolve_role()` helper:
+    explicit `body.role` wins; else map `taskComplexity` → role;
+    unknown → `coder` (matches F.18 fast-path default).
+  - `_translate_model()` now takes a `RoleRoute` instead of a string;
+    returns `openai/<model>` for LiteLLM regardless of backend.
+  - `create_run` calls `route_by_role(role, context_length=…)` and
+    uses the returned `RoleRoute` for `base_url`, `model`, and
+    `max_tokens`.
+  - **Latent bug fixed:** the LiteLLM `llm` block used to hardcode
+    `base_url=_OLLAMA_BASE` even when the router chose vLLM. Now it
+    uses `route.base_url` (vLLM traffic goes to :8501/:8502; Ollama
+    fallback goes to :11434).
+  - `route.max_tokens` (2048 coder / 8192 planner per ADR-009 §3b) is
+    plumbed into the LiteLLM `llm` block as `max_tokens`.
+  - `api_key` is now `"vllm"` when the backend is vLLM (was always
+    `"ollama"`); both OpenAI-compat servers ignore the value but the
+    label matches the actual backend for logs.
+  - Response `routing` dict expanded: `role`, `backend`, `model`,
+    `baseUrl`, `maxTokens` added. `selected` still populated (uses
+    `route.tagged`) for backward compat.
+- `bff/tests/test_hook_config.py`: 3 patch sites migrated from
+  `patch("bff.routers.runs.route_request", ...)` to
+  `patch("bff.routers.runs.route_by_role", ...)` returning a
+  `RoleRoute`. Import of `RoleRoute` added.
+
+**Verification (in sandbox):**
+- All 20 `test_model_router.py` tests pass.
+- 10 isolated assertions cover `_resolve_role` (explicit-wins, map
+  hit/miss, case-insensitive, invalid-role fallback) and
+  `_translate_model` (both backends). All pass.
+- `test_hook_config.py` cannot run in the sandbox (missing
+  `openhands` SDK); needs Colossus to re-verify.
+
+**Design decisions locked (per user "make the optimal choices"):**
+- Additive `role` field, not breaking rename. Preserves frontend
+  contract until UI is updated.
+- `agentic` (F.18's default when taskComplexity is missing) maps to
+  `planner`: agentic multi-step work with a fresh 8192 budget matches
+  ADR-009 §3b's planner intent better than defaulting to coder.
+- Unknown taskComplexity maps to `coder`, matching F.18 fast-path
+  default (safer: shorter answers, smaller budget).
+- Response payload keeps the legacy `selected` string
+  ("vllm/model-tag") for existing frontend parsers; new fields are
+  additive.
+
+**Files touched:**
+- `bff/routers/runs.py`
+- `bff/tests/test_hook_config.py`
+
+**Ports/adapters affected:** BFF `/api/runs` → agent-server LiteLLM
+adapter (correct base_url + max_tokens now flow through).
+
+**Stop condition (F.19.2b):**
+`create_run` no longer references `route_request`; role is resolved
+before routing; `RoleRoute` fields are used for `base_url`, model,
+and max_tokens; hook_config test mocks migrated. Router tests 20/20
+green. Met 2026-08-03 18:44 EDT.
+
+**Deferred to Colossus verification:** `test_hook_config.py` needs
+`openhands` SDK and cannot run in the sandbox. User to run
+`python -m pytest bff/tests/test_hook_config.py` on Colossus after
+pulling.
+
+**Next:** F.19.2c (settings.py migration; probe UI for both roles).
+F.19.1b live smoke on Colossus still pending — required before F.19.4.

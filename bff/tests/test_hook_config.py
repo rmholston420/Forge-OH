@@ -23,6 +23,7 @@ import pytest
 from openhands.sdk.hooks import HookConfig, HookType
 
 from bff.services.hook_config import build_hook_config
+from bff.services.model_router import RoleRoute
 from bff.tests.utils import create_test_client
 
 
@@ -181,8 +182,14 @@ class TestCreateRunInjectsHookConfig:
         with (
             patch("bff.routers.runs.get_client", return_value=client_stub),
             patch(
-                "bff.routers.runs.route_request",
-                new=AsyncMock(return_value="qwen3-coder:30b"),
+                "bff.routers.runs.route_by_role",
+                new=AsyncMock(return_value=RoleRoute(
+                    role="coder",
+                    backend="ollama",
+                    model="qwen3-coder:30b",
+                    base_url="http://localhost:11434/v1",
+                    max_tokens=2048,
+                )),
             ),
         ):
             client = create_test_client()
@@ -243,8 +250,14 @@ class TestCreateRunInjectsHookConfig:
         with (
             patch("bff.routers.runs.get_client", return_value=client_stub),
             patch(
-                "bff.routers.runs.route_request",
-                new=AsyncMock(return_value="qwen3-coder:30b"),
+                "bff.routers.runs.route_by_role",
+                new=AsyncMock(return_value=RoleRoute(
+                    role="coder",
+                    backend="ollama",
+                    model="qwen3-coder:30b",
+                    base_url="http://localhost:11434/v1",
+                    max_tokens=2048,
+                )),
             ),
             patch("bff.routers.runs.seed_sidecar") as mock_seed,
         ):
@@ -304,8 +317,14 @@ class TestCreateRunInjectsHookConfig:
         with (
             patch("bff.routers.runs.get_client", return_value=client_stub),
             patch(
-                "bff.routers.runs.route_request",
-                new=AsyncMock(return_value="qwen3-coder:30b"),
+                "bff.routers.runs.route_by_role",
+                new=AsyncMock(return_value=RoleRoute(
+                    role="coder",
+                    backend="ollama",
+                    model="qwen3-coder:30b",
+                    base_url="http://localhost:11434/v1",
+                    max_tokens=2048,
+                )),
             ),
             patch(
                 "bff.routers.runs.seed_sidecar",

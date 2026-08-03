@@ -54,7 +54,11 @@ from bff.services.event_normalize import normalize_events
 from bff.services.event_relay import start_relay
 from bff.services.file_diff_reconstruction import build_file_diff, build_summaries
 from bff.services.hook_config import build_hook_config
-from bff.services.model_router import ModelUnavailableError, route_request
+from bff.services.model_router import (
+    ModelUnavailableError,
+    RoleRoute,
+    route_by_role,
+)
 from bff.services.sidecar import seed_sidecar
 
 log = logging.getLogger(__name__)
@@ -72,6 +76,9 @@ class CreateRunRequest(BaseModel):
     workspaceId: str
     taskPrompt: str | None = None
     taskComplexity: str | None = None
+    # F.19.2b: optional explicit role. When set, wins over taskComplexity
+    # mapping. Accepted values: "coder" | "planner".
+    role: str | None = None
     contextLength: int | None = None
     # Stage 1E: when true, agent will pause before every tool call for HITL
     # approve/reject. Backed by APPROVAL_GATE feature flag in the frontend.
@@ -100,12 +107,32 @@ _WORKSPACE_ROOT = Path(os.getenv("FORGE_WORKSPACE_ROOT", "workspace/runs"))
 _USAGE_ID = os.getenv("FORGE_USAGE_ID", "colossus-ollama")
 _OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
+# F.19.2b: taskComplexity → role map. Anything not listed defaults to "coder"
+# (matches F.18 behavior: unknown complexity took the fast/coder path).
+_TASK_COMPLEXITY_TO_ROLE: dict[str, str] = {
+    "fast": "coder",
+    "simple": "coder",
+    "medium": "coder",
+    "complex": "planner",
+    "reasoning": "planner",
+    "planning": "planner",
+    "agentic": "planner",  # F.18 default; agentic multi-step work needs the planner.
+}
 
-def _translate_model(routed: str) -> str:
-    """route_request returns 'ollama/<tag>' or 'vllm/<tag>'.
-    Agent-server (LiteLLM) expects 'openai/<tag>' for the OpenAI-compat path."""
-    _, _, tag = routed.partition("/")
-    return f"openai/{tag}" if tag else f"openai/{routed}"
+
+def _resolve_role(body_role: str | None, task_complexity: str) -> str:
+    """Explicit body.role wins; else map taskComplexity; else default coder."""
+    if body_role:
+        role = body_role.strip().lower()
+        if role in ("coder", "planner"):
+            return role
+    return _TASK_COMPLEXITY_TO_ROLE.get(task_complexity.strip().lower(), "coder")
+
+
+def _translate_model(route: RoleRoute) -> str:
+    """Agent-server (LiteLLM) expects 'openai/<tag>' for the OpenAI-compat
+    path regardless of whether the backend is vLLM or Ollama."""
+    return f"openai/{route.model}"
 
 
 def _conv_to_run_summary(conv: dict[str, Any]) -> dict[str, Any]:
@@ -179,10 +206,11 @@ async def create_run(body: CreateRunRequest) -> dict:
     context_length = (
         body.contextLength if body.contextLength is not None else len(body.taskPrompt or "")
     )
+    role = _resolve_role(body.role, task_complexity)
 
-    # 1) Route.
+    # 1) Route by role (F.19.2b).
     try:
-        routed = await route_request(task_complexity, context_length)
+        route: RoleRoute = await route_by_role(role, context_length=context_length)
     except ModelUnavailableError as exc:
         return {
             "data": {
@@ -195,6 +223,7 @@ async def create_run(body: CreateRunRequest) -> dict:
                 "selectedModel": None,
                 "routing": {
                     "taskComplexity": task_complexity,
+                    "role": role,
                     "contextLength": context_length,
                     "selected": None,
                     "error": str(exc),
@@ -202,7 +231,7 @@ async def create_run(body: CreateRunRequest) -> dict:
             }
         }
 
-    litellm_model = _translate_model(routed)
+    litellm_model = _translate_model(route)
 
     # 2) Resolve working_dir from the selected workspace on agent-server.
     #    Stage 6: workspaces are stored on agent-server (GET /api/workspaces).
@@ -232,8 +261,17 @@ async def create_run(body: CreateRunRequest) -> dict:
         "agent": {
             "llm": {
                 "model": litellm_model,
-                "base_url": _OLLAMA_BASE,
-                "api_key": "ollama",
+                # F.19.2b: base_url comes from the router, not hardcoded Ollama.
+                # Previous code sent vLLM-routed traffic to the Ollama URL,
+                # which silently 404'd. Now vLLM traffic goes to the role's
+                # vLLM base_url and Ollama fallback traffic goes to Ollama.
+                "base_url": route.base_url,
+                # api_key is a required LiteLLM param but ignored by our
+                # OpenAI-compat servers (vLLM ignores; Ollama ignores).
+                "api_key": "ollama" if route.backend == "ollama" else "vllm",
+                # F.19.2b: role-specific completion budget from ADR-009 §3b.
+                # coder=2048, planner=8192. LiteLLM keys this as max_tokens.
+                "max_tokens": route.max_tokens,
                 "usage_id": _USAGE_ID,
                 "is_subscription": False,
                 "native_tool_calling": False,
@@ -318,8 +356,13 @@ async def create_run(body: CreateRunRequest) -> dict:
     summary = _conv_to_run_summary(conv)
     summary["routing"] = {
         "taskComplexity": task_complexity,
+        "role": role,
         "contextLength": context_length,
-        "selected": routed,
+        "selected": route.tagged,
+        "backend": route.backend,
+        "model": route.model,
+        "baseUrl": route.base_url,
+        "maxTokens": route.max_tokens,
         "error": None,
     }
     return {"data": summary}
