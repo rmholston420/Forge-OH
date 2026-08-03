@@ -1,92 +1,61 @@
 #!/usr/bin/env bash
-# F.19.1a — Coder-role vLLM launcher.
+# F.19 coder-role vLLM launcher (Docker; matches bench/f19pre/vllm_launch.sh).
 #
-# Serves qwen3.6-35b-nvfp4 (bench cell c04, ADR-009 §3) on :8501 via
-# native venv `vllm serve`. Matches the topology in ADR-009 §3a
-# (dual-port + swap-on-demand supervisor). Only one of the coder or
-# planner launcher should be running at a time; use ops/vllm_supervisor.sh
-# to enforce that.
+# Serves qwen3.6-35b-nvfp4 on :8501 as "qwen3.6-35b-nvfp4".
 #
-# Bench provenance:
-#   bench/f19pre/vllm_launch.sh (Docker, c04 recipe) —
-#     --quantization modelopt_fp4 --gpu-memory-utilization 0.90
-#     --max-num-seqs 128 --max-model-len 32768 --dtype auto
-#   bench/f19pre/results/scores_20260803.md — c04 scored 109/120.
-#
-# Blackwell / RTX 5090 (SM_120) notes:
-#   * vLLM >= 0.26.0 required for the qwen3.6-MoE (qwen3_5_moe arch) hybrid
-#     Mamba/attention model (older wheels reject the arch).
-#   * --max-num-seqs 128 is not optional on single 5090; the default
-#     256 aborts init with "Mamba cache blocks (255)".
-#   * --quantization modelopt_fp4 IS required for this NVFP4 checkpoint;
-#     autodetect does not cover ModelOpt-FP4 the way it covers
-#     compressed-tensors (see ADR-009 §5 correction pending).
-#   * VLLM_USE_FLASHINFER_SAMPLER=0 preserved from F.18 — FlashInfer's
-#     SM whitelist rejects SM_120.
-#
-# Usage:
-#   ./ops/vllm_launch_coder.sh                        # foreground (exec)
-#   nohup ./ops/vllm_launch_coder.sh \
-#     > ~/.forge-oh/vllm-coder.log 2>&1 &             # background
+# Native venv (~/venv/vllm-new, vLLM 0.10.2) does NOT support qwen3_5_moe.
+# ADR-009 §5 requires vLLM ≥ 0.26.0 → we run the pinned Docker image the
+# bench validated. Native venv upgrade is deferred to F.19.5.
 #
 # Env overrides:
-#   VLLM_CODER_PORT           default 8501
-#   VLLM_CODER_MODEL_DIR      default ~/models/qwen3.6-35b-nvfp4
-#   VLLM_CODER_SERVED_NAME    default qwen3.6-35b-nvfp4
-#   VLLM_CODER_LOG            default ~/.forge-oh/vllm-coder.log
-#   VLLM_VENV_BIN             default ~/venv/vllm-new/bin/vllm
+#   FORGE_COMPOSE_MODELS_DIR   host dir mounted as /models (default $HOME/models)
+#   FORGE_VLLM_IMAGE           docker image (default vllm/vllm-openai:latest)
+#   FORGE_VLLM_CODER_PORT      host port (default 8501)
+#   FORGE_VLLM_CODER_NAME      served-model-name / container tag (default qwen3.6-35b-nvfp4)
+#   FORGE_VLLM_CODER_MODEL_DIR model dir under /models (default qwen3.6-35b-nvfp4)
 
-# NOTE: no `set -e` at top level (per user preference — paste-block safe).
+MODELS_DIR="${FORGE_COMPOSE_MODELS_DIR:-$HOME/models}"
+IMAGE="${FORGE_VLLM_IMAGE:-vllm/vllm-openai:latest}"
+PORT="${FORGE_VLLM_CODER_PORT:-8501}"
+NAME="${FORGE_VLLM_CODER_NAME:-qwen3.6-35b-nvfp4}"
+MODEL_DIR="${FORGE_VLLM_CODER_MODEL_DIR:-qwen3.6-35b-nvfp4}"
+CONTAINER="forge-vllm-coder"
 
-export VLLM_USE_FLASHINFER_SAMPLER=0
-export VLLM_ATTENTION_BACKEND=FLASH_ATTN
-
-PORT="${VLLM_CODER_PORT:-8501}"
-MODEL_DIR="${VLLM_CODER_MODEL_DIR:-$HOME/models/qwen3.6-35b-nvfp4}"
-SERVED_NAME="${VLLM_CODER_SERVED_NAME:-qwen3.6-35b-nvfp4}"
-LOG="${VLLM_CODER_LOG:-$HOME/.forge-oh/vllm-coder.log}"
-VENV_BIN="${VLLM_VENV_BIN:-$HOME/venv/vllm-new/bin/vllm}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-mkdir -p "$(dirname "$LOG")"
-
-# Clean any previous coder or planner instance so no ghost worker holds
-# VRAM. The supervisor should have called this already, but we defend
-# against direct invocation too.
-if [ -x "$SCRIPT_DIR/vllm_stop_role.sh" ]; then
-    "$SCRIPT_DIR/vllm_stop_role.sh" both || true
-elif [ -x "$SCRIPT_DIR/../scripts/vllm_stop.sh" ]; then
-    "$SCRIPT_DIR/../scripts/vllm_stop.sh" "$PORT" || true
-    "$SCRIPT_DIR/../scripts/vllm_stop.sh" 8502 || true
-else
-    fuser -k "${PORT}/tcp" 2>/dev/null || true
-    fuser -k "8502/tcp" 2>/dev/null || true
-    pkill -9 -f 'VLLM::EngineCore' 2>/dev/null || true
-    pkill -9 -f 'vllm serve' 2>/dev/null || true
-    sleep 2
+if [ ! -d "$MODELS_DIR/$MODEL_DIR" ]; then
+  echo "[coder] ERROR: weights not found at $MODELS_DIR/$MODEL_DIR" >&2
+  exit 2
 fi
 
-# Sanity: weights and venv must exist.
-if [ ! -d "$MODEL_DIR" ]; then
-    echo "coder weights not found at $MODEL_DIR" >&2
-    echo "hint: symlink or download qwen3.6-35b-nvfp4 to that path" >&2
-    exit 1
-fi
-if [ ! -x "$VENV_BIN" ]; then
-    echo "vLLM binary not found at $VENV_BIN" >&2
-    exit 1
-fi
+# Blackwell SM_120 operational env — carried through to container.
+BLACKWELL_ENVS=(
+  -e VLLM_USE_FLASHINFER_SAMPLER=0
+  -e VLLM_ATTENTION_BACKEND=FLASH_ATTN
+  -e HF_HUB_OFFLINE=1
+)
 
-# 32GB Blackwell VRAM, ~30 GiB usable at 0.90 util. NVFP4 weights ~17-18 GiB
-# leaves KV headroom for 32K context at max-num-seqs 128.
-exec "$VENV_BIN" serve "$MODEL_DIR" \
-    --served-model-name "$SERVED_NAME" \
-    --host 127.0.0.1 \
-    --port "$PORT" \
-    --gpu-memory-utilization 0.90 \
-    --max-model-len 32768 \
-    --max-num-seqs 128 \
-    --dtype auto \
-    --quantization modelopt_fp4 \
-    --enable-prefix-caching \
-    --trust-remote-code
+docker rm -f "$CONTAINER" 2>/dev/null || true
+
+echo "[coder] docker run $IMAGE -> :$PORT (model=$MODEL_DIR served-as=$NAME)"
+docker run -d --name "$CONTAINER" --gpus all \
+  --ipc=host --shm-size=8g \
+  "${BLACKWELL_ENVS[@]}" \
+  -v "$MODELS_DIR:/models:ro" \
+  -p "${PORT}:8000" \
+  "$IMAGE" \
+  --model "/models/$MODEL_DIR" \
+  --served-model-name "$NAME" \
+  --host 0.0.0.0 --port 8000 \
+  --gpu-memory-utilization 0.90 \
+  --max-model-len 32768 \
+  --max-num-seqs 128 \
+  --dtype auto \
+  --trust-remote-code \
+  --quantization modelopt_fp4 \
+  --enable-prefix-caching \
+  "$@"
+RC=$?
+if [ $RC -ne 0 ]; then
+  echo "[coder] docker run exited $RC" >&2
+  exit $RC
+fi
+echo "[coder] container $CONTAINER launched; tail with: docker logs -f $CONTAINER"

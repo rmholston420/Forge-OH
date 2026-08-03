@@ -18,17 +18,24 @@
 #                       ready; otherwise same as `up <role>`. This is the
 #                       call the BFF router uses on cache-miss.
 #
+# Runtime:
+#   * F.19 uses the pinned vLLM Docker image (matches the bench). Each
+#     role runs in a named container: `forge-vllm-coder` on :8501 and
+#     `forge-vllm-planner` on :8502. Stopping a role does `docker rm -f`
+#     plus a `fuser -k` belt-and-braces to clear any stale native-venv
+#     process still holding the port.
+#   * Native venv (~/venv/vllm-new, vLLM 0.10.2) does NOT support the
+#     qwen3_5_moe arch used by both role models. Upgrading the native
+#     venv to vLLM ≥ 0.26.0 is deferred to F.19.5.
+#
 # Notes:
 #   * "Which role is live" is decided by which of :8501 / :8502 responds
 #     to /v1/models with data. If both respond (should not happen on
 #     Colossus but is possible in a shared-lab scenario), status prints
 #     "both" and exits 3.
-#   * Launchers themselves already call vllm_stop; this supervisor
-#     centralizes the stop step so foreground vs. background invocation
-#     both go through one path.
-#   * Background-mode launch redirects stdout+stderr into per-role logs
-#     under ~/.forge-oh/ so `journalctl`-style tailing works without
-#     systemd. F.18 verified this pattern.
+#   * The per-role log under ~/.forge-oh/ captures the `docker run`
+#     handshake only. Container runtime logs live in
+#     `docker logs -f forge-vllm-{coder,planner}`.
 #
 # Env:
 #   FORGE_OH_ROOT      default = git rev-parse --show-toplevel from
@@ -52,6 +59,10 @@ CODER_LAUNCHER="$SCRIPT_DIR/vllm_launch_coder.sh"
 PLANNER_LAUNCHER="$SCRIPT_DIR/vllm_launch_planner.sh"
 VLLM_STOP="$FORGE_OH_ROOT/scripts/vllm_stop.sh"
 
+# Docker container names (must match launcher scripts).
+CODER_CONTAINER="${FORGE_VLLM_CODER_CONTAINER:-forge-vllm-coder}"
+PLANNER_CONTAINER="${FORGE_VLLM_PLANNER_CONTAINER:-forge-vllm-planner}"
+
 mkdir -p "$HOME/.forge-oh"
 
 # --- Helpers ---------------------------------------------------------------
@@ -67,14 +78,35 @@ _probe_ready() {
     return 0
 }
 
-_stop_port() {
-    # Args: PORT. Fires the F.18 vllm_stop.sh which cleans EngineCore too.
-    local port="$1"
-    if [ -x "$VLLM_STOP" ]; then
-        "$VLLM_STOP" "$port" >/dev/null 2>&1 || true
-    else
-        fuser -k "${port}/tcp" 2>/dev/null || true
+_stop_role() {
+    # Args: ROLE. Removes the Docker container for the role and, as a
+    # belt-and-braces measure, kills any process still bound to the port
+    # (e.g. a stale native-venv vllm from an F.18-era session).
+    local role="$1" container port
+    case "$role" in
+        coder)
+            container="$CODER_CONTAINER"; port="$CODER_PORT" ;;
+        planner)
+            container="$PLANNER_CONTAINER"; port="$PLANNER_PORT" ;;
+        *)
+            return 2 ;;
+    esac
+    docker rm -f "$container" >/dev/null 2>&1 || true
+    # If a native-venv (or unrelated) process is still on the port, free it.
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k "${port}/tcp" >/dev/null 2>&1 || true
     fi
+    # Ensure the port has actually been released before we return — TIME_WAIT
+    # sockets from a previous serve can otherwise re-bind-fail the next launch.
+    local waited=0
+    while [ $waited -lt 10 ]; do
+        if ! ss -ltn "sport = :${port}" 2>/dev/null | grep -q LISTEN; then
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    return 0
 }
 
 _which_role_live() {
@@ -108,17 +140,24 @@ _wait_ready() {
     return 1
 }
 
-_launch_bg() {
-    # Args: LAUNCHER LOG. nohup + disown so this supervisor can exit
-    # without killing the child.
+_launch() {
+    # Args: LAUNCHER LOG.
+    # Docker launchers `docker run -d` and return immediately. We run them
+    # in the foreground, capture stdout+stderr into LOG, and return their
+    # exit code so a bad docker invocation short-circuits before the
+    # readiness wait.
     local launcher="$1" log="$2"
     if [ ! -x "$launcher" ]; then
         echo "[supervisor] launcher not executable: $launcher" >&2
         return 1
     fi
-    nohup "$launcher" > "$log" 2>&1 &
-    disown 2>/dev/null || true
-    echo "[supervisor] launched $(basename "$launcher") -> $log (pid $!)"
+    "$launcher" > "$log" 2>&1
+    local rc=$?
+    if [ $rc -ne 0 ]; then
+        echo "[supervisor] $(basename "$launcher") exited $rc (see $log)" >&2
+        return $rc
+    fi
+    echo "[supervisor] $(basename "$launcher") started (log: $log)"
     return 0
 }
 
@@ -128,13 +167,15 @@ cmd_up() {
     local role="$1"
     case "$role" in
         coder)
-            _stop_port "$PLANNER_PORT"
-            _launch_bg "$CODER_LAUNCHER" "$CODER_LOG" || return 1
+            _stop_role "planner"
+            _stop_role "coder"  # kill any prior coder container/socket too
+            _launch "$CODER_LAUNCHER" "$CODER_LOG" || return 1
             _wait_ready "$CODER_PORT" "coder" || return 1
             ;;
         planner)
-            _stop_port "$CODER_PORT"
-            _launch_bg "$PLANNER_LAUNCHER" "$PLANNER_LOG" || return 1
+            _stop_role "coder"
+            _stop_role "planner"
+            _launch "$PLANNER_LAUNCHER" "$PLANNER_LOG" || return 1
             _wait_ready "$PLANNER_PORT" "planner" || return 1
             ;;
         *)
@@ -163,8 +204,8 @@ cmd_ensure() {
 }
 
 cmd_down() {
-    _stop_port "$CODER_PORT"
-    _stop_port "$PLANNER_PORT"
+    _stop_role "coder"
+    _stop_role "planner"
     echo "[supervisor] both roles down"
 }
 

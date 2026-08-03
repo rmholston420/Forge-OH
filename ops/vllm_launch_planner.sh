@@ -1,98 +1,61 @@
 #!/usr/bin/env bash
-# F.19.1a — Planner-role vLLM launcher.
+# F.19 planner-role vLLM launcher (Docker; matches bench/f19pre/vllm_launch.sh).
 #
-# Serves qwen3-thinking-2507-awq (bench cell c08, ADR-009 §3) on :8502
-# via native venv `vllm serve`. Matches the topology in ADR-009 §3a
-# (dual-port + swap-on-demand supervisor). Only one of the coder or
-# planner launcher should be running at a time; use ops/vllm_supervisor.sh
-# to enforce that.
+# Serves qwen3-thinking-2507-awq on :8502 as "qwen3-thinking-2507-awq".
 #
-# Bench provenance:
-#   bench/f19pre/vllm_launch.sh (Docker, c08 recipe) —
-#     --reasoning-parser qwen3 --gpu-memory-utilization 0.90
-#     --max-num-seqs 128 --max-model-len 32768 --dtype auto
-#     (no --quantization flag; compressed-tensors autodetected)
-#   bench/f19pre/results/scores_20260803.md — c08 scored 87/120,
-#     only planner cell to complete any P3 answer.
-#
-# Blackwell / RTX 5090 (SM_120) notes:
-#   * Weights ship as compressed-tensors — do NOT pass --quantization;
-#     vLLM autodetects from config.json.quantization_config.
-#   * --reasoning-parser qwen3 IS required — without it, chain-of-thought
-#     tokens leak into `content` instead of `reasoning_content` and the
-#     final answer looks like the c03 breakage.
-#   * VLLM_USE_FLASHINFER_SAMPLER=0 preserved from F.18 — FlashInfer's
-#     SM whitelist rejects SM_120.
-#
-# Token budget (ADR-009 §3b):
-#   Planner max_completion_tokens = 8192 (set by the caller in the
-#   LiteLLM llm block, not on the server; documented here for
-#   discoverability). vLLM's --max-model-len 32768 already exceeds
-#   this; do not lower it.
-#
-# Usage:
-#   ./ops/vllm_launch_planner.sh                        # foreground
-#   nohup ./ops/vllm_launch_planner.sh \
-#     > ~/.forge-oh/vllm-planner.log 2>&1 &             # background
+# Native venv (~/venv/vllm-new, vLLM 0.10.2) does NOT support qwen3_5_moe.
+# ADR-009 §5 requires vLLM ≥ 0.26.0 → we run the pinned Docker image the
+# bench validated. Native venv upgrade is deferred to F.19.5.
 #
 # Env overrides:
-#   VLLM_PLANNER_PORT           default 8502
-#   VLLM_PLANNER_MODEL_DIR      default ~/models/qwen3-thinking-2507-awq
-#   VLLM_PLANNER_SERVED_NAME    default qwen3-thinking-2507-awq
-#   VLLM_PLANNER_LOG            default ~/.forge-oh/vllm-planner.log
-#   VLLM_VENV_BIN               default ~/venv/vllm-new/bin/vllm
+#   FORGE_COMPOSE_MODELS_DIR     host dir mounted as /models (default $HOME/models)
+#   FORGE_VLLM_IMAGE             docker image (default vllm/vllm-openai:latest)
+#   FORGE_VLLM_PLANNER_PORT      host port (default 8502)
+#   FORGE_VLLM_PLANNER_NAME      served-model-name / container tag
+#   FORGE_VLLM_PLANNER_MODEL_DIR model dir under /models
 
-# NOTE: no `set -e` at top level (per user preference — paste-block safe).
+MODELS_DIR="${FORGE_COMPOSE_MODELS_DIR:-$HOME/models}"
+IMAGE="${FORGE_VLLM_IMAGE:-vllm/vllm-openai:latest}"
+PORT="${FORGE_VLLM_PLANNER_PORT:-8502}"
+NAME="${FORGE_VLLM_PLANNER_NAME:-qwen3-thinking-2507-awq}"
+MODEL_DIR="${FORGE_VLLM_PLANNER_MODEL_DIR:-qwen3-thinking-2507-awq}"
+CONTAINER="forge-vllm-planner"
 
-export VLLM_USE_FLASHINFER_SAMPLER=0
-export VLLM_ATTENTION_BACKEND=FLASH_ATTN
-
-PORT="${VLLM_PLANNER_PORT:-8502}"
-MODEL_DIR="${VLLM_PLANNER_MODEL_DIR:-$HOME/models/qwen3-thinking-2507-awq}"
-SERVED_NAME="${VLLM_PLANNER_SERVED_NAME:-qwen3-thinking-2507-awq}"
-LOG="${VLLM_PLANNER_LOG:-$HOME/.forge-oh/vllm-planner.log}"
-VENV_BIN="${VLLM_VENV_BIN:-$HOME/venv/vllm-new/bin/vllm}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-mkdir -p "$(dirname "$LOG")"
-
-# Clean any previous coder or planner instance so no ghost worker holds
-# VRAM. The supervisor should have called this already, but we defend
-# against direct invocation too.
-if [ -x "$SCRIPT_DIR/vllm_stop_role.sh" ]; then
-    "$SCRIPT_DIR/vllm_stop_role.sh" both || true
-elif [ -x "$SCRIPT_DIR/../scripts/vllm_stop.sh" ]; then
-    "$SCRIPT_DIR/../scripts/vllm_stop.sh" 8501 || true
-    "$SCRIPT_DIR/../scripts/vllm_stop.sh" "$PORT" || true
-else
-    fuser -k "8501/tcp" 2>/dev/null || true
-    fuser -k "${PORT}/tcp" 2>/dev/null || true
-    pkill -9 -f 'VLLM::EngineCore' 2>/dev/null || true
-    pkill -9 -f 'vllm serve' 2>/dev/null || true
-    sleep 2
+if [ ! -d "$MODELS_DIR/$MODEL_DIR" ]; then
+  echo "[planner] ERROR: weights not found at $MODELS_DIR/$MODEL_DIR" >&2
+  exit 2
 fi
 
-# Sanity: weights and venv must exist.
-if [ ! -d "$MODEL_DIR" ]; then
-    echo "planner weights not found at $MODEL_DIR" >&2
-    echo "hint: symlink or download qwen3-thinking-2507-awq to that path" >&2
-    exit 1
-fi
-if [ ! -x "$VENV_BIN" ]; then
-    echo "vLLM binary not found at $VENV_BIN" >&2
-    exit 1
-fi
+BLACKWELL_ENVS=(
+  -e VLLM_USE_FLASHINFER_SAMPLER=0
+  -e VLLM_ATTENTION_BACKEND=FLASH_ATTN
+  -e HF_HUB_OFFLINE=1
+)
 
-# 32GB Blackwell VRAM, ~30 GiB usable at 0.90 util. AWQ weights ~18-19 GiB
-# leaves KV headroom for 32K context at max-num-seqs 128.
-exec "$VENV_BIN" serve "$MODEL_DIR" \
-    --served-model-name "$SERVED_NAME" \
-    --host 127.0.0.1 \
-    --port "$PORT" \
-    --gpu-memory-utilization 0.90 \
-    --max-model-len 32768 \
-    --max-num-seqs 128 \
-    --dtype auto \
-    --reasoning-parser qwen3 \
-    --enable-prefix-caching \
-    --trust-remote-code
+docker rm -f "$CONTAINER" 2>/dev/null || true
+
+echo "[planner] docker run $IMAGE -> :$PORT (model=$MODEL_DIR served-as=$NAME)"
+# compressed-tensors AWQ is autodetected by vLLM 0.26+, no --quantization flag.
+docker run -d --name "$CONTAINER" --gpus all \
+  --ipc=host --shm-size=8g \
+  "${BLACKWELL_ENVS[@]}" \
+  -v "$MODELS_DIR:/models:ro" \
+  -p "${PORT}:8000" \
+  "$IMAGE" \
+  --model "/models/$MODEL_DIR" \
+  --served-model-name "$NAME" \
+  --host 0.0.0.0 --port 8000 \
+  --gpu-memory-utilization 0.90 \
+  --max-model-len 32768 \
+  --max-num-seqs 128 \
+  --dtype auto \
+  --trust-remote-code \
+  --reasoning-parser qwen3 \
+  --enable-prefix-caching \
+  "$@"
+RC=$?
+if [ $RC -ne 0 ]; then
+  echo "[planner] docker run exited $RC" >&2
+  exit $RC
+fi
+echo "[planner] container $CONTAINER launched; tail with: docker logs -f $CONTAINER"

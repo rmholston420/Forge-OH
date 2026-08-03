@@ -2941,3 +2941,54 @@ resolution paths covered by unit tests (20/20 pass). Met 2026-08-03
 **Next:** F.19.1b live smoke on Colossus (pending), then F.19.2b —
 migrate `bff/routers/runs.py` to `route_by_role`, fix the hardcoded
 `_OLLAMA_BASE` in the LiteLLM body, plumb `max_tokens` through.
+
+## 2026-08-03 18:36 EDT — F.19.1b live smoke fix: Docker launchers + supervisor stop hygiene
+
+**Stage:** F.19 sub-slice 1b — launcher validation on Colossus.
+
+**Diagnosis (see DEBUG_LOG 2026-08-03 18:34 EDT for full trace):**
+- F.19.1a launchers shelled into `~/venv/vllm-new` (vLLM 0.10.2)
+  which does not know `qwen3_5_moe`. Both roles' engines aborted
+  at ModelConfig validation.
+- Supervisor's `_stop_port` (via F.18 `vllm_stop.sh`) failed to free
+  :8502 when a non-vLLM process held it, causing the planner
+  launcher's second attempt to hit `OSError: Address already in use`.
+
+**Fix delivered:**
+- `ops/vllm_launch_coder.sh` — Docker (`vllm/vllm-openai:latest`)
+  with `--quantization modelopt_fp4` (required for NVFP4).
+  Container: `forge-vllm-coder` on :8501.
+- `ops/vllm_launch_planner.sh` — same Docker template, no
+  `--quantization` (compressed-tensors autodetect), keeps
+  `--reasoning-parser qwen3`. Container: `forge-vllm-planner` on :8502.
+- `ops/vllm_supervisor.sh` — Docker-aware:
+  - `_stop_role` does `docker rm -f` + `fuser -k` + `ss -ltn` poll
+    to confirm port release.
+  - `_launch` runs launchers in the foreground (Docker already
+    daemonizes with `-d`), captures docker-run handshake into
+    `~/.forge-oh/vllm-{coder,planner}.log`; runtime logs are
+    `docker logs -f forge-vllm-{coder,planner}`.
+  - Both `cmd_up` paths now stop BOTH roles before starting the
+    requested one (defensive; catches leftover coder+planner from
+    aborted prior attempts).
+
+**ADR-009 correction:** §5 quantization bullet rewritten — c04 needs
+`--quantization modelopt_fp4` explicitly; only c08 is
+compressed-tensors autodetect. Follow-ups §4 added: F.19.5 native-venv
+upgrade to unify runtime.
+
+**Files touched:**
+- `ops/vllm_launch_coder.sh` (rewrite)
+- `ops/vllm_launch_planner.sh` (rewrite)
+- `ops/vllm_supervisor.sh` (Docker adaptation)
+- `docs/adr/009-local-llm-selection.md` (§5, Follow-ups §4)
+- `DEBUG_LOG.md`
+
+**Stop condition (F.19.1b):**
+Live smoke on Colossus: `up coder` returns 200 with a `data` array,
+`up planner` swaps cleanly, `down` clears both containers, `status`
+prints `live_role: none`. Not yet met — needs re-run on Colossus with
+the pushed launchers.
+
+**Next:** re-run smoke; if green, resume F.19.2b (`runs.py` migration
+to `route_by_role`).

@@ -167,11 +167,20 @@ Captured for future launchers, and appended to `DEBUG_LOG.md` under
   RTX 5090 with `--gpu-memory-utilization 0.90` you must pass
   `--max-num-seqs 128` (or ≤255) or engine-init aborts with
   `max_num_seqs (256) exceeds available Mamba cache blocks (255)`.
-- HuggingFace repos advertising a specific quant format (AWQ,
-  ModelOpt-FP4, etc.) frequently ship as **compressed-tensors** under
-  the hood. Do **not** set `--quantization` explicitly for c02/c04/c08
-  weights; let vLLM autodetect from
-  `config.json.quantization_config.format`.
+- **Quantization flag is not uniform across the two role models.**
+  - c04 coder (`qwen3.5-nvfp4`) **requires** `--quantization modelopt_fp4`;
+    vLLM 0.26 does not autodetect ModelOpt-FP4 for this checkpoint
+    (bench cell c04 confirmed).
+  - c08 planner (`qwen3-thinking-2507-awq`) ships as **compressed-tensors**
+    and must be launched with **no** `--quantization` flag; vLLM
+    autodetects from `config.json.quantization_config.format` (bench
+    cell c08 confirmed). Passing `--quantization awq` breaks it.
+  - Rule: check `config.json.quantization_config.format` and set the
+    flag only when the format is NOT `compressed-tensors`.
+- **F.19 supervisor uses the Docker image, not the native venv.** The
+  Colossus native venv (`~/venv/vllm-new`, vLLM 0.10.2) predates
+  `qwen3_5_moe` support and cannot run either role model. Native-venv
+  upgrade is tracked in Follow-ups §2 (F.19.5).
 - Usable Blackwell VRAM budget for a single-tenant server is ~30 GiB
   (90% util → 28.25 GiB for weights+cache+activations).
 
@@ -217,6 +226,15 @@ Captured for future launchers, and appended to `DEBUG_LOG.md` under
    `colossus-ops` skill lists :8000). Decision: BFF stays on **8081**
    (already wired end-to-end, F.18c verified). Update
    `colossus-ops` skill in a separate pass.
+4. **F.19.5 native-venv unification** — upgrade
+   `~/venv/vllm-new` to vLLM ≥ 0.26.0 (or replace with a fresh venv)
+   and switch the launcher scripts back to native invocation. Native
+   venv startup is ~2x faster than Docker cold-start and avoids the
+   `--ipc=host` VRAM allocator quirks. Blocking: verify the existing
+   F.18 `qwen3-coder-30b` GGUF instance on :8500 still runs on the
+   upgraded vLLM (breaking API changes possible between 0.10 → 0.26).
+   Until F.19.5, F.19 uses the Docker image; native venv stays on
+   0.10.2 for the F.18 fallback instance.
 
 ---
 

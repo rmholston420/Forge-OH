@@ -276,3 +276,72 @@ export VLLM_USE_FLASHINFER_SAMPLER=0
 ```
 Sampler falls back cleanly; performance impact TBD by bench.
 **Files changed:** `scripts/vllm_start.sh`.
+
+## 2026-08-03 18:34 EDT — F.19.1b live smoke failed: qwen3_5_moe arch unrecognized
+
+**Symptom (coder):**
+```
+pydantic_core._pydantic_core.ValidationError: 1 validation error for ModelConfig
+  Value error, The checkpoint you are trying to load has model type
+  `qwen3_5_moe` but Transformers does not recognize this architecture.
+```
+
+Origin: `vLLM API server version 0.10.2` in `~/venv/vllm-new`.
+
+**Symptom (planner):**
+```
+OSError: [Errno 98] Address already in use
+```
+Preceded by `[vllm_stop] residuals detected — port_8502=2` — stop
+script found leftover sockets on :8502 but didn't free them before
+the launcher tried to bind.
+
+**Affected:** F.19.1a launchers + supervisor.
+
+**Root cause 1 (both roles):** Native venv `~/venv/vllm-new` runs
+vLLM 0.10.2, which predates `qwen3_5_moe` support. ADR-009 §5 already
+required vLLM ≥ 0.26.0 but the launchers I wrote in F.19.1a shelled
+into the native venv instead of the vetted Docker image. The bench
+(`bench/f19pre/vllm_launch.sh`) used `vllm/vllm-openai:latest` and
+that's the only vLLM known-good on Colossus today.
+
+**Root cause 2 (planner OSError):** `scripts/vllm_stop.sh` cleans
+`VLLM::EngineCore`/`vllm serve` processes but does not free the port
+when the holder is a non-vllm process (or a native TIME_WAIT socket
+from a prior binder). Bench-style native launches never hit this
+because they used a single port (:8000) and Docker `-p` re-binding.
+
+**Fix (pushed as 3-file commit):**
+- `ops/vllm_launch_coder.sh` → rewrote to `docker run -d --name
+  forge-vllm-coder`, pins `--quantization modelopt_fp4` (required for
+  NVFP4; NOT autodetected), keeps `--max-num-seqs 128`, mounts
+  `$HOME/models:/models:ro`, publishes `${PORT}:8000`.
+- `ops/vllm_launch_planner.sh` → same Docker template; no
+  `--quantization` flag (planner is compressed-tensors, autodetected);
+  `--reasoning-parser qwen3` retained.
+- `ops/vllm_supervisor.sh` → replaced `_stop_port` (which called F.18's
+  native `vllm_stop.sh`) with `_stop_role` that does `docker rm -f`
+  first, then `fuser -k`, then polls `ss -ltn` to confirm the port is
+  actually released before returning. `_launch_bg` replaced with
+  `_launch` because Docker launchers already daemonize.
+
+**ADR update:** ADR-009 §5 quantization bullet corrected (c04 requires
+`modelopt_fp4`, only c08 is autodetect). Added Follow-ups §4 (F.19.5)
+to unify onto the native venv once it's on 0.26+.
+
+**Retest command (paste into Colossus):**
+```bash
+cd ~/dev/forge-oh && git pull
+./ops/vllm_supervisor.sh up coder
+curl -s http://127.0.0.1:8501/v1/models | python3 -m json.tool
+./ops/vllm_supervisor.sh up planner
+curl -s http://127.0.0.1:8502/v1/models | python3 -m json.tool
+./ops/vllm_supervisor.sh down
+./ops/vllm_supervisor.sh status
+```
+
+**Files changed:**
+- `ops/vllm_launch_coder.sh`
+- `ops/vllm_launch_planner.sh`
+- `ops/vllm_supervisor.sh`
+- `docs/adr/009-local-llm-selection.md` (§5 correction, Follow-ups §4)
