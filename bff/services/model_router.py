@@ -40,6 +40,19 @@ import os
 
 import httpx
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover — dotenv is a hard dep in requirements
+    load_dotenv = None  # type: ignore[assignment]
+
+# Load .env at import time so os.getenv() sees the same values pydantic-settings
+# reads. Without this, bff.settings.Settings() finds LLM_PRIMARY_BACKEND via
+# .env but this module's os.getenv() calls do not, because pydantic-settings
+# never exports parsed values into os.environ. The BFF cwd is the repo root
+# (see scripts/forge-up.sh), which is where .env lives.
+if load_dotenv is not None:  # pragma: no branch
+    load_dotenv(dotenv_path=".env", override=False)
+
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 VLLM_URL = os.getenv("VLLM_URL", "http://localhost:8500")
