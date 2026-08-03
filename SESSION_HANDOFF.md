@@ -1,45 +1,28 @@
-# Forge-OH Session Handoff
-
-_Last updated: 2026-08-02 22:30 EDT_
+# Session Handoff — Forge-OH
 
 ## Current stage
-**Build sequencing:** Stage 3 (first vertical slice — real conversation create → run detail → live events). Code committed. **Awaiting manual browser verification.**
+Stage 3 (Runs → real agent execution) — **COMPLETE**. DoD met and verified end-to-end via Playwright.
 
 ## Completed this session
-- Stage 2 verified GREEN via Playwright (previous handoff).
-- Stage 3 code:
-  - Added `bff/services/event_relay.py` — Socket.IO polling relay.
-  - Rewrote `bff/routers/runs.py`: real agent-server calls for `GET /runs`, `POST /runs`, `GET /runs/{id}`, `GET /runs/{id}/events`.
-  - Wired Socket.IO handlers + relay hookup in `bff/main.py`.
-  - Deleted `bff/services/openhands_client.py` shim; deleted `src/lib/hooks/useRunStream.ts` duplicate + its two orphan tests.
+- Rewrote `bff/routers/runs.py` — real calls to agent-server `POST /api/conversations` + `POST /api/conversations/{id}/run`; `list_runs` uses `/api/conversations/search`
+- Created `bff/services/event_relay.py` — asyncio background poll task per conversation, emits Socket.IO `event`/`status` to `conversationId=<cid>` rooms with debug logging
+- Wired Socket.IO handlers in `bff/main.py` — accepts both `runId` and `conversationId` query params (identity contract)
+- Fixed `/api/agent-presets` envelope (was bare list, caused ReactQuery/Zod cascade)
+- Deleted 2 duplicate files + 2 orphan tests (openhands_client shim, useRunStream duplicate)
+- Added `scripts/e2e-run.ts` Playwright driver — automates full flow, captures screenshots + Socket.IO frames + API responses + timeline DOM
+- **End-to-end verified:** qwen3.6:35b-a3b executed real prompt (533a0073-...), timeline populated with 7 real events, status transition frame delivered via Socket.IO
 
-## Running services (Colossus)
-- `openhands-agent-server` on `http://127.0.0.1:8090`
-- BFF (`uvicorn bff.main:app_with_sio`) on `http://127.0.0.1:8081`
-- Frontend (`pnpm dev`) on `http://localhost:3000`
-- Ollama on `http://localhost:11434` — model `qwen3.6:35b-a3b`
+## Verified working
+- BFF list endpoint returns finished runs with correct status translation (`succeeded`)
+- Detail endpoint returns single-object envelope `{data: {...}}`
+- Events endpoint returns real agent-server events with correct schema
+- Socket.IO relay emits status transitions to browser (verified in wsFrames)
 
-## Next action — verify Stage 3 end-to-end
-1. On Colossus: `cd ~/dev/forge-oh && git pull`
-2. Restart BFF terminal: `^C` then rerun uvicorn (needs to reload event_relay + Socket.IO handlers).
-3. Frontend hot-reloads on its own; hard-reload the browser.
-4. In browser at `http://localhost:3000/runs`:
-   - Click **New Run** → enter a real task prompt (e.g. `"Create hello.py that prints Hello, Colossus"`) → submit.
-   - Expect: redirect to `/runs/<uuid>`, status shows `running` (or `queued` transitioning to `running`).
-   - Watch the event timeline populate with real Action/Observation events.
-5. Run `npx tsx scripts/debug-frontend.ts` afterward and paste the summary (adjust the script to navigate to the created run URL if needed).
+## Open / deferred (non-blocking)
+- Frontend detail page polls `/runs/{id}` aggressively via ReactQuery — will be tuned in later stage
+- `title: null` on created conversations — cosmetic, agent-server doesn't accept the field we send (defer)
+- Fast runs (< 500ms) may complete before first relay poll fires; events still available via GET endpoint fallback
 
-## Ambiguities flagged during design (resolved by user)
-- Live event delivery: BFF polls `events/search` (agent-server has no SSE/WS), relays via Socket.IO. ✅
-- run_id == conversation_id. ✅
-- Stateless BFF. ✅
-- Keep model_router. ✅
-- Per-run workspace dirs. ✅ (`workspace/runs/<cid>/`)
-- Tool set: `terminal`, `file_editor`, `task_tracker`, `browser_tool_set`. ✅
-
-## Known open items (not blocking Stage 3 DoD)
-- The `events/search` response schema is `{}` (undocumented). Code accepts three common shapes (bare list, `items:[]`, `data:[]`) — if agent-server returns a different envelope we'll see empty timelines and need to log the raw payload.
-- Post-hoc reconnect: if BFF restarts mid-run, `GET /runs/{id}` restarts the relay from cursor `None` (may re-emit historical events). Deferred cleanup.
-
-## Explicitly deferred (per plan)
-- Files/diff (Stage 4), lifecycle controls (Stage 5), workspaces (Stage 6), plugin-mode.
+## Next action
+Start Stage 4 (files/diff panel) per Forge-OH-action-plan-v4.md §Step 4.
+Read SESSION_HANDOFF.md first, then restate exact Step 4 scope + DoD before building.

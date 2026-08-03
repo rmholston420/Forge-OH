@@ -16,3 +16,10 @@
   3. Frontend sends `?runId=<uuid>` on WebSocket connect; backend read `?conversationId=<uuid>`. Room never joined.
 - **Fix applied:** switch list to `/api/conversations/search`; rename Socket.IO emit event names to `event`/`status`; accept both `runId` and `conversationId` in Socket.IO connect + subscribe handlers.
 - **Files changed:** `bff/routers/runs.py`, `bff/main.py`, `bff/services/event_relay.py`.
+
+## 2026-08-02 22:57 EDT — Playwright polling never saw terminal status
+- **Symptom:** e2e script waited full 180s timeout even though run finished in ~1s. BFF logs showed run reached `finished` state.
+- **Affected:** scripts/e2e-run.ts
+- **Root cause:** BFF single-item GET `/api/runs/{id}` returns `{data: {...}}` envelope, but polling loop read `d.executionStatus` directly on the outer object instead of `d.data.executionStatus`.
+- **Fix applied:** unwrap `body?.data ?? body` before reading status. Also reduced poll interval 1500→1000ms and added `/events` fetch to the report.
+- **Files changed:** scripts/e2e-run.ts

@@ -229,3 +229,21 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   3. Backend `connect` handler read only `conversationId` from the query string, but frontend sends `runId`. Added `_extract_cid` helper that accepts both (per identity contract `run_id == conversation_id`).
 - **Debug logging added to event_relay:** logs each status transition and event batch (count + next_page), plus final tally when reaching a terminal state.
 
+
+## 2026-08-02 22:57 EDT — Stage 3 DoD MET (verified via Playwright)
+- **End-to-end verified via scripts/e2e-run.ts:**
+  - real prompt "Say hi in one short sentence and stop." submitted via browser UI
+  - agent-server created conversation 533a0073-4dc1-4bd3-a0f1-c88c69b6441d
+  - agent executed on qwen3.6:35b-a3b via Ollama
+  - terminal status "finished" reached in 12.7s
+  - /api/runs/{id}/events returned 7 real events (SystemPromptEvent + MessageEvent + ObservationEvent, all kind-typed)
+  - Socket.IO relay emitted status transition frame: `42["status",{"type":"status","runId":"...","executionStatus":"finished","prev":"running"}]`
+  - 0 console errors, 0 page errors, 0 request failures
+- **Definition of Done from action plan §Step 3 satisfied:**
+  - Submit real task prompt from UI ✅
+  - Agent runs on qwen3.6:35b-a3b ✅
+  - Run appears in Runs list ✅
+  - Event timeline populates with real Action/Observation events ✅
+  - Zero "stub": True in Runs core flow ✅
+- Artifacts: scripts/debug-out/e2e-{01..05}-*.png, e2e-report.json, e2e-timeline.html
+- **Next stage:** Step 4 — files/diff panel (per action plan)
