@@ -10,7 +10,9 @@ import { test, expect } from '@playwright/test';
 async function firstRunId(page: import('@playwright/test').Page): Promise<string | null> {
   const res = await page.request.get(`${process.env.PLAYWRIGHT_BFF_URL || 'http://127.0.0.1:8081'}/api/runs`);
   if (!res.ok()) return null;
-  const runs = (await res.json()) as Array<{ id: string }>;
+  const body = await res.json();
+  // BFF envelope: { data: [{ id, ... }, ...] } or bare array — accept both.
+  const runs = (Array.isArray(body) ? body : body?.data ?? []) as Array<{ id: string }>;
   return runs.length ? runs[0].id : null;
 }
 
