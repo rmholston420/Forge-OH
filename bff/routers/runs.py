@@ -55,6 +55,7 @@ from bff.services.event_relay import start_relay
 from bff.services.file_diff_reconstruction import build_file_diff, build_summaries
 from bff.services.hook_config import build_hook_config
 from bff.services.model_router import ModelUnavailableError, route_request
+from bff.services.sidecar import seed_sidecar
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -264,6 +265,24 @@ async def create_run(body: CreateRunRequest) -> dict:
     cid = conv.get("id")
     if not cid:
         raise HTTPException(status_code=502, detail="agent-server returned no conversation id")
+
+    # 3.5) Slice F.12 — seed the trajectory sidecar so the STOP hook has
+    #     a real task_description to attribute the run to. Best-effort:
+    #     any I/O failure is logged and swallowed — a missing sidecar
+    #     degrades gracefully to empty fields, not a broken run.
+    #     Session id in the sidecar file = agent-server conversation id
+    #     (matches OPENHANDS_SESSION_ID as set by the SDK for LocalConversation).
+    #     The outer try/except is defense-in-depth: seed_sidecar itself
+    #     already swallows I/O errors, but a future refactor must not be
+    #     able to sink run creation. See test_create_run_survives_sidecar_seeder_failure.
+    try:
+        seed_sidecar(
+            workspace=working_dir,
+            session_id=cid,
+            task_description=body.taskPrompt or "",
+        )
+    except Exception as exc:
+        log.warning("create_run: seed_sidecar raised (swallowed): %s", exc)
 
     # 3a) Stage 1E — apply confirmation policy BEFORE kicking the loop off.
     #     'AlwaysConfirm' makes agent-server enter waiting_for_confirmation
