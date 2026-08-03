@@ -3266,3 +3266,58 @@ keep them in sync.
 
 **Tests:** 14/14 model_router still pass in sandbox. Colossus
 re-smoke pending.
+
+## 2026-08-03 20:00 EDT — F.19.4 CLOSED (Phase 1 + Phase 2 green)
+
+**Stage:** F.19.4 live P1/P2/P3 smoke through rewired router.
+
+**Definition of Done:** all three canonical prompts hit vLLM on
+the correct role port via the rewired router.
+
+**Phase 1 (direct route_by_role -> LLM):** GREEN
+  - P1 simple->coder :8501 elapsed 30.3s
+  - P2 medium->coder :8501 elapsed 8.1s
+  - P3 planning->planner :8511 elapsed 36.5s, finish=stop
+
+**Phase 2 (POST /api/runs -> agent-server round-trip):** GREEN
+  after supervisor-timeout fix.
+
+  Initial run: all 3 requests elapsed ~301s, P1/P2 fell back to
+  Ollama, P3 blocked. Root cause: router VLLM_SUPERVISOR_TIMEOUT
+  (300s) < supervisor VLLM_READY_TIMEOUT (420s). Router killed
+  the supervisor mid-wait. Bumped router timeout 300s -> 480s.
+
+  Re-smoke after BFF restart:
+    - P1 simple->coder  elapsed 245s (cold swap planner->coder)
+    - P2 medium->coder  elapsed   0s (warm)
+    - P3 planning->planner elapsed 141s (swap coder->planner)
+    - All three: status="queued", backend="vllm", correct base_url,
+      selectedModel set on agent-server side.
+
+**Commits this slice:**
+  - bf3fe6c — add smoke scripts
+  - 9904e6c — curl timeout 900s
+  - 485be66 — router timeout 300 -> 480
+  - 4a70fb1 — curl timeout 900 -> 1200
+
+**Files changed:**
+  - `scripts/f19_smoke_probe.py`  (new, force-added)
+  - `scripts/f19_smoke_agent.sh`  (new, force-added)
+  - `bff/services/model_router.py`  (VLLM_SUPERVISOR_TIMEOUT default)
+  - `BUILD_LOG.md`
+
+**Definition of Done met.** Router + supervisor + runs.py +
+agent-server end-to-end proven on Colossus with real vLLM
+generation on both role ports.
+
+**F.19 status:**
+  - F.19.1a supervisor           DONE
+  - F.19.1b Docker smoke         DONE
+  - F.19.2a role API             DONE
+  - F.19.2b runs.py migration    DONE
+  - F.19.2c settings probes      DONE
+  - F.19.3 tests + legacy purge  DONE
+  - F.19.4 live P1/P2/P3 smoke   DONE (this entry)
+  - F.19.5 native venv unification  deferred
+
+**Next:** F.20 (per Forge-OH-Action-Plan-v4.md) or user's call.
