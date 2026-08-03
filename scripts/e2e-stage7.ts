@@ -75,7 +75,8 @@ async function main() {
   if (forkResp.status !== 200 && forkResp.status !== 201) {
     fail('7B fork', `HTTP ${forkResp.status}: ${forkResp.text.slice(0, 200)}`);
   } else {
-    forkedId = forkResp.json?.data?.id ?? forkResp.json?.data?.forkedId ?? null;
+    // BFF returns { ok, run_id, forked_id } (no data envelope)
+    forkedId = forkResp.json?.forked_id ?? forkResp.json?.data?.id ?? null;
     if (!forkedId) fail('7B fork', 'no forked run id returned');
     else {
       assertNoStub('7B fork', forkResp.json);
