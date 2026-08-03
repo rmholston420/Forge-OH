@@ -28,6 +28,7 @@ from pydantic import BaseModel
 
 from bff.openhands_client import get_client
 from bff.services.event_relay import start_relay
+from bff.services.file_diff_reconstruction import build_file_diff, build_summaries
 from bff.services.model_router import route_request, ModelUnavailableError
 
 log = logging.getLogger(__name__)
@@ -308,14 +309,52 @@ async def get_run_plan(run_id: str) -> dict:
     return {"data": [], "stub": True}
 
 
+async def _fetch_all_events(run_id: str) -> list[dict[str, Any]]:
+    """Page through /api/conversations/{run_id}/events/search (limit=100 per page)."""
+    client = get_client()
+    items: list[dict[str, Any]] = []
+    page_id: Optional[str] = None
+    # Safety: cap total pages to avoid runaway on malformed cursors.
+    for _ in range(200):
+        params: dict[str, Any] = {"limit": 100, "sort_order": "TIMESTAMP"}
+        if page_id:
+            params["page_id"] = page_id
+        try:
+            resp = await client.get(
+                f"/api/conversations/{run_id}/events/search",
+                params=params,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="run not found")
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        if isinstance(payload, list):
+            items.extend(payload)
+            break
+        batch = payload.get("items") or payload.get("data") or payload.get("events") or []
+        items.extend(batch)
+        next_page = payload.get("next_page_id") or payload.get("nextPageId")
+        if not next_page or not batch:
+            break
+        page_id = next_page
+    return items
+
+
 @router.get("/runs/{run_id}/files")
 async def get_run_files(run_id: str) -> dict:
-    return {"data": [], "stub": True}
+    events = await _fetch_all_events(run_id)
+    return {"data": build_summaries(events)}
 
 
 @router.get("/runs/{run_id}/files/{file_path:path}")
 async def get_run_file_diff(run_id: str, file_path: str) -> dict:
-    return {"data": None, "stub": True, "path": file_path}
+    events = await _fetch_all_events(run_id)
+    diff = build_file_diff(events, file_path)
+    if diff is None:
+        raise HTTPException(status_code=404, detail="file not found in run")
+    return {"data": diff}
 
 
 @router.get("/runs/{run_id}/artifacts")

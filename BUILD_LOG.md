@@ -247,3 +247,14 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - Zero "stub": True in Runs core flow ✅
 - Artifacts: scripts/debug-out/e2e-{01..05}-*.png, e2e-report.json, e2e-timeline.html
 - **Next stage:** Step 4 — files/diff panel (per action plan)
+
+## 2026-08-02 23:12 EDT — Stage 4 vertical slice: files + diff
+- Stage: 4 (Second vertical slice — Files/diff view)
+- Files touched:
+  - bff/services/file_diff_reconstruction.py (new) — folds FileEditorObservation events into per-path {original, modified, status, additions, deletions, language, isBinary}
+  - bff/routers/runs.py — wired GET /runs/{id}/files (summaries) and GET /runs/{id}/files/{path} (full diff) to event-stream reconstruction; added _fetch_all_events pager
+- Ports/adapters: BFF → agent-server /api/conversations/{cid}/events/search (existing adapter, no new HTTP call shape)
+- Design decision (ADR-worthy): reconstruct file state from FileEditorObservation events rather than direct disk read.
+  Reason: agent runs in sandbox with /workspace/* paths outside BFF's filesystem namespace. Event stream carries full new_content (and old_content on str_replace/insert), so it is the only correct source of truth for per-run diffs. Also naturally scoped per run_id.
+- Supported commands: create, str_replace, insert, undo_edit. view is ignored (read-only). is_error=True observations are dropped.
+- Stop condition: no "stub": True in Files core flow — MET on backend. Frontend already wired (unchanged), pending end-to-end verify.

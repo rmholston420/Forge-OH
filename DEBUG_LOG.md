@@ -23,3 +23,10 @@
 - **Root cause:** BFF single-item GET `/api/runs/{id}` returns `{data: {...}}` envelope, but polling loop read `d.executionStatus` directly on the outer object instead of `d.data.executionStatus`.
 - **Fix applied:** unwrap `body?.data ?? body` before reading status. Also reduced poll interval 1500→1000ms and added `/events` fetch to the report.
 - **Files changed:** scripts/e2e-run.ts
+
+## 2026-08-02 23:12 EDT — POST /api/runs 422: missing 'title'
+- Symptom: curl -s -X POST /api/runs with taskPrompt+agentPresetId+workspaceId returned "422 Unprocessable Entity ... loc=[body,title] Field required"
+- Stage: 4 (Stage 4 e2e prep)
+- Root cause: CreateRunRequest in bff/routers/runs.py declares title: str (required). Frontend auto-generates title from prompt; direct curl smoke-tests must include it.
+- Fix: include "title":"<label>" in the JSON body.
+- Files changed: none (docs-only lesson).
