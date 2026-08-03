@@ -65,3 +65,4 @@ workspace/
 # vitest coverage output
 coverage/
 screenshots/
+.env.neo4j
