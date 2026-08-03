@@ -1137,3 +1137,97 @@ Layer, tag extraction only.
 - [x] Smoke test on real repo files.
 
 **Next:** D.3 - graph builder + Neo4j Cypher store + queries.
+
+## 2026-08-03 07:28 EDT — Step 8 Slice D.3: graph builder + Neo4j store + queries
+
+**Stage / plugin / port:** Forge-OH-Action-Plan Step 8, Slice D.3 of D.1..D.5
+(Recommendation #1 sub-slice 3/5).
+
+**What was built:**
+- `openhands_tools_ext/repograph/index.py` (391 lines) — turns extracted
+  Tags into a `RepoIndex` (files, symbols, resolved calls, unresolved
+  calls, method-of edges, PageRank scores). Includes `iter_source_files`
+  that respects `.gitignore` via `git ls-files` when the repo is a git
+  checkout, falls back to a hard-coded blocklist walk otherwise.
+- `openhands_tools_ext/repograph/store.py` (335 lines) — `Neo4jStore`
+  class with `ensure_schema()`, `replace_repo(index)`, `delete_repo(key)`,
+  and read queries `search_by_name`, `callers_of`, `callees_of`,
+  `context_bundle`. All writes go through a single transaction and are
+  idempotent (DETACH DELETE all repo-keyed nodes, then MERGE).
+- `openhands_tools_ext/tests/test_index.py` (13 tests) + `test_store.py`
+  (11 tests). Store tests use a MagicMock neo4j.Driver so they run in CI
+  without a live DozerDB.
+
+**Graph schema (Neo4j / DozerDB):**
+- `(:File {repo, rel_path, language})`
+- `(:Symbol {repo, rel_path, name, category, start_line, end_line, parent,
+             info, pagerank})`
+- `(:File)-[:CONTAINS]->(:Symbol)`
+- `(:Symbol)-[:METHOD_OF]->(:Symbol)` (method \u2192 its class)
+- `(:File)-[:CALLS {name, line}]->(:Symbol)` (resolved refs)
+- `(:File)-[:UNRESOLVED_CALL {name, line}]->(:File)` (self-loop; useful
+  later for cross-repo linking / import resolution)
+
+**Constraints created lazily via `ensure_schema()`:**
+- UNIQUE (File.repo, File.rel_path)
+- UNIQUE (Symbol.repo, Symbol.rel_path, Symbol.name, Symbol.start_line)
+- INDEX (Symbol.repo, Symbol.name)
+
+**Multi-repo isolation:** every node carries a stable 12-char `repo` key
+derived from SHA1(absolute repo root). One DozerDB database can host many
+Forge-OH-indexed repos + Kosmos data side by side without collision.
+
+**Reference resolution:**
+- Intra-file DEFs preferred (most likely intra-module call).
+- Otherwise all global matches for the name become CALLS edges.
+- No match \u2192 UNRESOLVED_CALL self-loop on the source file.
+
+**PageRank:**
+- Pure-Python power iteration (no numpy/scipy). Dropped `networkx` from
+  requirements since we no longer need it. Converges in <100 iterations
+  on Forge-OH's 921-node graph (~0.6s for the full index+rank).
+
+**Real-repo smoke test (before commit):**
+Indexed Forge-OH itself in 0.64s. Results:
+- 417 files, 921 symbols, 2269 resolved calls, 9210 unresolved calls,
+  123 method_of edges.
+- Repo key: 36eea8a99381.
+- Top PageRank result: `run_metadata_store.get` at 0.1375 (the SQLite
+  accessor every router touches). Sanity check passes \u2014 that IS the hub.
+- `parser._text` from the D.2 module appears in the top 10, proving
+  cross-language (Python + TS) indexing works.
+
+**Deliberate deviations from ozyyshr/RepoGraph:**
+- No dependency on `networkx` (too heavy for one call) \u2014 pure-Python
+  PageRank instead.
+- Reference resolution is symbolic-only (no exec of imports).
+- Multi-repo aware from day 1 (upstream indexes one repo per process).
+- Idempotent replace via DETACH DELETE inside a single transaction.
+
+**Files added:**
+- openhands_tools_ext/repograph/index.py
+- openhands_tools_ext/repograph/store.py
+- openhands_tools_ext/tests/test_index.py
+- openhands_tools_ext/tests/test_store.py
+
+**Files modified:**
+- bff/requirements.txt (removed `networkx>=3.2,<4` \u2014 no longer needed).
+
+**Checks:**
+- ruff check + ruff format on `openhands_tools_ext/`: PASS.
+- pytest `openhands_tools_ext/tests/`: 51/51 PASS in 0.21s.
+- Full-pipeline smoke on Forge-OH itself: 417 files indexed in 0.64s.
+
+**DoD for D.3:**
+- [x] `RepoIndex` dataclass with all edge kinds.
+- [x] `iter_source_files` (git-aware + fallback walk).
+- [x] `build_index` with reference resolution + PageRank.
+- [x] `Neo4jStore` with ensure_schema, replace_repo, delete_repo, and
+      four read queries (search_by_name, callers_of, callees_of,
+      context_bundle).
+- [x] Idempotent writes in one transaction.
+- [x] Multi-repo isolation via `repo` property.
+- [x] 24 new unit tests (13 index + 11 store), all green.
+- [x] End-to-end smoke on real repo.
+
+**Next:** D.4 \u2014 6 BFF endpoints wiring these queries into HTTP.
