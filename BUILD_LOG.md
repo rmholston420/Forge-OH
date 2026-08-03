@@ -1676,3 +1676,27 @@ The hook must be invoked with `OPENHANDS_PROJECT_DIR` pointing at the workspace 
 - `.venv/bin/ruff check` and `format --check` both clean on the new modules.
 
 **Stop-condition status:** F.1 complete. F.2 (SQLite store) is next.
+
+## 2026-08-03 09:00 EDT — Slice F.2: TrajectoryStore (SQLite case base)
+
+**Stage:** Step 8, Slice F.2.
+
+**What:** local-first SQLite store for TrajectoryRecords with WAL mode, indexed on status/created_at/run_id/repo_key. Structured columns for query keys, JSON-encoded nested collections, float32-packed embedding blob.
+
+**Files created:**
+- `openhands_tools_ext/trajectory/store.py` — `TrajectoryStore`, `default_db_path` (env override → `OPENHANDS_PROJECT_DIR/.forge-oh` → `~/.forge-oh`), `encode_embedding`/`decode_embedding` helpers.
+- `openhands_tools_ext/tests/trajectory/test_store.py` — 25 tests (encode/decode, DB path resolution, insert/get/list/update/delete, embedding update, filters, WAL mode).
+
+**API surface:**
+- `insert(record)`, `get(id)`, `get_by_run(run_id)`, `list_all(*, limit, statuses, repo_key)`, `update_embedding(id, vec, model)`, `list_unembedded(*, limit)`, `count()`, `delete(id)`.
+
+**Design notes:**
+- Embedding stored as raw little-endian float32 blob (`struct.pack("<{n}f")`) — compact, direct numpy compat later, roundtrips with float32 precision (test uses `rel=1e-6`).
+- 4 indexes: `final_status`, `created_at`, `run_id`, `repograph_repo_key` — covers all F.4 retriever filter paths.
+- Writer/reader concurrency: WAL + 5s busy timeout. Safe with single writer (F.5 hook) + multi reader (F.4 retriever + F.6 endpoints).
+
+**Tests:**
+- `.venv/bin/pytest openhands_tools_ext/` → 166 passed (was 141; +25 new).
+- Ruff clean.
+
+**Stop-condition status:** F.2 complete. F.3 (bge-code-v1 embedder wrapper) next.
