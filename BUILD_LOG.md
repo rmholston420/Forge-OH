@@ -214,3 +214,9 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - **Design decisions locked:** `run_id == conversation_id` (identity, no SQLite); stateless BFF (list runs = query agent-server); model_router shim retained; per-run workspace dirs `workspace/runs/<cid>/` (currently emitted as `workspace/runs/pending` — agent-server will overwrite with its own persistence_dir).
 - **Definition of Done not yet met** — requires manual browser verification of full flow (see SESSION_HANDOFF.md).
 
+
+## 2026-08-02 22:32 EDT — Stage 3 hotfix: agent-presets envelope
+- **Symptom (browser):** ReactQuery ["runs","presets"] returns undefined → cascades to Zod "expected string >=1 characters" on `agentPresetId` (composer auto-select never populates).
+- **Root cause:** `GET /api/agent-presets` returned a bare list `[AgentPreset,...]`; frontend `fetchAgentPresets` calls `unwrap(result).data` expecting the `{data: [...]}` envelope every other BFF endpoint uses.
+- **Fix:** `bff/routers/agent_presets.py` list_presets — wrap in `{'data': [...]}`. Kept single-item `GET /{preset_id}` and mutations unchanged (they had `response_model=AgentPreset` and were never envelope-wrapped, but no frontend caller exists yet).
+

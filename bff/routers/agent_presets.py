@@ -88,9 +88,9 @@ _PRESETS: dict[str, AgentPreset] = {
 # Read endpoints — no auth required
 # ---------------------------------------------------------------------------
 
-@router.get('', response_model=list[AgentPreset])
-def list_presets():
-    return list(_PRESETS.values())
+@router.get('')
+def list_presets() -> dict:
+    return {'data': [p.model_dump() for p in _PRESETS.values()]}
 
 
 @router.get('/{preset_id}', response_model=AgentPreset)
