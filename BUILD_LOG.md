@@ -1547,3 +1547,58 @@ diagnosis.
 - [ ] E.5 Frontend Trace-tab renderer + Metrics-tab "verify iterations per task" + ADR-0007.
 
 **Next:** E.4 — wire the retry policy through OpenHands SDK's `HookEventType.STOP` and emit VerificationStep events through the run event stream so the frontend can render them.
+
+## 2026-08-03 08:24 EDT — Step 8 Slice E.4: STOP-hook retry policy + CLI shim
+
+**Slice E.4 of 5 — Recommendation #2, the piece that turns E.1–E.3 into a live loop.**
+
+**Architecture note:** Forge-OH's BFF is a read-through cache over an external agent-server (`/api/conversations/{run_id}/events/search`). The BFF does not run the OpenHands agent itself. That means the STOP hook and retry policy must live on the *agent-server / integrator* side, not in the BFF. E.4 ships the reusable pieces; the agent-server wires them.
+
+**Files new:**
+- `openhands_tools_ext/verify/loop.py` — `VerifyLoop` dataclass. Given a workspace, a set of edited files, and a max-iterations budget, decides on each STOP whether to (a) run one verification via E.2's `run_verification`, (b) block the stop, or (c) let the agent finish. `VerifyDecision.to_hook_json()` produces the Claude-Code / OpenHands hook contract (`decision="block"`, `reason`, `additionalContext`). `DEFAULT_MAX_ITERATIONS=3`.
+- `openhands_tools_ext/verify/hook.py` — CLI shim runnable as `python -m openhands_tools_ext.verify.hook`. Reads the `HookEvent` JSON from stdin, uses `OPENHANDS_PROJECT_DIR` + `OPENHANDS_SESSION_ID` from env, persists retry state to `$PROJECT/.forge-oh/verify-state.json` keyed by session id, and prints the decision JSON to stdout on exit 0.
+- `openhands_tools_ext/tests/verify/test_loop.py` — 10 tests covering PASS/FAIL/SKIPPED/error paths, budget exhaustion, cap-reached-no-op, edit-set normalisation & dedup, and hook-JSON serialisation.
+- `openhands_tools_ext/tests/verify/test_hook.py` — 7 tests covering the CLI shim: empty stdin, malformed JSON, non-STOP events, missing env, state persistence across invocations, PASS returns no-decision, FAIL returns `decision="block"`.
+
+**Key semantics (locked in for E.5's UI):**
+- SKIPPED does *not* consume the whole budget in one shot but *does* increment the counter. Rationale: a no-runner workspace should not stack up infinite iterations if the STOP is retried by the agent for other reasons. Documented in the hook state file.
+- PASS clears `edited_files_since_last_verify` so a later STOP without further edits does not re-run.
+- Budget exhausted while still failing → allow stop, but still record the last verdict so the trace shows the give-up decision.
+- Enum comparison uses `.value` throughout because `VerificationStep` sets `use_enum_values=True` — a lesson learned mid-test.
+
+**Retry state format (`$PROJECT/.forge-oh/verify-state.json`):**
+```json
+{
+  "<session_id>": {
+    "iterations_used": 1,
+    "edited_files": ["/abs/path.py"],
+    "last_reason": "verify-loop fail on iteration 1/3; agent must retry",
+    "last_verdict": "fail"
+  }
+}
+```
+Multiple sessions on the same workspace are keyed independently. State survives the subprocess lifetime because SDK hooks spawn a fresh process per event.
+
+**Checks:**
+- ruff check + format: clean after autofix.
+- pytest openhands_tools_ext/tests/verify/: 76/76 pass (17 schema + 22 selector + 9 runner + 11 breakpoint + 10 loop + 7 hook).
+
+**DoD status for Slice E overall:**
+- [x] E.1 VerificationStep schema.
+- [x] E.2 Test-runner auto-detect + subprocess wrapper.
+- [x] E.3 LDB-inspired runtime inspector + PORTING_LEDGER entry #2.
+- [x] E.4 STOP-hook retry policy + CLI shim + state persistence.
+- [ ] E.5 Frontend Trace-tab renderer + Metrics-tab "verify iterations per task" + ADR-0007.
+
+**Wiring recipe (for the agent-server integrator, will be moved into ADR-0007 in E.5):**
+```toml
+# .openhands/hooks.toml (agent-server side)
+[[hooks]]
+event = "Stop"
+type  = "command"
+command = "python -m openhands_tools_ext.verify.hook"
+timeout_seconds = 180
+```
+The hook must be invoked with `OPENHANDS_PROJECT_DIR` pointing at the workspace and `OPENHANDS_SESSION_ID` set to the run id.
+
+**Next:** E.5 — frontend Trace-tab card + Metrics-tab rolling-average + ADR-0007 + `v1.0-alpha2` tag.
