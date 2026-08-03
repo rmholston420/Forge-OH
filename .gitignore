@@ -60,3 +60,4 @@ scripts/
 # Generated SQLite databases
 bff/data/
 data/
+workspace/
