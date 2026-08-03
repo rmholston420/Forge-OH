@@ -135,7 +135,9 @@ describe('bffDownload', () => {
     );
     const blob = await bffDownload('/artifact.bin');
     expect(blob).toBeInstanceOf(Blob);
-    const text = await blob.text();
+    // jsdom Blob doesn't implement .text(); use arrayBuffer for byte check.
+    const buf = await blob.arrayBuffer();
+    const text = new TextDecoder().decode(buf);
     expect(text).toBe('binary-bytes');
   });
 

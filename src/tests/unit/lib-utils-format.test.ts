@@ -40,7 +40,10 @@ describe('formatCost', () => {
   });
   it('formats with 3 decimals', () => {
     expect(formatCost(0.01)).toBe('$0.010');
-    expect(formatCost(1.2345)).toBe('$1.235');
+    // Node's Number#toFixed uses IEEE-754 rounding — 1.2345 lands on
+    // '1.234', not '1.235'. Use a value that rounds unambiguously.
+    expect(formatCost(1.235001)).toBe('$1.235');
+    expect(formatCost(12.9)).toBe('$12.900');
   });
 });
 

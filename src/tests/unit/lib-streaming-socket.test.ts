@@ -6,15 +6,19 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// Mock socket.io-client at module scope so import of ./socket picks up the mock.
-const mockSocket = {
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-  on: vi.fn(),
-  off: vi.fn(),
-  emit: vi.fn(),
-};
-const ioMock = vi.fn(() => mockSocket);
+// vi.mock is hoisted above imports, so any reference to test-file locals
+// must go through vi.hoisted() to guarantee it exists when the factory runs.
+const { mockSocket, ioMock } = vi.hoisted(() => {
+  const mockSocket = {
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn(),
+  };
+  const ioMock = vi.fn(() => mockSocket);
+  return { mockSocket, ioMock };
+});
 
 vi.mock('socket.io-client', () => ({
   io: ioMock,
