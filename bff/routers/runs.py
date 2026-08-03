@@ -404,6 +404,12 @@ async def _call_lifecycle(
         raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="run not found")
+    if resp.status_code == 422:
+        # Bad input (e.g. non-UUID run_id) — pass through as 422 rather than 502.
+        raise HTTPException(status_code=422, detail=f"invalid run: {resp.text[:200]}")
+    if resp.status_code == 409:
+        # E.g. respond_to_confirmation when conversation isn’t waiting.
+        raise HTTPException(status_code=409, detail=f"invalid state: {resp.text[:200]}")
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"agent-server error {resp.status_code}: {resp.text[:200]}")
     try:
