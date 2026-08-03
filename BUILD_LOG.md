@@ -1775,3 +1775,33 @@ retrieve(task_description, *, symptom="", k=3, verified_only=True,
 - Ruff clean.
 
 **Stop-condition status:** F.5 complete. F.6 (BFF endpoints `/trajectories/search` + `/trajectories/{id}`) next.
+
+## 2026-08-03 09:30 EDT — Slice F.6: BFF trajectory endpoints
+
+**Stage:** Step 8, Slice F.6.
+
+**What:** REST endpoints for the Overview widget and the retrieval side of Rec #3. All read-only; the writer path stays out-of-band (hook subprocess, F.5b).
+
+**Files created / modified:**
+- `bff/deps/trajectory_store.py` — process-wide `TrajectoryStore` singleton via `get_trajectory_store()`; `reset_trajectory_store()` escape hatch for tests.
+- `bff/routers/trajectories.py` — `APIRouter(prefix="/trajectories")` with three endpoints, module-level `Query`/`Depends` singletons for ruff B008 compliance.
+- `bff/main.py` — registered the router alongside `repograph`, `settings`, etc.
+- `bff/tests/test_trajectories_router.py` — 18 tests covering listing/filtering/limits, get-by-id (404 + hit), search (empty store, semantic ranking, symbol overlap boost, verified-only default, verified_only=False, repo_key filter, exclude_run_ids, k / task validation, symptom composed into query).
+
+**Endpoints:**
+- `GET  /api/trajectories?limit&status&repo_key` — paginated list, returns `{total, records}`.
+- `GET  /api/trajectories/{trajectory_id}` — 404 on miss.
+- `POST /api/trajectories/search` — body `{task_description, symptom?, k?, verified_only?, repo_key?, current_symbols?, exclude_run_ids?}` → `{query, k, hits}` with per-hit `{record, score, semantic_score, symbol_overlap}`.
+
+**Design decisions:**
+- **Store singleton in deps**, not per-request construction — SQLite handle reuse across long-lived process (matches how `neo4j_driver` works). Tests override via `app.dependency_overrides[get_trajectory_store]`.
+- **Pydantic bounds** on `k` (1–25) and `limit` (1–500) — 422 rejects bad input at the boundary.
+- **Retriever constructed per-request**, embedder resolved lazily from the process-wide default — safe because the retriever is stateless.
+- **B008 handled via module-level singletons** (same pattern as `bff/routers/metrics.py`).
+
+**Tests:**
+- `.venv/bin/pytest bff/tests/test_trajectories_router.py openhands_tools_ext/` → 241 passed (223 unit + 18 router).
+- 7 pre-existing plugins_router failures (require upstream OH server) unchanged — not related to this slice.
+- Ruff clean.
+
+**Stop-condition status:** F.6 complete. F.5b (run-completion hook wiring writer + indexer to STOP event) next, then F.7 (Overview widget).

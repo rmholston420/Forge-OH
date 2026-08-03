@@ -37,6 +37,7 @@ from bff.routers import (
     runs,
     secrets,
     settings,
+    trajectories,
     workspaces,
 )
 from bff.services import episodic_memory, event_relay
@@ -89,6 +90,7 @@ app.include_router(bash.router, prefix="/api")
 app.include_router(git.router, prefix="/api")
 app.include_router(repograph.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
+app.include_router(trajectories.router, prefix="/api")
 app.include_router(workspaces.router, prefix="/api")
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
