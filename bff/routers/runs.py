@@ -23,6 +23,7 @@ Contract:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -432,15 +433,54 @@ async def pause_run(run_id: str) -> dict:
 async def resume_run(run_id: str) -> dict:
     # Agent-server has no dedicated 'resume' — POST /run restarts the loop
     # from paused or idle.
-    result = await _call_lifecycle(run_id, "run")
-    return {"ok": True, "run_id": run_id, "status": "running", "agent_server": result}
+    #
+    # Race: /pause waits for the current LLM call to finish but returns
+    # success:true immediately when execution_status transitions to 'paused'.
+    # The arun() coroutine may still be unwinding when the user hits Resume,
+    # causing /run to reply 409 'conversation_already_running'. Retry with
+    # short backoff so a rapid pause→resume click cycle behaves correctly.
+    last_exc: Optional[HTTPException] = None
+    for attempt in range(5):
+        try:
+            result = await _call_lifecycle(run_id, "run")
+            return {"ok": True, "run_id": run_id, "status": "running", "agent_server": result}
+        except HTTPException as exc:
+            if exc.status_code == 409 and attempt < 4:
+                await asyncio.sleep(0.4 * (attempt + 1))
+                last_exc = exc
+                continue
+            raise
+    assert last_exc is not None
+    raise last_exc
 
 
 @router.post("/runs/{run_id}/stop")
 async def stop_run(run_id: str) -> dict:
-    # Agent-server exposes hard cancel as /interrupt.
-    result = await _call_lifecycle(run_id, "interrupt")
-    return {"ok": True, "run_id": run_id, "status": "stopped", "agent_server": result}
+    # Agent-server exposes hard cancel as /interrupt. If the conversation is
+    # already paused (or idle/finished), /interrupt returns 400 because there
+    # is nothing to cancel. Users pressing Stop on a paused run don't want to
+    # see an error — the desired terminal state is 'paused' either way, so we
+    # first ask agent-server for the current status and short-circuit.
+    client = get_client()
+    try:
+        conv_resp = await client.get(f"/api/conversations/{run_id}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
+    if conv_resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="run not found")
+    exec_status = None
+    if conv_resp.status_code < 400:
+        exec_status = (conv_resp.json() or {}).get("execution_status")
+    # Only 'running' or 'waiting_for_confirmation' can be interrupted.
+    if exec_status in ("running", "waiting_for_confirmation"):
+        result = await _call_lifecycle(run_id, "interrupt")
+        return {"ok": True, "run_id": run_id, "status": "stopped", "agent_server": result}
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "status": "stopped",
+        "agent_server": {"success": True, "note": f"already terminal: {exec_status}"},
+    }
 
 
 @router.post("/runs/{run_id}/approve")
