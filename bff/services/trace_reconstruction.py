@@ -66,6 +66,9 @@ _KIND_MAP: dict[str, str] = {
     "task": "internal",
     "task_tool_set": "internal",
     "invoke_skill": "internal",
+    # Slice E.1 (Rec #2, verify loop): verify_step spans get their own kind
+    # so the Trace tab can render them with a dedicated card component.
+    "verify_step": "verify",
 }
 
 

@@ -8,3 +8,4 @@ export * from './browser';
 export * from './command';
 export * from './artifact';
 export * from './repograph';
+export * from './verify';

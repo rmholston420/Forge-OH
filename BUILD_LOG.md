@@ -1427,3 +1427,53 @@ diagnosis.
   the E2E can select them reliably.
 
 **Next:** user runs `PLAYWRIGHT_REAL_BFF=1 npm run test:e2e -- src/tests/e2e/repograph-panel.spec.ts` on Colossus, sends screenshots back, starts Slice E (Rec #2: Execution-Verified Self-Debugging Loop).
+
+## 2026-08-03 08:07 EDT — Step 8 Slice E.1: Verify plugin skeleton + VerificationStep schema
+
+**Slice E.1 of 5 — Recommendation #2 (Execution-Verified Self-Debugging Loop).**
+
+**Scope restated:** new `openhands_tools_ext/verify/` plugin (parallel to `repograph/`), plus BFF trace-event kind mapping, plus frontend Zod mirror. Slice E.1 lays down the wire format so subsequent slices can emit and consume events with a stable contract.
+
+**Architecture decision:** verify iterations flow as standard OpenHands SDK ActionEvent → ObservationEvent pairs with `tool_name="verify_step"`, not as a new event type. The BFF `_KIND_MAP` maps that tool name to a new span kind `verify`. This means zero new BFF endpoints, zero new tables, and the same read path that already reconstructs Trace-tab spans handles verify events for free.
+
+**Files new:**
+- `openhands_tools_ext/verify/__init__.py`
+- `openhands_tools_ext/verify/schema.py` — `VerificationStep` Pydantic model, `VerifyVerdict` / `VerifyRunner` enums, `truncate_tail()`, `VERIFY_STEP_TOOL_NAME` constant, `TAIL_BYTES=2048`.
+- `openhands_tools_ext/tests/verify/__init__.py`
+- `openhands_tools_ext/tests/verify/test_schema.py` — 17 tests including parity assertions against the TS mirror.
+- `src/lib/schemas/verify.ts` — Zod mirror. Same field names, same enum values.
+
+**Files edited:**
+- `src/lib/schemas/index.ts` — export `./verify`.
+- `src/lib/schemas/trace.ts` — `TraceSpanKindSchema` now includes `'verify'`.
+- `bff/services/trace_reconstruction.py` — `_KIND_MAP` entry `"verify_step": "verify"`.
+- `bff/tests/test_trace_reconstruction.py` — added `verify_step` assertion in `test_build_spans_kind_mapping`.
+
+**Schema fields (Python + TS both):**
+- `iteration` (int ≥ 1)
+- `max_iterations` (int ≥ 1)
+- `runner` (enum: pytest / vitest / jest / npm_test / unknown)
+- `test_selected` (list[str])
+- `command` (str)
+- `exit_code` (int | null)
+- `stdout_tail` (str, ≤2 KB, head-truncated)
+- `stderr_tail` (str, ≤2 KB, head-truncated)
+- `duration_ms` (int ≥ 0)
+- `verdict` (enum: pass / fail / error / skipped)
+- `files_edited_since_last_verify` (list[str])
+
+**Checks:**
+- `ruff check` on all touched Python files: clean.
+- `ruff format` on new files: clean.
+- `pytest openhands_tools_ext/tests/verify/`: 17/17 pass (includes parity tests that read `src/lib/schemas/verify.ts` at runtime).
+- `pytest bff/tests/test_trace_reconstruction.py`: 9/9 pass.
+- `npx tsc --noEmit`: 0 errors.
+
+**DoD status for Slice E overall:**
+- [x] E.1 VerificationStep schema wired end-to-end (Python + TS + BFF kind mapping).
+- [ ] E.2 Test-runner auto-detect (pytest / vitest / jest / npm_test).
+- [ ] E.3 LDB port (Apache-2.0) into `openhands_tools_ext/verify/breakpoint/` + PORTING_LEDGER entry.
+- [ ] E.4 Bounded retry policy via `HookEventType.STOP` hook that emits VerificationStep events.
+- [ ] E.5 Frontend Trace-tab renderer + Metrics-tab "verify iterations per task".
+
+**Next:** E.2 — implement the test-runner selector and the actual runner-invocation code (subprocess wrapper that populates a `VerificationStep`).

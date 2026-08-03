@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const TraceSpanKindSchema = z.enum(['llm', 'tool', 'workspace', 'browser', 'network', 'internal']);
+export const TraceSpanKindSchema = z.enum(['llm', 'tool', 'workspace', 'browser', 'network', 'internal', 'verify']);
 export type TraceSpanKind = z.infer<typeof TraceSpanKindSchema>;
 
 /**

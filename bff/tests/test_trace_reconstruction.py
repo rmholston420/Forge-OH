@@ -122,6 +122,9 @@ def test_build_spans_kind_mapping():
                 action={"url": "https://example.com"}, timestamp="t"),
         _action(action_id="a3", tool="task_tracker", action={}, timestamp="t"),
         _action(action_id="a4", tool="mcp_test_tool", action={}, timestamp="t"),
+        # Slice E.1: verify_step gets its own kind so the Trace tab can
+        # render the verify loop with a dedicated card component.
+        _action(action_id="a5", tool="verify_step", action={}, timestamp="t"),
     ]
     spans = build_spans(events, "r")
     kinds = {s["spanId"]: s["kind"] for s in spans}
@@ -129,6 +132,7 @@ def test_build_spans_kind_mapping():
     assert kinds["a2"] == "browser"
     assert kinds["a3"] == "internal"
     assert kinds["a4"] == "network"
+    assert kinds["a5"] == "verify"
 
 
 def test_build_spans_sorted_by_start_time():
