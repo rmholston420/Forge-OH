@@ -3,30 +3,38 @@
 The frontend NEVER selects models — all routing happens here in the BFF.
 Never go below Q4_K_M quantization.
 
-The router returns a backend-tagged model string (``ollama/<tag>`` or
-``vllm/<tag>``). The caller that builds an OpenHands
-``POST /api/conversations`` request body is responsible for translating that
-into the LiteLLM config block the agent-server expects, e.g. for an Ollama
-result::
+Two public APIs live here:
 
-    {"model": f"openai/{tag}",
-     "base_url": OLLAMA_BASE_URL,
-     "api_key": "ollama",
-     "usage_id": "colossus-ollama",
-     "is_subscription": False,
-     "native_tool_calling": False}
+1. Legacy ``route_request(task_complexity, context_length)`` (F.18 shape).
+   Returns a backend-tagged model string (``ollama/<tag>`` or ``vllm/<tag>``).
+   Still used by ``bff/routers/settings.py`` and ``bff/routers/runs.py``.
+   Deprecated by F.19 but kept working until F.19.2b (runs.py) and F.19.2c
+   (settings.py) migrate their call sites.
 
-Endpoints
----------
+2. Role-based ``route_by_role(role, context_length=0)`` (F.19.2a, this
+   commit). Returns a ``RoleRoute`` dataclass carrying backend, model,
+   base_url, and max_tokens. Roles are ``"coder"`` and ``"planner"``.
+   Backed by the dual-port vLLM topology (ADR-009 §3a) and the
+   ``ops/vllm_supervisor.sh`` swap-on-demand controller (F.19.1a).
+
+Endpoints (legacy)
+------------------
 - ``OLLAMA_URL`` (default ``http://localhost:11434``) — used for the
   ``/api/tags`` health probe.
 - ``OLLAMA_BASE_URL`` (default ``http://localhost:11434/v1``) — used by
   callers for OpenAI-compatible requests.
 - ``VLLM_URL`` (default ``http://localhost:8500``) — vLLM OpenAI-compatible
-  root; the health probe hits ``{VLLM_URL}/health``.
+  root; the health probe hits ``{VLLM_URL}/v1/models``.
 
-Primary backend
----------------
+Endpoints (role-based, F.19)
+----------------------------
+- ``LLM_CODER_URL`` (default ``http://localhost:8501``) — coder-role vLLM
+  root. Health probe hits ``{LLM_CODER_URL}/v1/models``.
+- ``LLM_PLANNER_URL`` (default ``http://localhost:8502``) — planner-role
+  vLLM root. Health probe hits ``{LLM_PLANNER_URL}/v1/models``.
+
+Primary backend (legacy)
+------------------------
 ``LLM_PRIMARY_BACKEND`` (default ``ollama``) selects which backend to try
 first. When set to ``vllm``, vLLM is probed first and Ollama becomes the
 fallback. The other-side probe is only attempted if the primary side is
@@ -36,7 +44,10 @@ routing still succeeds.
 
 from __future__ import annotations
 
+import asyncio
 import os
+from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
 
@@ -79,9 +90,79 @@ VLLM_FALLBACK_MODEL = os.getenv("VLLM_FALLBACK_MODEL", "qwen3-coder-30b")
 # Adjust if you raise the num_ctx on the Ollama modelfile.
 PRIMARY_CTX_LIMIT = int(os.getenv("PRIMARY_CTX_LIMIT", "28000"))
 
+# ---------------------------------------------------------------------------
+# F.19.2a — Role-based routing configuration.
+#
+# ADR-009 assignments (verified by bench/f19pre):
+#   Coder role   -> qwen3.6-35b-nvfp4 on vLLM :8501, max_tokens=2048
+#   Planner role -> qwen3-thinking-2507-awq on vLLM :8502, max_tokens=8192
+#
+# Ollama fallback:
+#   Coder role   -> qwen3-coder:30b (bench cell c01 baseline, still installed).
+#   Planner role -> NONE. c03 broken (Ollama enable_thinking:false silent no-op)
+#                   and c05/c07 length-truncate on P3. If planner vLLM cannot
+#                   be brought up, route_by_role raises ModelUnavailableError.
+# ---------------------------------------------------------------------------
+
+LLM_CODER_URL = os.getenv("LLM_CODER_URL", "http://localhost:8501")
+LLM_CODER_MODEL = os.getenv("LLM_CODER_MODEL", "qwen3.6-35b-nvfp4")
+LLM_CODER_MAX_TOKENS = int(os.getenv("LLM_CODER_MAX_TOKENS", "2048"))
+LLM_CODER_OLLAMA_FALLBACK = os.getenv(
+    "LLM_CODER_OLLAMA_FALLBACK", "qwen3-coder:30b"
+)
+
+LLM_PLANNER_URL = os.getenv("LLM_PLANNER_URL", "http://localhost:8502")
+LLM_PLANNER_MODEL = os.getenv("LLM_PLANNER_MODEL", "qwen3-thinking-2507-awq")
+LLM_PLANNER_MAX_TOKENS = int(os.getenv("LLM_PLANNER_MAX_TOKENS", "8192"))
+# Empty string = no Ollama fallback for planner (ADR-009 rationale above).
+LLM_PLANNER_OLLAMA_FALLBACK = os.getenv("LLM_PLANNER_OLLAMA_FALLBACK", "")
+
+# Supervisor script path (F.19.1a). Router shells out to `ensure <role>` on
+# health-check miss to trigger swap-on-demand per ADR-009 §3a.
+# Resolved to repo-root/ops/vllm_supervisor.sh; override for tests.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+VLLM_SUPERVISOR_PATH = os.getenv(
+    "VLLM_SUPERVISOR_PATH", str(_REPO_ROOT / "ops" / "vllm_supervisor.sh")
+)
+# Timeout for the supervisor's `ensure` command. Must be >= the launcher's
+# weight-load time (typically 30-60s for 30B AWQ/NVFP4 on Blackwell).
+VLLM_SUPERVISOR_TIMEOUT = float(os.getenv("VLLM_SUPERVISOR_TIMEOUT", "300"))
+# Set to "0" to disable the supervisor call entirely (unit tests, or when
+# operating both roles manually). Router then behaves as "probe-only".
+VLLM_SUPERVISOR_ENABLED = os.getenv("VLLM_SUPERVISOR_ENABLED", "1") == "1"
+
 
 class ModelUnavailableError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class RoleRoute:
+    """Resolved route for a role-based request.
+
+    The caller builds the LiteLLM ``llm`` block from these fields directly:
+
+        {
+            "model": f"openai/{route.model}",
+            "base_url": route.base_url,
+            "api_key": "vllm" if route.backend == "vllm" else "ollama",
+            "usage_id": f"colossus-{route.backend}",
+            "is_subscription": False,
+            "native_tool_calling": False,
+            "max_completion_tokens": route.max_tokens,
+        }
+    """
+
+    role: str          # "coder" | "planner"
+    backend: str       # "vllm" | "ollama"
+    model: str         # served-model-name (vLLM) or ollama tag
+    base_url: str      # OpenAI-compatible root, e.g. http://localhost:8501/v1
+    max_tokens: int    # max_completion_tokens for the LiteLLM llm block
+
+    @property
+    def tagged(self) -> str:
+        """Backward-compat helper mirroring the legacy string API."""
+        return f"{self.backend}/{self.model}"
 
 
 async def ollama_health_check(model: str) -> bool:
@@ -173,3 +254,138 @@ async def route_request(task_complexity: str, context_length: int) -> str:
     if task_complexity == "agentic":
         return await try_model(PRIMARY_MODEL)
     return await try_model(FAST_MODEL)
+
+
+# ---------------------------------------------------------------------------
+# F.19.2a — Role-based routing.
+# ---------------------------------------------------------------------------
+
+
+async def _vllm_role_health(role_url: str) -> bool:
+    """Per-role vLLM readiness probe (mirror of ``vllm_health_check`` but
+    against an arbitrary URL). Confirms the engine finished weight load."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{role_url}/v1/models")
+            if resp.status_code != 200:
+                return False
+            try:
+                data = resp.json().get("data", [])
+            except Exception:
+                return False
+            return len(data) > 0
+    except Exception:
+        return False
+
+
+async def _supervisor_ensure(role: str) -> bool:
+    """Ask the swap-on-demand supervisor to bring the requested role up.
+
+    Returns True on supervisor exit 0. Disabled (returns False) when
+    ``VLLM_SUPERVISOR_ENABLED=0`` or the script is missing — the caller
+    then treats it the same as "supervisor could not recover", i.e.
+    falls through to Ollama fallback (coder) or raises (planner).
+    """
+    if not VLLM_SUPERVISOR_ENABLED:
+        return False
+    if not os.path.exists(VLLM_SUPERVISOR_PATH):
+        return False
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            VLLM_SUPERVISOR_PATH,
+            "ensure",
+            role,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=VLLM_SUPERVISOR_TIMEOUT)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return False
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+def _coder_config() -> tuple[str, str, int, str]:
+    return (
+        LLM_CODER_URL,
+        LLM_CODER_MODEL,
+        LLM_CODER_MAX_TOKENS,
+        LLM_CODER_OLLAMA_FALLBACK,
+    )
+
+
+def _planner_config() -> tuple[str, str, int, str]:
+    return (
+        LLM_PLANNER_URL,
+        LLM_PLANNER_MODEL,
+        LLM_PLANNER_MAX_TOKENS,
+        LLM_PLANNER_OLLAMA_FALLBACK,
+    )
+
+
+async def route_by_role(role: str, context_length: int = 0) -> RoleRoute:
+    """Resolve a role to a concrete backend + model + budget.
+
+    ADR-009 §3a topology: only one of coder/planner vLLM is resident at a
+    time. Resolution order for each role:
+
+      1. Probe ``LLM_<ROLE>_URL/v1/models``. On success, return vLLM route
+         with the role's max_tokens budget.
+      2. Ask the swap-on-demand supervisor (``ops/vllm_supervisor.sh``) to
+         ``ensure <role>``. Re-probe on success.
+      3. Fall back to that role's Ollama model if configured (coder only
+         by default; planner has no Ollama fallback per ADR-009).
+      4. Raise ``ModelUnavailableError``.
+
+    ``context_length`` is accepted for API symmetry with ``route_request``
+    and future gating, but F.19.2a does not use it for role routing.
+    Callers pick the role explicitly.
+    """
+    if role == "coder":
+        role_url, role_model, max_tokens, ollama_fallback = _coder_config()
+    elif role == "planner":
+        role_url, role_model, max_tokens, ollama_fallback = _planner_config()
+    else:
+        raise ValueError(f"unknown role {role!r}; expected 'coder' or 'planner'")
+
+    # 1) Fast path — role already live.
+    if await _vllm_role_health(role_url):
+        return RoleRoute(
+            role=role,
+            backend="vllm",
+            model=role_model,
+            base_url=f"{role_url}/v1",
+            max_tokens=max_tokens,
+        )
+
+    # 2) Cache-miss — try to swap.
+    if await _supervisor_ensure(role):
+        if await _vllm_role_health(role_url):
+            return RoleRoute(
+                role=role,
+                backend="vllm",
+                model=role_model,
+                base_url=f"{role_url}/v1",
+                max_tokens=max_tokens,
+            )
+
+    # 3) Ollama fallback (coder only by default).
+    if ollama_fallback and await ollama_health_check(ollama_fallback):
+        return RoleRoute(
+            role=role,
+            backend="ollama",
+            model=ollama_fallback,
+            base_url=OLLAMA_BASE_URL,
+            max_tokens=max_tokens,
+        )
+
+    # 4) No path available.
+    raise ModelUnavailableError(
+        f"role={role!r} unavailable: vLLM at {role_url} down, "
+        f"supervisor could not recover, Ollama fallback "
+        f"{'exhausted' if ollama_fallback else 'disabled'}."
+    )

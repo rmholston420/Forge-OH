@@ -2873,3 +2873,71 @@ vLLM installed (returns `none`, exit 2). Met 2026-08-03 18:20 EDT.
 Live supervisor smoke on Colossus — `up coder`, verify c04-equivalent
 `/v1/models` served-model-name, `down`, `up planner`, verify c08,
 `down`. Then F.19.2a: `model_router.py` role-based API.
+
+## 2026-08-03 18:23 EDT — F.19.2a: role-based router API
+
+**Stage:** F.19 (Coder/Planner router rewire) — sub-slice 2a of 4.
+
+**Delivered:**
+- `bff/services/model_router.py` — new public API alongside legacy:
+  - `RoleRoute(role, backend, model, base_url, max_tokens)` — frozen
+    dataclass. `.tagged` property mirrors the legacy string form.
+  - `route_by_role(role, context_length=0)` — resolves `"coder"` or
+    `"planner"` through four steps: (1) probe role's vLLM URL, (2) ask
+    `ops/vllm_supervisor.sh ensure <role>` and re-probe, (3) fall back
+    to that role's Ollama model if configured (coder only by default),
+    (4) raise `ModelUnavailableError`.
+  - `_vllm_role_health(role_url)` — per-URL probe (mirror of
+    `vllm_health_check` but not hardcoded to `VLLM_URL`).
+  - `_supervisor_ensure(role)` — async subprocess wrapper around
+    `ops/vllm_supervisor.sh ensure <role>` with a 300s timeout.
+- New env vars (all with ADR-009-aligned defaults):
+  - `LLM_CODER_URL=http://localhost:8501`,
+    `LLM_CODER_MODEL=qwen3.6-35b-nvfp4`,
+    `LLM_CODER_MAX_TOKENS=2048`,
+    `LLM_CODER_OLLAMA_FALLBACK=qwen3-coder:30b`.
+  - `LLM_PLANNER_URL=http://localhost:8502`,
+    `LLM_PLANNER_MODEL=qwen3-thinking-2507-awq`,
+    `LLM_PLANNER_MAX_TOKENS=8192`,
+    `LLM_PLANNER_OLLAMA_FALLBACK=""` (disabled — planner has no viable
+    Ollama fallback per ADR-009; c03 broken, c05/c07 length-truncate).
+  - `VLLM_SUPERVISOR_PATH` (resolved to repo-root `ops/vllm_supervisor.sh`),
+    `VLLM_SUPERVISOR_TIMEOUT=300`, `VLLM_SUPERVISOR_ENABLED=1`.
+- `bff/tests/test_model_router.py` — 9 new tests, 11 legacy still pass
+  (20/20). Covers: unknown-role reject, healthy vLLM (both roles),
+  supervisor recovery, Ollama fallback (coder), no-fallback raise
+  (planner), all-paths-dead raise, supervisor-disabled env short-circuit,
+  RoleRoute frozen invariant.
+
+**Design decisions (locked):**
+- Router **shells out to the supervisor** on cache-miss rather than
+  returning `ModelUnavailableError` — ADR-009 §3a's whole point is that
+  VRAM contention is hidden from callers.
+- Coder has an Ollama fallback (`qwen3-coder:30b`, c01 baseline);
+  planner does not. Planner-vLLM-down means fail-fast.
+- `context_length` accepted for API symmetry but unused in role routing;
+  callers pick the role explicitly. Long-context auto-promotion from
+  F.18 does not apply.
+- Return type is a `@dataclass(frozen=True)`, not a string — the old
+  `"vllm/tag"` string could not carry `max_tokens`, and F.19.2b needs
+  it plumbed into the LiteLLM body.
+- Legacy `route_request` / `try_model` / module-level constants
+  untouched — `settings.py` and `runs.py` keep working until
+  F.19.2b (runs) and F.19.2c (settings) migrate.
+
+**Files touched:**
+- `bff/services/model_router.py` (add role API alongside legacy)
+- `bff/tests/test_model_router.py` (+9 tests)
+- `BUILD_LOG.md` (this entry)
+
+**Ports/adapters affected:** router surface only. No caller migrated
+yet — F.19.2b (runs.py) and F.19.2c (settings.py) still pending.
+
+**Stop condition (F.19.2a):**
+`route_by_role` importable, `RoleRoute` dataclass usable, all four
+resolution paths covered by unit tests (20/20 pass). Met 2026-08-03
+18:23 EDT.
+
+**Next:** F.19.1b live smoke on Colossus (pending), then F.19.2b —
+migrate `bff/routers/runs.py` to `route_by_role`, fix the hardcoded
+`_OLLAMA_BASE` in the LiteLLM body, plumb `max_tokens` through.
