@@ -55,3 +55,8 @@
 - Root cause: qwen3.6:35b-a3b occasionally emits raw XML tags inside the JSON tool-call arguments (observed: 'path=/workspace/stage4-final.txt</path>\n<parameter=file_text>Stage 4 DoD proof').
 - Reconstruction behavior: file_diff_reconstruction.py already drops is_error=True observations, so the failed attempt is invisible in /files output. Behavior is correct.
 - Files changed: none. Filter was proactive.
+
+## 2026-08-02 23:26 EDT — RESOLVED: New Run modal drops the prompt
+- Root cause: NewRunComposer.tsx used field name "contextPrompt" while CreateRunRequestSchema declares "taskPrompt"; Zod stripped the mismatched field before POST.
+- Fix: aligned the component's field name with the schema (src/components/domain/NewRunComposer.tsx).
+- Verified via: fresh Playwright e2e (pending).

@@ -36,7 +36,7 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
     resolver: zodResolver(CreateRunRequestSchema),
     defaultValues: {
       title: '',
-      contextPrompt: '',
+      taskPrompt: '',
       agentPresetId: '',
       workspaceId: '',
       taskComplexity: 'agentic',
@@ -71,13 +71,13 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
 
   useEffect(() => {
     setValue('contextLength', estimatedContextLength, { shouldValidate: false, shouldDirty: false });
-    setValue('contextPrompt', titleValue, { shouldValidate: false, shouldDirty: false });
+    setValue('taskPrompt', titleValue, { shouldValidate: false, shouldDirty: false });
   }, [estimatedContextLength, titleValue, setValue]);
 
   const onSubmit = async (data: CreateRunRequest) => {
     const run = await createRun.mutateAsync({
       ...data,
-      contextPrompt: data.contextPrompt || data.title,
+      taskPrompt: data.taskPrompt || data.title,
       contextLength: data.contextLength ?? estimateContextLength(data.title),
     });
     onSuccess?.(run.id);
@@ -158,7 +158,7 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
         </select>
       </div>
 
-      <input type="hidden" {...register('contextPrompt')} />
+      <input type="hidden" {...register('taskPrompt')} />
       <input type="hidden" {...register('contextLength', { valueAsNumber: true })} />
 
       <div className={styles.actions}>

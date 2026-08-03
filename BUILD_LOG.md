@@ -275,3 +275,11 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - Ports/adapters: BFF → agent-server /api/conversations/{cid}/events/search (existing, no shape change)
 - Commits (chronological): ef97219 (initial slice), 46acf9b (path tolerance), 28040ab (e2e extension), pending closure commit.
 - Stage 3 leftover status: workspace_dir_placeholder shared "workspace/runs/pending" is now known to be irrelevant — the agent writes to /workspace/* in a sandboxed filesystem outside the BFF process namespace, and file tracking is event-driven. No fix needed for Stage 4; can be tidied later.
+
+## 2026-08-02 23:26 EDT — Stage 3.5 hotfix: New Run modal empty-prompt bug
+- Stage: 3.5 (out-of-band hotfix; unblocks Stage 4 visual DoD)
+- Symptom: browser-submitted runs reached the agent with an empty task, model replied "task description is empty".
+- Root cause: NewRunComposer.tsx registered a "contextPrompt" hidden field and copied "title" into it; the CreateRunRequestSchema declares "taskPrompt", not "contextPrompt", so Zod stripped the field before POST. BFF then received empty taskPrompt.
+- Fix: renamed the hidden field, defaultValue key, useEffect setValue target, and mutation payload override from contextPrompt → taskPrompt. Zero schema changes.
+- Files touched: src/components/domain/NewRunComposer.tsx (3 edits)
+- Verification pending: Playwright e2e must (a) produce ActionEvent + FileEditorObservation in the event stream, (b) return non-empty /api/runs/{id}/files, (c) render the file in the Files tab screenshot.
