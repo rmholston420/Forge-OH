@@ -1047,3 +1047,93 @@ crediting RepoGraph as architectural source per Apache-2.0 attribution.
 - D.3: graph builder + Neo4j Cypher store + queries
 - D.4: 6 RepoGraph BFF endpoints + tests
 - D.5: frontend Trace panel + ADR + PORTING_LEDGER + full BUILD_LOG close
+
+## 2026-08-03 07:25 EDT — Step 8 Slice D.2: tree-sitter tag extractor
+
+**Stage / plugin / port:** Forge-OH-Action-Plan Step 8, Slice D.2 of D.1..D.5
+(Recommendation #1 sub-slice 2/5) — Repository-Aware Structural Retrieval
+Layer, tag extraction only.
+
+**What was built:**
+- `openhands_tools_ext/__init__.py`, `openhands_tools_ext/repograph/__init__.py`
+  — new subpackage under Forge-OH proper (not a fork of the OpenHands SDK; a
+  runtime-registered tool extension).
+- `openhands_tools_ext/repograph/parser.py` — 634-line clean-slate tag
+  extractor. Given a source file, returns a list of frozen `Tag` records
+  covering: class/function/method definitions, function/method call refs,
+  and import refs.
+- `openhands_tools_ext/tests/test_parser.py` — 27 unit tests covering all
+  four supported languages and every guarantee in the docstring.
+
+**Deliberate deviations from ozyyshr/RepoGraph@6c3977d8:**
+1. No `exec()` and no `eval()` anywhere in the code path. Upstream ran
+   `exec()` on parsed `import` statements to enumerate the callable names
+   inside imported modules; that is arbitrary code execution against user
+   code. Instead we extract imported names symbolically from the tree-sitter
+   `import_statement` / `import_from_statement` / `import_clause` nodes and
+   emit them as REF tags with category=IMPORT.
+2. No source-string `.replace()` before AST parse (upstream mangles `False`
+   -> `_False` and similar to work around old Python compat). Tree-sitter is
+   tolerant enough not to need this.
+3. Category is decided from the tree-sitter node type, not from a substring
+   search on the source line. Verified with a regression test that a
+   docstring containing the word "class" does not produce a false-positive
+   class def.
+4. Uses `tree-sitter-language-pack` (actively maintained) instead of the
+   deprecated `tree_sitter_languages` upstream uses.
+5. `Tag` is a frozen dataclass with `as_dict()`, not upstream's namedtuple
+   with occasional dict-conversion. Frozen so it's hashable and safe to use
+   as a Neo4j-property source in D.3.
+
+**Language coverage:**
+- Python (`.py`, `.pyi`): class / function / method defs; function-call and
+  method-call refs; `import` / `from ... import` refs (with `as` aliases).
+- TypeScript (`.ts`), TSX (`.tsx`): class / abstract-class / function /
+  method defs; arrow-function-assigned-to-const captures as function def
+  (e.g. `const foo = () => ...`); call_expression refs; import_statement
+  refs including named, default, namespace, and aliased.
+- JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`): same behavior as TS (they
+  share the extractor).
+
+**Public API (frozen for D.3 to depend on):**
+- `Tag(name, kind, category, rel_fname, fname, start_line, end_line, parent, info)`
+- `TagKind.DEF` / `TagKind.REF`
+- `TagCategory.CLASS` / `.FUNCTION` / `.METHOD` / `.IMPORT`
+- `extract_tags(fname, rel_fname=None, *, source=None) -> list[Tag]`
+- `language_for_path(path) -> str | None`
+- `SUPPORTED_LANGUAGES: dict[str, str]`
+
+**Guarantees under test:**
+- Never raises on malformed source or unreadable file (returns `[]`).
+- Unsupported languages return `[]`.
+- `Tag` is frozen and hashable.
+- `info` truncated to <= 200 chars.
+- `source=` kwarg avoids disk read (proven by pointing at a nonexistent path
+  with explicit bytes).
+
+**Real-repo smoke test (before commit):**
+- `bff/routers/git.py` -> 5 defs, 24 call refs, 12 imports.
+- `src/features/file-diff/api.ts` -> 4 defs, 14 call refs, 2 imports.
+- `src/app/(dashboard)/runs/[runId]/tabs/FilesTab.tsx` -> 1 def, 25 call
+  refs, 14 imports.
+
+**Checks:**
+- ruff check + ruff format on `openhands_tools_ext/`: PASS.
+- pytest `openhands_tools_ext/tests/test_parser.py`: 27/27 PASS in 0.05s.
+
+**Files added:**
+- openhands_tools_ext/__init__.py
+- openhands_tools_ext/repograph/__init__.py
+- openhands_tools_ext/repograph/parser.py
+- openhands_tools_ext/tests/__init__.py
+- openhands_tools_ext/tests/test_parser.py
+
+**DoD for D.2:**
+- [x] Tag extractor with clean, exec/eval-free implementation.
+- [x] Python + TypeScript + TSX + JavaScript coverage.
+- [x] Frozen `Tag` dataclass with `as_dict()` for downstream Neo4j.
+- [x] Fail-soft on parse errors / missing files / unsupported languages.
+- [x] Comprehensive unit tests (27/27).
+- [x] Smoke test on real repo files.
+
+**Next:** D.3 - graph builder + Neo4j Cypher store + queries.

@@ -140,3 +140,45 @@
 - Root cause: previous BFF was launched by an older forge-up (or by hand) that did not write a pid file. My kill-by-pid-file guard therefore didn't trip, and the fallback branch bailed instead of killing.
 - Fix: enumerate PIDs on the BFF port via `ss -ltnp`, filter to those whose cmdline matches `uvicorn.*bff\.main`, then kill them. Leaves unrelated processes alone.
 - Reuse rule: any port-managed dev service kill logic MUST have a secondary "kill by port + cmdline signature" path — pid files are lost across reboots and manual launches.
+
+## 2026-08-03 07:22 EDT — DozerDB reports edition=enterprise at Cypher level
+
+**Symptom:** `CALL dbms.components() YIELD ... edition` returns `enterprise` on
+Colossus's `kosmos-dozerdb` container, even though the container's own
+`NEO4J_EDITION` env var is set to `community` and the image is
+`graphstack/dozerdb:5.26.27` (not Neo4j Enterprise).
+
+**Affected stage/plugin/port:** Step 8 Slice D.1 — RepoGraph health endpoint
+(`bff/routers/repograph.py:repograph_health`).
+
+**Root cause:** DozerDB is a fork of Neo4j Community that re-enables
+Enterprise-only features (like multi-database). It re-uses the Enterprise
+edition string internally so Cypher clients that gate on
+`dbms.components().edition == 'enterprise'` continue to work. The container
+env `NEO4J_EDITION=community` reflects packaging origin, not what the running
+kernel reports.
+
+**Fix applied:** None — this is correct behaviour for DozerDB. Documented so
+future readers of a health response showing `edition=enterprise` don't
+mistakenly assume a licensed Neo4j Enterprise install.
+
+**Files changed:** DEBUG_LOG.md only (no code fix).
+
+## 2026-08-03 07:22 EDT — `.oh-venv` has no `pip`; must use `uv pip install`
+
+**Symptom:** `.oh-venv/bin/pip install -r bff/requirements.txt` fails with
+`bash: .oh-venv/bin/pip: No such file or directory` on Colossus.
+
+**Affected stage/plugin/port:** Any slice that adds new backend deps and asks
+the user to install them into `.oh-venv`.
+
+**Root cause:** The venv was created by `uv venv` which does not install `pip`
+into the venv. Only `python`, `ruff`, `pytest`, and the OpenHands console
+scripts land in `.oh-venv/bin/`.
+
+**Fix applied:** Use `VIRTUAL_ENV=$PWD/.oh-venv uv pip install -r bff/requirements.txt`.
+Confirmed working — installed 7 packages in ~8s including neo4j, networkx,
+tree-sitter, tree-sitter-language-pack.
+
+**Files changed:** DEBUG_LOG.md (documenting the correct command for future
+dep-adding slices).
