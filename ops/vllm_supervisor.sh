@@ -41,7 +41,7 @@
 #   FORGE_OH_ROOT      default = git rev-parse --show-toplevel from
 #                      the script's directory. Used to locate the
 #                      launcher scripts. Override for out-of-tree tests.
-#   VLLM_READY_TIMEOUT default 300 (seconds). Bounded wait for the
+#   VLLM_READY_TIMEOUT default 420 (seconds). Bounded wait for the
 #                      newly-launched role's /v1/models to return data.
 
 # NOTE: no `set -e` at top level (per user preference — paste-block safe).
@@ -53,7 +53,7 @@ CODER_PORT="${VLLM_CODER_PORT:-8501}"
 PLANNER_PORT="${VLLM_PLANNER_PORT:-8511}"
 CODER_LOG="${VLLM_CODER_LOG:-$HOME/.forge-oh/vllm-coder.log}"
 PLANNER_LOG="${VLLM_PLANNER_LOG:-$HOME/.forge-oh/vllm-planner.log}"
-READY_TIMEOUT="${VLLM_READY_TIMEOUT:-300}"
+READY_TIMEOUT="${VLLM_READY_TIMEOUT:-420}"
 
 CODER_LAUNCHER="$SCRIPT_DIR/vllm_launch_coder.sh"
 PLANNER_LAUNCHER="$SCRIPT_DIR/vllm_launch_planner.sh"
@@ -243,7 +243,7 @@ Usage:
                              2=none 3=broken/both.
 
 Env: VLLM_CODER_PORT (default 8501), VLLM_PLANNER_PORT (8511),
-     VLLM_READY_TIMEOUT (300s), VLLM_CODER_LOG, VLLM_PLANNER_LOG.
+     VLLM_READY_TIMEOUT (420s), VLLM_CODER_LOG, VLLM_PLANNER_LOG.
 USAGE
         exit 2
         ;;

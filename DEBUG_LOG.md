@@ -384,3 +384,46 @@ not "kill the incumbent."
 curl -s http://127.0.0.1:8511/v1/models | python3 -m json.tool
 ./ops/vllm_supervisor.sh down
 ```
+
+## 2026-08-03 18:57 EDT — F.19.1b coder cold-start >300s under vLLM 0.26.0
+
+**Symptom:**
+```
+[supervisor] TIMEOUT waiting for coder on :8501 after 300s
+```
+Coder container `forge-vllm-coder` cleaned up on timeout. Planner
+smoke on :8511 succeeded (146s READY). GPU free after: 1434 MiB
+used / 30714 MiB free.
+
+**Root cause:** Docker image `vllm/vllm-openai:latest` rotated from
+vLLM 0.10.2 (first coder smoke) to **0.26.0** between runs. Weight
+load + CUDAgraph capture on 35B NVFP4 on a cold GPU takes >300s on
+0.26.0 (fine on 0.10.2 at 248s). Container was still initializing
+past the supervisor's 300s deadline — not a real failure.
+
+**Log confirmation:** last engine line at 22:55:34
+(`topk_topp_sampler.py:39`), no fatal errors; supervisor killed the
+container at ~23:00:09.
+
+**Fix:** bump `VLLM_READY_TIMEOUT` default 300 → 420 in
+`ops/vllm_supervisor.sh` (42% headroom over 248s baseline). Env
+override still respected.
+
+**Files changed:**
+- `ops/vllm_supervisor.sh` (READY_TIMEOUT default + docstring)
+
+**Retest (paste on Colossus):**
+```bash
+cd ~/dev/forge-oh && git pull
+./ops/vllm_supervisor.sh up planner
+curl -s http://127.0.0.1:8511/v1/models | python3 -m json.tool
+./ops/vllm_supervisor.sh up coder
+curl -s http://127.0.0.1:8501/v1/models | python3 -m json.tool
+./ops/vllm_supervisor.sh down
+```
+
+If coder still times out at 420s, either the model itself broke on
+0.26.0 or we need to pin `vllm/vllm-openai:v0.10.2` in the launcher.
+Not proactively pinning yet — need to confirm 0.26.0 works first
+(broader compat + qwen3_5_moe support was the reason we moved to
+Docker in the first place).

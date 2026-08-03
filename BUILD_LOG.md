@@ -3130,3 +3130,22 @@ old shape is unaffected.
 call sites (settings, runs, hook_config) migrated or removed.
 `route_request` itself remains for legacy `/model-routing` probe
 scenarios — full removal deferred to F.19.3.
+
+## 2026-08-03 18:58 EDT — F.19.1b supervisor timeout 300s → 420s
+
+**Stage:** F.19.1b live smoke, retry #3.
+
+**Change:** `VLLM_READY_TIMEOUT` default raised from 300s to 420s.
+Env override (`VLLM_READY_TIMEOUT=<n>`) preserved.
+
+**Reason:** vLLM Docker `:latest` rotated from 0.10.2 → 0.26.0.
+0.26.0 CUDAgraph capture on 35B NVFP4 takes longer than 300s on a
+cold GPU (post swap-teardown). Planner :8511 succeeded in 146s
+(smaller model). Coder timed out but was still initializing per
+the container log.
+
+**Files changed:**
+- `ops/vllm_supervisor.sh`
+
+**Stop condition:** coder READY on :8501 within 420s and
+`/v1/models` returns `qwen3.6-35b-nvfp4`.
