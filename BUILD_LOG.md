@@ -1231,3 +1231,86 @@ Indexed Forge-OH itself in 0.64s. Results:
 - [x] End-to-end smoke on real repo.
 
 **Next:** D.4 \u2014 6 BFF endpoints wiring these queries into HTTP.
+
+## 2026-08-03 07:33 EDT — Step 8 Slice D.4: six RepoGraph BFF endpoints
+
+**Stage / plugin / port:** Forge-OH-Action-Plan Step 8, Slice D.4 of D.1..D.5
+(Recommendation #1 sub-slice 4/5).
+
+**Endpoints added under `/api/repograph`:**
+- `POST /index` (IndexRequest) \u2014 build/refresh graph for a workspace path.
+  Idempotent (uses D.3's replace_repo). Also registers the workspace so
+  `co_changed` can find the on-disk repo later. Returns repo_key + stats.
+- `GET  /search?repo_key&q&limit=50` \u2014 case-insensitive substring match on
+  Symbol.name; results ordered by pagerank DESC, name ASC.
+- `GET  /callers?repo_key&name&rel_path?&limit=50` \u2014 files calling a
+  symbol. rel_path is optional; without it we accept any file that defines
+  a symbol with the given name.
+- `GET  /callees?repo_key&rel_path&limit=100` \u2014 all symbols called from a
+  file; ordered by callee pagerank DESC.
+- `GET  /co_changed?repo_key&rel_path&window=50&limit=20` \u2014 files that
+  historically change together with the target. This endpoint does NOT
+  touch Neo4j; it shells out to `git log` / `git show` against the
+  workspace registered for repo_key.
+- `POST /context_bundle` (ContextBundleRequest) \u2014 PageRank-ranked context
+  symbols for a set of seed files. Returns the top symbols reachable from
+  the seeds (either defined in them or called by them). This is the
+  read-list the D.5 frontend Trace panel and the OpenHands tool will use.
+
+**All endpoints:**
+- 503 when `repograph_enabled=False` (parametrized test proves this for
+  every one of the six endpoints).
+- 503 when Neo4j driver init fails (missing password / URI unreachable).
+- Return typed Pydantic models so the frontend gets a stable contract.
+
+**New service module:**
+- `bff/services/repograph_registry.py` \u2014 thread-safe in-memory dict
+  mapping repo_key -> absolute workspace path. Populated by `POST /index`.
+  If the BFF restarts, the caller re-indexes. Persistence to SQLite is a
+  straightforward follow-up if we need durability, but not needed for MVP
+  single-user local.
+
+**Tests:**
+- Extended `bff/tests/test_repograph_router.py` from 8 tests to 26 total.
+  - `TestRejectsWhenDisabled` (parametrized 6\u00d7): every endpoint 503s when
+    the feature flag is off.
+  - `TestIndexEndpoint`: writes graph + registers workspace on success;
+    400s for nonexistent path.
+  - `TestSearchEndpoint`: passes q/limit through to Neo4jStore; 422 on
+    missing q.
+  - `TestCallersCalleesEndpoints`: verifies rel_path is passed as
+    kwarg=None vs kwarg=<value>.
+  - `TestCoChangedEndpoint`: 404 when workspace unregistered; end-to-end
+    git-log + git-show mock producing a ranked file list; unavailable
+    fallback when `git` is missing.
+  - `TestContextBundleEndpoint`: symbols returned; 422 on empty seeds.
+  - `TestRegistry`: registry roundtrip.
+
+**Real-repo smoke:** deferred to Colossus (needs a live Neo4j to exercise
+end-to-end). Local mirror uses mocked Neo4j via MagicMock \u2014 same pattern
+the D.3 store tests use.
+
+**Files added:**
+- bff/services/repograph_registry.py
+
+**Files modified:**
+- bff/routers/repograph.py (added 6 endpoints, guards, helpers).
+- bff/tests/test_repograph_router.py (added D.4 tests).
+
+**Checks:**
+- ruff check + ruff format on all touched files: PASS.
+- pytest bff/tests/test_repograph_router.py: 26/26 PASS in 0.87s.
+- pytest openhands_tools_ext/tests/: 51/51 PASS in 0.21s.
+- Wider BFF suite (excluding pre-existing mcp/plugins/observability
+  failures): 96 pass \u2014 no regressions.
+
+**DoD for D.4:**
+- [x] All six endpoints wired.
+- [x] Feature-flag guard on every endpoint.
+- [x] Workspace registry for co_changed.
+- [x] Typed Pydantic request/response models for frontend contract.
+- [x] 18 new router tests + registry tests.
+- [x] End-to-end mocked git flow verifies co_changed correctness.
+
+**Next:** D.5 \u2014 frontend Trace RepoGraph panel + ADR-0006 +
+PORTING_LEDGER + SESSION_HANDOFF close.
