@@ -8,6 +8,7 @@ import { Banner } from '@/components/core/Banner';
 import { Modal } from '@/components/core/Modal';
 import { RunCard } from '@/components/domain/RunCard';
 import { NewRunComposer } from '@/components/domain/NewRunComposer';
+import { RunsCompareModal } from '@/components/domain/RunsCompareModal';
 import { useRuns } from '@/features/runs/hooks';
 import { useRunsStore } from '@/features/runs/store';
 import type { RunSummary } from '@/lib/schemas/run';
@@ -29,6 +30,7 @@ export default function RunsPage() {
   const { data: runs, isLoading, isError, error } = useRuns();
   const { filter, setFilter, composerOpen, setComposerOpen } = useRunsStore();
   const [search, setSearch] = useState('');
+  const [compareOpen, setCompareOpen] = useState(false);
 
   if (!FEATURE_ENABLED) {
     return (
@@ -80,6 +82,7 @@ export default function RunsPage() {
             <option value="awaiting_approval">Awaiting Approval</option>
             <option value="paused">Paused</option>
           </select>
+          <Button variant="tertiary" onClick={() => setCompareOpen(true)} disabled={(runs?.length ?? 0) < 2}>Compare</Button>
           <Button variant="primary" onClick={() => setComposerOpen(true)}>New Run</Button>
         </div>
       </div>
@@ -139,6 +142,12 @@ export default function RunsPage() {
           onCancel={() => setComposerOpen(false)}
         />
       </Modal>
+
+      <RunsCompareModal
+        runs={runs ?? []}
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+      />
     </div>
   );
 }

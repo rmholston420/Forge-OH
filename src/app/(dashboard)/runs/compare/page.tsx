@@ -9,7 +9,6 @@ import { Banner } from '@/components/core/Banner';
 import { Skeleton } from '@/components/core/Skeleton';
 import { EmptyState } from '@/components/core/EmptyState';
 import { DiffViewer } from '@/components/domain/DiffViewer';
-import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
 import { bffFetch } from '@/lib/http/bff-client';
 import styles from './compare.module.css';
 
