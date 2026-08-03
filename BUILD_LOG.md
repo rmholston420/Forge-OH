@@ -457,3 +457,25 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - Event history inherited: 19 events on fork == 19 events on source.
   - stub-count = 0.
 - Non-blocking observation: forks of pre-Stage-6 runs inherit working_dir='workspace/runs/pending'. Post-Stage-6 runs (which use real workspace paths) will produce forks with real paths.
+
+## 2026-08-03 01:08 EDT — Slice 7D CLOSED (plugins router = full passthrough)
+- Stage: 7D — plugins router.
+- Changed: bff/routers/plugins.py rewritten (in-memory dict → agent-server passthrough).
+- Endpoints wired:
+  - GET  /api/plugins             installed list, reshaped to Plugin[]
+  - GET  /api/plugins/marketplace catalog
+  - POST /api/plugins             install (accepts source | id | name)
+  - POST /api/plugins/install     alias
+  - POST /api/plugins/{id}/enable PATCH enabled=true, refetch, return
+  - POST /api/plugins/{id}/disable PATCH enabled=false
+  - POST /api/plugins/{id}/ping   installed+enabled check w/ latency
+  - DELETE /api/plugins/{id}      uninstall → 204
+- Reshape: InstalledPluginResponse.name → Plugin.id/name, .enabled → status enum,
+  installed_at → installedAt+updatedAt. MarketplacePluginInfo mapped for the marketplace view.
+- Verified on Colossus (full lifecycle install → disable → enable → ping → uninstall):
+  - marketplace lists city-weather, magic-test, onboarding
+  - install magic-test → status='enabled', version='1.0.0', installedAt real ISO ts
+  - disable/enable round-trip: status flips correctly
+  - ping: {ok:true, latencyMs:2}
+  - DELETE returns HTTP 204; list empty again
+- No stub markers remain in plugins router.
