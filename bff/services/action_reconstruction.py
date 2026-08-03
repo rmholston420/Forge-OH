@@ -311,9 +311,7 @@ def build_plan(events: list[dict[str, Any]], run_id: str) -> list[dict[str, Any]
 _BROWSER_TOOLS = {"browser", "browse", "browsing", "browser_tool", "browser_tool_set"}
 
 
-def build_browser_frames(
-    events: list[dict[str, Any]], run_id: str
-) -> list[dict[str, Any]]:
+def build_browser_frames(events: list[dict[str, Any]], run_id: str) -> list[dict[str, Any]]:
     """Return BrowserFrame[] matching src/lib/schemas/browser.ts.
 
     One frame per browser ActionEvent, paired with its observation if available.
@@ -341,9 +339,7 @@ def build_browser_frames(
                 "screenshotUrl": observation.get("screenshot_url")
                 or observation.get("screenshotUrl"),
                 "domSnapshotUrl": observation.get("dom_snapshot_url"),
-                "action": action_args.get("action_type")
-                or action_args.get("type")
-                or "navigate",
+                "action": action_args.get("action_type") or action_args.get("type") or "navigate",
                 "selector": action_args.get("selector"),
                 "error": observation.get("error"),
             }

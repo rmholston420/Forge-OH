@@ -29,6 +29,9 @@ router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 Period = Literal["7d", "30d", "90d", "all"]
 
+# Module-level singleton to satisfy ruff B008 (no function call in default args).
+_PERIOD_QUERY = Query("7d")
+
 
 # ---------------------------------------------------------------------------
 # Frontend-contract endpoints (new)
@@ -36,7 +39,7 @@ Period = Literal["7d", "30d", "90d", "all"]
 
 
 @router.get("/summary")
-def get_metrics_summary(period: Period = Query("7d")) -> dict:
+def get_metrics_summary(period: Period = _PERIOD_QUERY) -> dict:
     """RunMetricsSummary shape — see src/features/metrics/schemas.ts."""
     return {
         "totalRuns": 0,
@@ -53,7 +56,7 @@ def get_metrics_summary(period: Period = Query("7d")) -> dict:
 
 
 @router.get("/daily")
-def get_daily_metrics(period: Period = Query("7d")) -> list[dict]:
+def get_daily_metrics(period: Period = _PERIOD_QUERY) -> list[dict]:
     """DailyMetricsPoint[] — one row per day in the period."""
     days = {"7d": 7, "30d": 30, "90d": 90, "all": 30}[period]
     today = datetime.now(UTC).date()
@@ -70,14 +73,16 @@ def get_daily_metrics(period: Period = Query("7d")) -> list[dict]:
 
 
 @router.get("/models")
-def get_model_breakdown(period: Period = Query("7d")) -> list[dict]:  # noqa: ARG001
+def get_model_breakdown(period: Period = _PERIOD_QUERY) -> list[dict]:
     """ModelBreakdown[] — one row per LLM model used in the period."""
+    _ = period  # placeholder until aggregation lands
     return []
 
 
 @router.get("/workspaces")
-def get_workspace_breakdown(period: Period = Query("7d")) -> list[dict]:  # noqa: ARG001
+def get_workspace_breakdown(period: Period = _PERIOD_QUERY) -> list[dict]:
     """WorkspaceBreakdown[] — one row per workspace with runs in the period."""
+    _ = period  # placeholder until aggregation lands
     return []
 
 
