@@ -194,15 +194,25 @@ export const GpuChipPopover: React.FC<Props> = ({
   const max = values.length ? Math.max(...values) : 0;
   const cur = values.length ? values[values.length - 1] : null;
 
-  // Y domain: pad by ~10% so the line doesn't touch the border.
-  // For percentages, clamp to 0–100.
+  // Y domain: keep the line prominent — data range ± 10%, but only
+  // include a threshold line if it's within "visual reach" of the
+  // data (~30% of the data range away). Otherwise the chart
+  // compresses to a flat line and the reference lines dominate.
   const isPct = metric === 'utilization_pct' || metric === 'vram_pct';
-  const rawLo = Math.min(min, thresholds.warn ?? Infinity) - (max - min) * 0.1;
-  const rawHi = Math.max(max, thresholds.critical ?? -Infinity) + (max - min) * 0.1;
+  const range = Math.max(max - min, 1);
+  const nearBand = range * 3;
+  const includeWarn = thresholds.warn !== undefined && thresholds.warn <= max + nearBand;
+  const includeCrit = thresholds.critical != null && thresholds.critical <= max + nearBand;
+  const showWarn = thresholds.warn !== undefined && includeWarn;
+  const showCrit = thresholds.critical != null && includeCrit;
+  const rawLo = min - range * 0.1;
+  const rawHi = Math.max(
+    max + range * 0.1,
+    includeWarn ? (thresholds.warn as number) : -Infinity,
+    includeCrit ? (thresholds.critical as number) : -Infinity,
+  );
   const yLo = isPct ? Math.max(0, Math.floor(rawLo)) : Math.floor(rawLo);
-  const yHi = isPct
-    ? Math.min(100, Math.ceil(rawHi))
-    : Math.ceil(rawHi);
+  const yHi = isPct ? Math.min(100, Math.ceil(rawHi)) : Math.ceil(rawHi);
 
   const body = (
     <div
@@ -246,7 +256,7 @@ export const GpuChipPopover: React.FC<Props> = ({
             <LineChart data={points} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
               <XAxis dataKey="t" hide domain={[-WINDOW_SEC, 0]} type="number" />
               <YAxis hide domain={[yLo, yHi]} type="number" />
-              {thresholds.warn !== undefined && (
+              {showWarn && (
                 <ReferenceLine
                   y={thresholds.warn}
                   stroke="var(--color-status-warn, #d99a00)"
@@ -254,9 +264,9 @@ export const GpuChipPopover: React.FC<Props> = ({
                   strokeOpacity={0.6}
                 />
               )}
-              {thresholds.critical != null && (
+              {showCrit && (
                 <ReferenceLine
-                  y={thresholds.critical}
+                  y={thresholds.critical as number}
                   stroke="var(--color-status-crit, #c93a3a)"
                   strokeDasharray="2 3"
                   strokeOpacity={0.6}
