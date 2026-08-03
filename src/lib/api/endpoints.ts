@@ -6,25 +6,29 @@
  *
  * Pattern: ENDPOINTS.DOMAIN.action(params)
  *
- * Ref: Forge-OH-Build-Plan-Definitive.md § BFF routers + API contracts
+ * These constants MUST match the actual BFF routes (see bff/routers/*.py).
+ * The wiring audit at forge-oh-wiring-audit.md tracks drift between this
+ * registry and the BFF surface.
  */
 
 const BASE = '/api';
 
 export const ENDPOINTS = {
   // ------------------------------------------------------------------
-  // Runs
+  // Runs (bff/routers/runs.py)
   // ------------------------------------------------------------------
   RUNS: {
     list: () => `${BASE}/runs`,
     create: () => `${BASE}/runs`,
     get: (runId: string) => `${BASE}/runs/${runId}`,
+    plan: (runId: string) => `${BASE}/runs/${runId}/plan`,
     pause: (runId: string) => `${BASE}/runs/${runId}/pause`,
     resume: (runId: string) => `${BASE}/runs/${runId}/resume`,
     stop: (runId: string) => `${BASE}/runs/${runId}/stop`,
     fork: (runId: string) => `${BASE}/runs/${runId}/fork`,
     approve: (runId: string) => `${BASE}/runs/${runId}/approve`,
     reject: (runId: string) => `${BASE}/runs/${runId}/reject`,
+    secrets: (runId: string) => `${BASE}/runs/${runId}/secrets`,
     compare: (left: string, right: string) =>
       `${BASE}/runs/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`,
   },
@@ -37,103 +41,152 @@ export const ENDPOINTS = {
   },
 
   // ------------------------------------------------------------------
-  // Artifacts
+  // Artifacts — BFF only exposes list. Per-artifact/diff/export are
+  // stubbed in the runs router today; see BUILD_LOG for follow-up slice.
   // ------------------------------------------------------------------
   ARTIFACTS: {
     list: (runId: string) => `${BASE}/runs/${runId}/artifacts`,
-    get: (runId: string, artifactId: string) =>
-      `${BASE}/runs/${runId}/artifacts/${artifactId}`,
-    listFiles: (runId: string) =>
-      `${BASE}/runs/${runId}/artifacts/files`,
-    diff: (runId: string, path: string) =>
-      `${BASE}/runs/${runId}/artifacts/diff?path=${encodeURIComponent(path)}`,
-    exportPatch: (runId: string) =>
-      `${BASE}/runs/${runId}/export/patch`,
   },
 
   // ------------------------------------------------------------------
-  // Commands
+  // Commands (terminal reconstruction)
   // ------------------------------------------------------------------
   COMMANDS: {
     list: (runId: string) => `${BASE}/runs/${runId}/commands`,
-    output: (runId: string, commandId: string) =>
-      `${BASE}/runs/${runId}/commands/${commandId}/output`,
   },
 
   // ------------------------------------------------------------------
-  // Traces (OTEL)
+  // Traces (OTEL) — per-run trace list only. Trace/span detail is under
+  // OBSERVABILITY below.
   // ------------------------------------------------------------------
   TRACES: {
     list: (runId: string) => `${BASE}/runs/${runId}/traces`,
-    getSpan: (runId: string, spanId: string) =>
-      `${BASE}/runs/${runId}/traces/${spanId}`,
   },
 
   // ------------------------------------------------------------------
-  // Browser sessions
+  // Browser frames (reconstructed from browser-tool ActionEvents)
   // ------------------------------------------------------------------
   BROWSER: {
-    listSessions: (runId: string) =>
-      `${BASE}/runs/${runId}/browser/sessions`,
-    getSession: (runId: string, sessionId: string) =>
-      `${BASE}/runs/${runId}/browser/sessions/${sessionId}`,
+    frames: (runId: string) => `${BASE}/runs/${runId}/browser`,
   },
 
   // ------------------------------------------------------------------
-  // Workspaces
+  // File diffs (reconstructed from file-write ActionEvents)
+  // ------------------------------------------------------------------
+  FILES: {
+    list: (runId: string) => `${BASE}/runs/${runId}/files`,
+    get: (runId: string, filePath: string) =>
+      `${BASE}/runs/${runId}/files/${encodeURIComponent(filePath)}`,
+  },
+
+  // ------------------------------------------------------------------
+  // Workspaces (bff/routers/workspaces.py)
   // ------------------------------------------------------------------
   WORKSPACES: {
     list: () => `${BASE}/workspaces`,
     get: (id: string) => `${BASE}/workspaces/${id}`,
-    reset: (id: string) => `${BASE}/workspaces/${id}/reset`,
+    create: () => `${BASE}/workspaces`,
+    update: (id: string) => `${BASE}/workspaces/${id}`,
+    delete: (id: string) => `${BASE}/workspaces/${id}`,
+    test: (id: string) => `${BASE}/workspaces/${id}/test`,
   },
 
   // ------------------------------------------------------------------
-  // Agents / Presets
-  // Note: BFF router mounts at /api/agent-presets (not /api/agents/presets).
+  // Agent presets (bff/routers/agent_presets.py)
   // ------------------------------------------------------------------
   AGENTS: {
     listPresets: () => `${BASE}/agent-presets`,
+    getPreset: (id: string) => `${BASE}/agent-presets/${id}`,
+    createPreset: () => `${BASE}/agent-presets`,
+    updatePreset: (id: string) => `${BASE}/agent-presets/${id}`,
+    deletePreset: (id: string) => `${BASE}/agent-presets/${id}`,
+    duplicatePreset: (id: string) => `${BASE}/agent-presets/${id}/duplicate`,
+    setDefaultPreset: (id: string) => `${BASE}/agent-presets/${id}/set-default`,
   },
 
   // ------------------------------------------------------------------
-  // MCP integrations
+  // MCP integrations (bff/routers/mcp.py — passthrough to agent-server
+  // settings/mcp/{name})
   // ------------------------------------------------------------------
   MCP: {
-    list: () => `${BASE}/integrations/mcp`,
-    servers: () => `${BASE}/mcp/servers`,
-    register: () => `${BASE}/mcp/servers`,
-    deleteServer: (id: string) => `${BASE}/mcp/servers/${id}`,
-    listTools: (id: string) => `${BASE}/mcp/servers/${id}/tools`,
+    list: () => `${BASE}/mcp`,
+    create: () => `${BASE}/mcp`,
+    delete: (id: string) => `${BASE}/mcp/${id}`,
+    ping: (id: string) => `${BASE}/mcp/${id}/ping`,
+    toggle: (id: string) => `${BASE}/mcp/${id}/toggle`,
   },
 
   // ------------------------------------------------------------------
-  // Plugins
+  // Plugins (bff/routers/plugins.py)
   // ------------------------------------------------------------------
   PLUGINS: {
     list: () => `${BASE}/plugins`,
+    marketplace: () => `${BASE}/plugins/marketplace`,
+    create: () => `${BASE}/plugins`,
     install: () => `${BASE}/plugins/install`,
     enable: (id: string) => `${BASE}/plugins/${id}/enable`,
     disable: (id: string) => `${BASE}/plugins/${id}/disable`,
     uninstall: (id: string) => `${BASE}/plugins/${id}`,
+    ping: (id: string) => `${BASE}/plugins/${id}/ping`,
   },
 
   // ------------------------------------------------------------------
-  // Secrets (metadata only — raw values never in UI)
+  // Secrets (bff/routers/secrets.py)
   // ------------------------------------------------------------------
   SECRETS: {
     list: () => `${BASE}/secrets`,
     create: () => `${BASE}/secrets`,
-    update: (id: string) => `${BASE}/secrets/${id}`,
+    rotate: (id: string) => `${BASE}/secrets/${id}/rotate`,
     delete: (id: string) => `${BASE}/secrets/${id}`,
   },
 
   // ------------------------------------------------------------------
-  // Observability
+  // Notifications (bff/routers/notifications.py)
+  // ------------------------------------------------------------------
+  NOTIFICATIONS: {
+    list: () => `${BASE}/notifications`,
+    markRead: (id: string) => `${BASE}/notifications/${id}/read`,
+    markAllRead: () => `${BASE}/notifications/read-all`,
+    delete: (id: string) => `${BASE}/notifications/${id}`,
+  },
+
+  // ------------------------------------------------------------------
+  // Metrics (bff/routers/metrics.py)
+  // ------------------------------------------------------------------
+  METRICS: {
+    // Frontend dashboard endpoints
+    summary: (period: string) => `${BASE}/metrics/summary?period=${period}`,
+    daily: (period: string) => `${BASE}/metrics/daily?period=${period}`,
+    models: (period: string) => `${BASE}/metrics/models?period=${period}`,
+    workspaces: (period: string) =>
+      `${BASE}/metrics/workspaces?period=${period}`,
+    // Per-entity legacy endpoints
+    global: () => `${BASE}/metrics`,
+    forRun: (runId: string) => `${BASE}/metrics/runs/${runId}`,
+    forWorkspace: (workspaceId: string) =>
+      `${BASE}/metrics/workspaces/${workspaceId}`,
+    cost: () => `${BASE}/metrics/cost`,
+  },
+
+  // ------------------------------------------------------------------
+  // Settings (bff/routers/settings.py)
+  // ------------------------------------------------------------------
+  SETTINGS: {
+    get: () => `${BASE}/settings`,
+    patch: () => `${BASE}/settings`,
+    reset: () => `${BASE}/settings/reset`,
+    modelRouting: () => `${BASE}/settings/model-routing`,
+  },
+
+  // ------------------------------------------------------------------
+  // Observability (bff/routers/observability.py)
   // ------------------------------------------------------------------
   OBSERVABILITY: {
-    summary: () => `${BASE}/observability/summary`,
-    runs: () => `${BASE}/observability/runs`,
-    errors: () => `${BASE}/observability/errors`,
+    traces: () => `${BASE}/observability/traces`,
+    tracesForRun: (runId: string) =>
+      `${BASE}/observability/runs/${runId}/traces`,
+    trace: (traceId: string) => `${BASE}/observability/traces/${traceId}`,
+    spans: (traceId: string) =>
+      `${BASE}/observability/traces/${traceId}/spans`,
   },
 } as const;
