@@ -14,6 +14,7 @@ import { useRunDetailStore, type RunDetailStore } from '@/features/run-detail/st
 import { useRunStream } from '@/lib/streaming/useRunStream';
 import type { StreamEvent } from '@/lib/streaming/useRunStream';
 import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
+import { RunSecretsModal } from '@/components/domain/RunSecretsModal';
 import { EventCard } from '@/components/domain/EventCard';
 import { StreamBanner } from '@/components/domain/StreamBanner';
 import { Banner } from '@/components/core/Banner';
@@ -87,6 +88,7 @@ export default function RunDetailPage({
   const rejectMut = useRejectRun();
   const forkMut = useForkRun();
   const router = useRouter();
+  const [secretsOpen, setSecretsOpen] = React.useState(false);
 
   const {
     selectedTab, setSelectedTab,
@@ -165,6 +167,7 @@ export default function RunDetailPage({
               },
             });
           }}
+          onEditSecrets={() => setSecretsOpen(true)}
           onPause={() => {
             // One toggle drives both Pause and Resume based on current status.
             if (run.status === 'paused') resumeMut.mutate(run.id);
@@ -184,6 +187,14 @@ export default function RunDetailPage({
           }}
         />
       ) : null}
+
+      {run && (
+        <RunSecretsModal
+          runId={run.id}
+          open={secretsOpen}
+          onClose={() => setSecretsOpen(false)}
+        />
+      )}
 
       {(run?.status === 'awaiting-approval' || pendingApprovalBanner) && (
         <Banner variant="warning" title="Awaiting Approval">

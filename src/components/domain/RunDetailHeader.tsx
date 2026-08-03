@@ -10,6 +10,7 @@ export interface RunDetailHeaderProps {
   onPause?: () => void;
   onStop?: () => void;
   onFork?: () => void;
+  onEditSecrets?: () => void;
   onApprove?: () => void;
   onReject?: () => void;
   /** Disable all controls (e.g. while a mutation is in flight). */
@@ -26,6 +27,7 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({
   onPause,
   onStop,
   onFork,
+  onEditSecrets,
   onApprove,
   onReject,
   busy = false,
@@ -112,6 +114,14 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({
             disabled={busy}
           >
             ⎇ Fork
+          </button>
+          <button
+            className={[styles.btn, styles['btn--secondary']].join(' ')}
+            onClick={onEditSecrets}
+            aria-label="Edit run environment variables"
+            disabled={busy}
+          >
+            🔑 Env
           </button>
         </div>
       </div>
