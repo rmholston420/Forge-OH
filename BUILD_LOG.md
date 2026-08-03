@@ -2822,3 +2822,54 @@ nvfp4/awq launchers, and run a live 3-prompt smoke through the router.
 **Stop condition status:** F.19-pre fully closed — verdict, ADR,
 topology, budgets, and open items all resolved. F.19 unblocked; F.19-pre-b
 scoped as parallel work.
+
+## 2026-08-03 18:20 EDT — F.19.1a: dual-port vLLM launchers + supervisor
+
+**Stage:** F.19 (Coder/Planner router rewire) — sub-slice 1a of 4.
+
+**Delivered:**
+- `ops/vllm_launch_coder.sh` — native venv `vllm serve` for
+  `qwen3.6-35b-nvfp4` on `:8501`, `--quantization modelopt_fp4`,
+  `--max-num-seqs 128`, `--enable-prefix-caching`. Bench provenance:
+  `bench/f19pre/vllm_launch.sh` c04 recipe.
+- `ops/vllm_launch_planner.sh` — native venv `vllm serve` for
+  `qwen3-thinking-2507-awq` on `:8502`, `--reasoning-parser qwen3`,
+  `--max-num-seqs 128`, no `--quantization` (compressed-tensors
+  autodetected). Bench provenance: c08 recipe.
+- `ops/vllm_supervisor.sh` — swap-on-demand controller. Commands:
+  `up {coder|planner}` (stop other + start + wait ready),
+  `ensure {coder|planner}` (no-op if live, else `up`),
+  `down` (stop both), `status` (exit 0=coder 1=planner 2=none 3=broken).
+  Uses `scripts/vllm_stop.sh` (F.18) for EngineCore/tracker cleanup;
+  probes `/v1/models` for readiness (matches
+  `bff.services.model_router.vllm_health_check` contract).
+
+**Bench-vs-launcher deltas resolved:**
+- Bench used **Docker** (`~/models:/models:ro`); production launchers
+  use **native venv** to match the F.18 `scripts/vllm_start.sh`
+  pattern already deployed on Colossus. Same flags, no image pull
+  overhead, same stop-hygiene as F.18.
+- **Correction:** ADR-009 §5 said "let vLLM autodetect quantization
+  for NVFP4"; the bench actually passed `--quantization modelopt_fp4`
+  explicitly, and it is required for the qwen3.6-nvfp4 checkpoint.
+  Autodetect only covers compressed-tensors (c08 case), not
+  ModelOpt-FP4 (c04 case). ADR-009 will be amended in F.19.4 once
+  live smoke confirms the launcher.
+
+**Files touched:**
+- `ops/vllm_launch_coder.sh` (new)
+- `ops/vllm_launch_planner.sh` (new)
+- `ops/vllm_supervisor.sh` (new)
+- `BUILD_LOG.md` (this entry)
+
+**Ports/adapters affected:** none yet — launchers only, no BFF wiring.
+
+**Stop condition (F.19.1a):**
+Three scripts exist, are executable, pass `bash -n` syntax check,
+and `vllm_supervisor.sh status` runs correctly in a shell without
+vLLM installed (returns `none`, exit 2). Met 2026-08-03 18:20 EDT.
+
+**Next (F.19.1b):**
+Live supervisor smoke on Colossus — `up coder`, verify c04-equivalent
+`/v1/models` served-model-name, `down`, `up planner`, verify c08,
+`down`. Then F.19.2a: `model_router.py` role-based API.
