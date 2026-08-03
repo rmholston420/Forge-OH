@@ -537,15 +537,44 @@ async def approve_run(run_id: str) -> dict:
 
 @router.post("/runs/{run_id}/reject")
 async def reject_run(run_id: str, body: Optional[RejectRunRequest] = None) -> dict:
+    # Reject flow — verified against agent-server 1.40.0:
+    #   respond_to_confirmation {accept: False} declines the pending tool call
+    #   and returns the conversation to `idle` (not a terminal state). To match
+    #   the user's intent ("reject this run"), we then attempt to hard-cancel
+    #   via /interrupt. If the conversation is already idle/finished, /interrupt
+    #   yields 400 which we silently swallow.
     payload = {"accept": False}
     if body and body.reason:
         payload["reason"] = body.reason
-    result = await _call_lifecycle(
+    respond = await _call_lifecycle(
         run_id,
         "events/respond_to_confirmation",
         json_body=payload,
     )
-    return {"ok": True, "run_id": run_id, "status": "paused", "agent_server": result}
+
+    # Best-effort follow-up interrupt so the run reaches a terminal state.
+    # Try /interrupt unconditionally with tolerance for 400 (idle/finished),
+    # since polling status first introduces a race between respond and check.
+    client = get_client()
+    interrupt_note: Optional[str] = None
+    try:
+        r = await client.post(f"/api/conversations/{run_id}/interrupt")
+        if r.status_code < 400:
+            interrupt_note = "interrupted"
+        elif r.status_code == 400:
+            interrupt_note = f"no interrupt needed: {r.text[:120]}"
+        else:
+            interrupt_note = f"interrupt HTTP {r.status_code}: {r.text[:120]}"
+    except Exception as exc:  # noqa: BLE001
+        log.warning("reject_run: post-reject interrupt failed: %s", exc)
+        interrupt_note = f"interrupt error: {exc}"
+
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "status": "rejected",
+        "agent_server": {"respond": respond, "interrupt": interrupt_note},
+    }
 
 
 @router.post("/runs/{run_id}/fork")

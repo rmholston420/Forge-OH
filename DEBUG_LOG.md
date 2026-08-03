@@ -73,3 +73,10 @@
 - Root cause: readEnvFlag() used a computed lookup: process.env[`NEXT_PUBLIC_FEATURE_${flag}`]. Next.js only inlines *literal* process.env.NEXT_PUBLIC_* reads into client bundles. Any computed key access returns undefined in the browser. Server components worked; client components silently disabled every flag.
 - Fix: Replace the computed lookup with a static Record<FeatureFlag, string|undefined> in src/lib/feature-flags/index.ts, one literal process.env.NEXT_PUBLIC_FEATURE_<NAME> per flag, so Next inlines them all at compile time. readEnvFlag() now just returns STATIC_FLAG_VALUES[flag].
 - Files changed: src/lib/feature-flags/index.ts.
+
+## 2026-08-03 00:09 EDT \u2014 Reject doesn't reach a terminal state on its own
+- Symptom: Stage 1E e2e leg 2 verified respond_to_confirmation {accept:false} returned 200 but the run then sat in agent-server 'idle' \u2192 BFF 'queued' indefinitely.
+- Affected stage/plugin/port: Stage 1E (Approval Gate), bff/routers/runs.py reject_run().
+- Root cause: agent-server's response to a rejected confirmation is to abort the tool call and return the conversation loop to idle. There is no terminal-on-reject transition. From the user's POV the run is still open.
+- Fix: reject_run() now POSTs to /interrupt after respond_to_confirmation. /interrupt yields 400 when the conversation is already idle/finished; that branch is tolerated. Successful interrupt drives execution_status to 'paused' (agent-server's version of a hard-cancel state). BFF status map already routes paused\u2192paused, so the UI shows a paused run that can be resumed or fully stopped. This matches how OpenHands models cancellation.
+- Files changed: bff/routers/runs.py.

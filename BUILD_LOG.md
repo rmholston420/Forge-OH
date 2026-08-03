@@ -347,3 +347,8 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - Change: src/lib/feature-flags/index.ts now uses a static Record<FeatureFlag, string|undefined> populated with one literal process.env.NEXT_PUBLIC_FEATURE_<NAME> read per flag. This is the only pattern Next.js will inline into client bundles.
 - Effect: All flags now respond to NEXT_PUBLIC_FEATURE_* in .env.local from Client Components (previously only Server Components saw them via runtime process.env).
 - Verification: pending Playwright re-run after Next restart.
+
+## 2026-08-03 00:09 EDT \u2014 Stage 1E hotfix: reject follows through with /interrupt
+- Stage: 1E (bug found during verify).
+- Change: bff/routers/runs.py reject_run() now performs respond_to_confirmation + /interrupt unconditionally. /interrupt 400 (already idle) is tolerated; response now returns status:"rejected" with an agent_server object containing both sub-calls' outcomes.
+- Verification: pending re-run of scripts/e2e-approval.ts.
