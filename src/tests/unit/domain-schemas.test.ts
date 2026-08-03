@@ -171,7 +171,7 @@ describe('McpToolSchema', () => {
 describe('SecretSchema', () => {
   const VALID = {
     id: 'sec-1',
-    key: 'OPENAI_API_KEY',
+    name: 'OPENAI_API_KEY',
     scope: 'global',
     createdAt: now,
   };
