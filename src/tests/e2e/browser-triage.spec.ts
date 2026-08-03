@@ -70,17 +70,7 @@ async function assertClean(
   expect(monitor.apiFailures, `${name}: API failures`).toEqual([]);
 }
 
-test('triage login page render', async ({ browser }) => {
-  const page = await browser.newPage();
-  const monitor = attachBrowserMonitors(page);
-
-  await page.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('body')).toBeVisible();
-  await assertClean('login-page', page, monitor);
-  await page.close();
-});
-
-test('triage authenticated runs page', async ({ page }) => {
+test('triage runs page', async ({ page }) => {
   const monitor = attachBrowserMonitors(page);
 
   await page.goto('/runs', { waitUntil: 'domcontentloaded' });

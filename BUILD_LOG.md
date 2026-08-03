@@ -151,3 +151,25 @@ first port lands in a later step.
 - **Files touched:** `bff/requirements.txt`, `requirements.txt`
 - **Next:** user runs `pip install -r bff/requirements.txt` inside `.oh-venv`, then retries uvicorn
 
+
+## 2026-08-02 21:56 EDT — Step 2 follow-up: /login redirect + orphan e2e cleanup
+- **Symptom (browser):** `GET /` returned 307 -> `/login` -> 404 after Step 2 removed the login page
+- **Root cause:** `src/app/page.tsx` still hard-redirected to `/login`; playwright `globalSetup` + auth specs still depended on the deleted login flow
+- **Fixes:**
+  - `src/app/page.tsx` — redirect target `/login` -> `/runs` (dashboard landing per plan)
+  - `playwright.config.ts` — removed `setup` project + `storageState` reference to deleted `.auth/user.json`
+  - Deleted orphan auth e2e/integration tests:
+    - `src/tests/e2e/auth.setup.ts`, `auth.spec.ts`, `globalSetup.ts`
+    - `src/tests/integration/auth-flow.test.ts`
+  - `src/tests/e2e/browser-triage.spec.ts` — dropped `triage login page render` test; kept `triage runs page`
+
+### Verification
+- BFF live on 8081 — `curl /api/runs` -> `{"data":[],"pageInfo":{...},"stub":true}` 200
+- Frontend deps resolved; `pnpm dev` boots on 3000 with Next 16 Turbopack
+
+### Step 2 Definition of Done
+Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://localhost:3000/ and confirm the dashboard renders at /runs.**
+
+### Deferred to Step 3 (docs only)
+- Next 16 warnings (`experimental.typedRoutes` -> `typedRoutes`; `middleware` -> `proxy`) — non-blocking, cosmetic
+
