@@ -55,8 +55,8 @@ print(json.dumps({
 
     local resp
     local t0=$(date +%s)
-    # 15-minute timeout: allows one supervisor swap (~4 min) + generation.
-    resp="$(curl -sS --max-time 900 -X POST "$BFF_URL/api/runs" \
+    # 20-minute timeout: allows one supervisor swap (~8 min with slop) + generation.
+    resp="$(curl -sS --max-time 1200 -X POST "$BFF_URL/api/runs" \
         -H 'Content-Type: application/json' \
         --data "$payload")"
     local rc=$?
