@@ -436,6 +436,15 @@ async def get_run_commands(run_id: str) -> dict:
     return {"data": build_commands(events)}
 
 
+@router.get("/runs/{run_id}/browser")
+async def get_run_browser_frames(run_id: str) -> dict:
+    """Return browser frames captured by the run (may be empty)."""
+    from bff.services.action_reconstruction import build_browser_frames
+
+    events = await _fetch_all_events(run_id)
+    return {"data": build_browser_frames(events, run_id)}
+
+
 @router.get("/runs/{run_id}/traces")
 async def get_run_traces(run_id: str) -> dict:
     """Return spans for the given run (single trace per conversation)."""

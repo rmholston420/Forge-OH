@@ -298,3 +298,55 @@ def build_plan(events: list[dict[str, Any]], run_id: str) -> list[dict[str, Any]
     for s in latest_steps:
         s["planId"] = plan_id
     return latest_steps
+
+
+# ---------------------------------------------------------------------------
+# Browser frames — reconstruct BrowserFrame[] matching
+# src/lib/schemas/browser.ts from agent-server ActionEvents whose tool is
+# 'browser'. Screenshot URLs are proxied back through the BFF once the
+# agent-server exposes them; for now we emit whatever URLs (if any) the
+# tool observation carries.
+# ---------------------------------------------------------------------------
+
+_BROWSER_TOOLS = {"browser", "browse", "browsing", "browser_tool", "browser_tool_set"}
+
+
+def build_browser_frames(
+    events: list[dict[str, Any]], run_id: str
+) -> list[dict[str, Any]]:
+    """Return BrowserFrame[] matching src/lib/schemas/browser.ts.
+
+    One frame per browser ActionEvent, paired with its observation if available.
+    Empty list if the run made no browser calls.
+    """
+    obs_by_action = _pair_observations(events)
+    frames: list[dict[str, Any]] = []
+    seq = 0
+    for e in events:
+        if e.get("kind") != "ActionEvent":
+            continue
+        tool = (e.get("tool_name") or "").lower()
+        if tool not in _BROWSER_TOOLS:
+            continue
+        action_args = e.get("action") or e.get("arguments") or {}
+        obs = obs_by_action.get(e.get("id") or "") or {}
+        observation = obs.get("observation") or obs.get("content") or {}
+        frames.append(
+            {
+                "id": e.get("id") or f"browser-{run_id}-{seq}",
+                "runId": run_id,
+                "timestamp": e.get("timestamp") or obs.get("timestamp") or "",
+                "seq": seq,
+                "url": observation.get("url") or action_args.get("url"),
+                "screenshotUrl": observation.get("screenshot_url")
+                or observation.get("screenshotUrl"),
+                "domSnapshotUrl": observation.get("dom_snapshot_url"),
+                "action": action_args.get("action_type")
+                or action_args.get("type")
+                or "navigate",
+                "selector": action_args.get("selector"),
+                "error": observation.get("error"),
+            }
+        )
+        seq += 1
+    return frames
