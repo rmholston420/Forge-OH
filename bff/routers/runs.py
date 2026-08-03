@@ -351,7 +351,12 @@ async def get_run_files(run_id: str) -> dict:
 @router.get("/runs/{run_id}/files/{file_path:path}")
 async def get_run_file_diff(run_id: str, file_path: str) -> dict:
     events = await _fetch_all_events(run_id)
+    # Try the path as-received first (URL-decoded by FastAPI), then with a
+    # leading '/' added. This tolerates both `%2Fworkspace%2Ffoo` (frontend
+    # encodeURIComponent) and `workspace/foo` (raw path parameter) forms.
     diff = build_file_diff(events, file_path)
+    if diff is None and not file_path.startswith("/"):
+        diff = build_file_diff(events, "/" + file_path)
     if diff is None:
         raise HTTPException(status_code=404, detail="file not found in run")
     return {"data": diff}

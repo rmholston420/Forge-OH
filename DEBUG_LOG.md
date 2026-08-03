@@ -30,3 +30,10 @@
 - Root cause: CreateRunRequest in bff/routers/runs.py declares title: str (required). Frontend auto-generates title from prompt; direct curl smoke-tests must include it.
 - Fix: include "title":"<label>" in the JSON body.
 - Files changed: none (docs-only lesson).
+
+## 2026-08-02 23:17 EDT — /runs/{id}/files/{path} 404 on unencoded absolute paths
+- Symptom: `curl /api/runs/<cid>/files/workspace/hello.txt` returned 404 while the file appeared in the listing.
+- Stage: 4
+- Root cause: reconstructed paths are absolute (e.g. `/workspace/hello.txt`) because the agent reports them that way. FastAPI's `{file_path:path}` captured `workspace/hello.txt` (no leading slash) since the router prefix `/files/` consumes the slash. Lookup mismatched.
+- Fix: after first miss, retry lookup with a `/` prefix. Preserves the correct-encoded frontend path (`%2Fworkspace%2Ffoo` decodes to `/workspace/foo` and matches on first try).
+- Files changed: bff/routers/runs.py
