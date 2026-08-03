@@ -25,3 +25,8 @@
 .seriesName { font-weight: 500; color: var(--color-text-primary); flex: 1; }
 .seriesUnit { color: var(--color-text-secondary); }
 .seriesPoints { color: var(--color-text-faint); }
+
+.verifyRow {
+  margin-top: 12px;
+  max-width: 320px;
+}

@@ -1,7 +1,9 @@
 'use client';
 import React from 'react';
 import { useRunMetrics } from '@/features/observability/hooks';
+import { useTraceSpans } from '@/features/trace/hooks';
 import { MetricKPI } from '@/components/domain/MetricKPI';
+import { VerifyIterationsWidget } from '@/components/domain/VerifyIterationsWidget';
 import { Banner } from '@/components/core/Banner';
 import styles from './MetricsTab.module.css';
 
@@ -20,6 +22,7 @@ function formatDurationMs(ms: number | null) {
 
 export function MetricsTab({ runId, isActive }: { runId: string; isActive: boolean }) {
   const { data: metrics, isLoading, isFetching, error } = useRunMetrics(runId, isActive);
+  const { data: spans = [] } = useTraceSpans(runId);
 
   if (!FEATURE_ENABLED) {
     return <Banner variant="info">Metrics tab is feature-flagged. Set NEXT_PUBLIC_FEATURE_METRICS_ENABLED=true.</Banner>;
@@ -57,6 +60,10 @@ export function MetricsTab({ runId, isActive }: { runId: string; isActive: boole
           label="Duration" value={metrics ? formatDurationMs(metrics.durationMs) : '—'}
           icon="⏱" loading={showSkeleton}
         />
+      </div>
+
+      <div className={styles.verifyRow}>
+        <VerifyIterationsWidget spans={spans} />
       </div>
 
       {metrics?.series && metrics.series.length > 0 && (

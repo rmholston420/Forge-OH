@@ -1,52 +1,51 @@
-# SESSION_HANDOFF
+# Session Handoff — 2026-08-03 08:32 EDT
 
-**Last updated:** 2026-08-03 07:52 EDT
-**Current stage:** Recommendation #1 (Repository-Aware Structural Retrieval Layer) — COMPLETE
-**Current tag:** `v1.0-alpha1` on `17dcb1b` (Slice C.2 baseline)
-**Latest commit:** `<pending — Slice D.5 push>` (frontend RepoGraph panel + ADR-0006 + PORTING_LEDGER)
+## Current stage / plugin / port
 
-## What was completed this session
+Step 8 of Forge-OH-Action-Plan-v4 — Recommendation #2 (Execution-Verified
+Self-Debugging Loop). All five sub-slices (E.1–E.5) shipped. Recommendation
+#1 (RepoGraph, Slice D) also complete.
 
-Recommendation #1 delivered end-to-end in five slices, D.1 → D.5:
+## Completed this session
 
-- **D.1** `febe96c` — Neo4j driver singleton (`bff/deps/neo4j_driver.py`) + `GET /api/repograph/health` verified on Colossus against real DozerDB 5.26.27.
-- **D.2** `bdb8090` — Clean-slate tree-sitter tag extractor at `openhands_tools_ext/repograph/parser.py`. Python, TS, TSX, JS. No `exec`/`eval`. 27/27 tests.
-- **D.3** `242a042` — Graph builder + Neo4j store + read queries (`search_by_name`, `callers_of`, `callees_of`, `context_bundle`). Pure-Python power-iteration PageRank; dropped `networkx`. 51/51 tests.
-- **D.4** `d6aaf74` + fixup `3a650d7` — Six BFF endpoints under `/api/repograph` + `bff/services/repograph_registry.py`. Feature-flag guarded; workspace registry populated by `POST /index`; `GET /co_changed` shells out to git. Real-repo smoke on Colossus: 420 files, 997 symbols, 2453 calls; top-hub `run_metadata_store.get` @ pagerank 0.135. 26/26 router tests.
-- **D.5** (this commit) — Frontend `RepoGraphPanel` mounted in Trace tab. Feature-flag gated (`NEXT_PUBLIC_FEATURE_REPOGRAPH`). Typed Zod schemas + TanStack Query hooks + full MSW-driven test suite (14/14). ADR-006 + PORTING_LEDGER first entry.
+- **E.1** `f56b34f` — `VerificationStep` Pydantic + Zod parity, span-kind
+  wiring in BFF.
+- **E.2** `1a0ea2f` — Test-runner auto-detect (`selector.py`) + subprocess
+  wrapper (`runner.py`), 31 tests.
+- **E.3** `d0ce9bf` — LDB-inspired runtime inspector (`breakpoint/
+  inspector.py`), reference-only port, PORTING_LEDGER entry #2, 11 tests.
+- **E.4** `f5dd857` — `VerifyLoop` retry policy + STOP-hook CLI shim
+  (`hook.py`), filesystem state persistence, 17 tests.
+- **E.5** (this commit) — Frontend `VerifyStepCard` + Metrics-tab
+  `VerifyIterationsWidget` + ADR-0007, 12 frontend tests.
 
-## What remains before Definition of Done is met
+Total: 127/127 Python tests + 788/795 frontend tests (1 pre-existing
+Blob failure documented in DEBUG_LOG; 6 skipped are unrelated).
 
-Nothing for Recommendation #1. All five sub-slices shipped with green tests and end-to-end verification on Colossus. Full BFF suite: 96 pass (excluding pre-existing mcp/plugins/observability failures). Full frontend suite: 813 pass (excluding one pre-existing jsdom `Blob instanceof` failure in `lib-api-client.test.ts` that predates D.1–D.5).
+## Remaining before current Definition of Done
+
+Slice E DoD is met. Remaining housekeeping:
+
+1. Tag `v1.0-alpha2` on the E.5 commit and push the tag.
+2. Colossus verification pass:
+   - `.oh-venv/bin/pytest openhands_tools_ext/` (expect 127 pass).
+   - `npm test -- src/tests/unit/VerifyStepCard.test.tsx src/tests/unit/VerifyIterationsWidget.test.tsx` (expect 12 pass).
+   - `PLAYWRIGHT_REAL_BFF=1 npm run test:e2e -- src/tests/e2e/repograph-panel.spec.ts` for the Slice D wiki screenshots (needs `REPOGRAPH_ENABLED=true` + `NEXT_PUBLIC_FEATURE_REPOGRAPH=true` + `NEXT_PUBLIC_FEATURE_METRICS_ENABLED=true`).
+3. Send Playwright screenshots back for the wiki.
+4. Agent-server integrator step (not in-mirror): register the STOP hook in
+   the agent-server's `.openhands/hooks.toml` per the recipe in the E.4
+   BUILD_LOG entry.
 
 ## Open questions
 
-None from this session.
+None blocking. The one deferred item is the pre-existing
+`bffDownload > returns Blob` jsdom Blob-realm test failure — logged in
+DEBUG_LOG 2026-08-03 07:52 EDT — which is unrelated to Slice D or E.
 
 ## Exact next action
 
-Confirm D.5 verification on Colossus:
-
-```bash
-cd ~/dev/forge-oh && git pull --ff-only
-
-# Enable the frontend flag
-grep -q NEXT_PUBLIC_FEATURE_REPOGRAPH .env.local 2>/dev/null || \
-  echo "NEXT_PUBLIC_FEATURE_REPOGRAPH=true" >> .env.local
-
-# Rebuild the Next.js server so the flag is inlined
-./scripts/forge-up.sh 2>&1 | tail -5
-
-# Then open http://localhost:3000/runs/<any-run-id> and click the
-# "Trace" tab. RepoGraph panel should appear at the bottom, showing a
-# green "neo4j 5.26.27 / forgeoh" badge. Type a workspace path
-# (e.g. /home/rmholston/dev/forge-oh) → click Index → search for a
-# symbol name → click a result → see callers / callees / co-changed.
+Tag and push `v1.0-alpha2`:
 ```
-
-After successful verification, choose the next recommendation from `forge-oh-improvements-research.md`:
-
-- **#2:** OpenTelemetry / observability deep-instrumentation.
-- **#3:** Session-scoped skill orchestration.
-
-Or return to any deferred item on `Forge-OH-Action-Plan-v4.md` Step 9+.
+git tag -a v1.0-alpha2 -m "Rec #1 (RepoGraph) + Rec #2 (verify loop) complete" && git push origin v1.0-alpha2
+```
+Then run the Colossus verification and E2E screenshot pass listed above.

@@ -1602,3 +1602,47 @@ timeout_seconds = 180
 The hook must be invoked with `OPENHANDS_PROJECT_DIR` pointing at the workspace and `OPENHANDS_SESSION_ID` set to the run id.
 
 **Next:** E.5 — frontend Trace-tab card + Metrics-tab rolling-average + ADR-0007 + `v1.0-alpha2` tag.
+
+## 2026-08-03 08:32 EDT — Step 8 Slice E.5: frontend Trace card + Metrics widget + ADR-0007 (Slice E complete)
+
+**Slice E.5 of 5 — Recommendation #2 UI + docs, closing out Slice E.**
+
+**Files new:**
+- `src/components/domain/VerifyStepCard.tsx` — dedicated card for `verify` span kind. Iteration counter, runner label, verdict badge, targets, command, exit code, duration, collapsible stdout/stderr tails. Parses `VerificationStep` from `span.attributes` with fallback keys (`result` / `observation` / `verify_step` / span-root) so it is resilient to agent-server serialisation variations.
+- `src/components/domain/VerifyStepCard.module.css` — dark card + 4-verdict color palette (pass=green, fail=red, error=amber, skipped=grey).
+- `src/components/domain/VerifyIterationsWidget.tsx` — Metrics-tab widget. Reads `useTraceSpans(runId)` data (no new fetch) and derives "iterations used / cap" high-water mark, last verdict, and a colored chip strip of the verdict history.
+- `src/components/domain/VerifyIterationsWidget.module.css` — matching palette.
+- `src/tests/unit/VerifyStepCard.test.tsx` — 7 tests: happy path, fallback keys, empty-state, code rendering, tail visibility, verdict class application.
+- `src/tests/unit/VerifyIterationsWidget.test.tsx` — 5 tests: empty-state, high-water-mark computation, chip ordering, schema-parse skipping, `max_iterations` sourcing.
+- `docs/adr/007-verify-loop.md` — 179-line ADR covering all five design decisions locked in across E.1–E.5, plus rejected alternatives.
+
+**Files edited:**
+- `src/components/domain/SpanRow.tsx` — imports `VerifyStepCard`; renders a card row below a verify span when expanded.
+- `src/app/(dashboard)/runs/[runId]/tabs/MetricsTab.tsx` — imports `useTraceSpans` + `VerifyIterationsWidget`; renders the widget between the KPI grid and the time-series list.
+- `src/app/(dashboard)/runs/[runId]/tabs/MetricsTab.module.css` — new `.verifyRow` class, `max-width: 320px` so the widget doesn't stretch across a wide screen.
+
+**Design decisions (all documented in ADR-0007):**
+- **Zero new fetches / endpoints.** Both frontend components derive from the existing `useTraceSpans(runId)` data.
+- **Card renders inline under the span row**, not in the right-side inspector panel. Rationale: the verify step's own info (verdict, tails) is what the user needs *right there* while reading the trace; the inspector's role of showing all attributes is redundant for this kind.
+- **Chip strip in the widget** for at-a-glance sequence: one small colored square per iteration, verdict-coloured, ordered ascending.
+- **Metrics widget capped at `max-width: 320px`** so it sits alongside the existing KPI grid rather than stretching full-width and looking unbalanced.
+
+**Checks:**
+- ruff: n/a (frontend only in this slice).
+- `tsc --noEmit`: clean.
+- `vitest run src/tests/unit/`: 788/795 pass (1 pre-existing jsdom Blob failure documented in DEBUG_LOG entry 2026-08-03 07:52 EDT; 6 skipped are unrelated integration guards).
+- `pytest openhands_tools_ext/`: 127/127 pass across all six modules.
+
+**DoD status for Slice E overall: ALL COMPLETE**
+- [x] E.1 VerificationStep schema.
+- [x] E.2 Test-runner auto-detect + subprocess wrapper.
+- [x] E.3 LDB-inspired runtime inspector + PORTING_LEDGER entry #2.
+- [x] E.4 STOP-hook retry policy + CLI shim + state persistence.
+- [x] E.5 Frontend Trace-tab card + Metrics-tab widget + ADR-0007.
+
+**Recommendation #2 status: DONE.**
+
+**Next actions:**
+- Tag `v1.0-alpha2` on this commit.
+- On Colossus: run `.oh-venv/bin/pytest openhands_tools_ext/` (should be 127 pass); run `npm test src/tests/unit/VerifyStepCard.test.tsx src/tests/unit/VerifyIterationsWidget.test.tsx` (should be 12 pass); run `PLAYWRIGHT_REAL_BFF=1 npm run test:e2e -- src/tests/e2e/repograph-panel.spec.ts` for the Slice D screenshots.
+- After Colossus green, register the STOP hook in the agent-server's `.openhands/hooks.toml` per the recipe in E.4's BUILD_LOG entry.

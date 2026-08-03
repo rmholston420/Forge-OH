@@ -2,6 +2,7 @@
 import React from 'react';
 import type { Span } from '@/lib/schemas/trace';
 import { useTraceStore } from '@/features/trace/store';
+import { VerifyStepCard } from './VerifyStepCard';
 import styles from './SpanRow.module.css';
 
 const STATUS_CLASS: Record<Span['status'], string> = {
@@ -78,6 +79,15 @@ export const SpanRow: React.FC<SpanRowProps> = ({ span, depth, traceStartTime, t
           </div>
         </td>
       </tr>
+
+      {/* Verify-step spans render a rich card below the row when expanded */}
+      {isExpanded && span.kind === 'verify' && (
+        <tr className={styles.detailRow}>
+          <td colSpan={4} style={{ paddingLeft: `${depth * 16 + 24}px`, paddingRight: '12px' }}>
+            <VerifyStepCard span={span} />
+          </td>
+        </tr>
+      )}
 
       {/* Render children if expanded */}
       {isExpanded && span.children.map((child) => (
