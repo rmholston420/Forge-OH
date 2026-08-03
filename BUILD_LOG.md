@@ -185,3 +185,15 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 ### Verification
 - Sweep for `localhost:8000` and `window.location.origin` in `src/**` (excluding tests) → zero residuals
 
+
+## 2026-08-02 22:15 EDT — Step 2 verification via Playwright: GREEN
+- Ran `scripts/debug-frontend.ts` against live dev stack (BFF :8081, pnpm dev :3000).
+- Result:
+  - finalUrl: http://localhost:3000/runs
+  - consoleErrors: 0
+  - pageErrors: 0
+  - requestFailures: 0
+  - api responses: 1
+  - `GET http://localhost:8081/api/runs 200 application/json` body: `{"data":[],"pageInfo":{"total":0,"page":1,"pageSize":20},"stub":true}`
+- Prior terminal 500s were stale-tab noise (browser held pre-fix JS).
+- **Step 2 DoD MET:** auth/RBAC/LMS stripped, BFF boots, frontend boots, /runs renders with real BFF data.
