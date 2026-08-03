@@ -1,0 +1,32 @@
+# Ruff config for the Forge-OH BFF (Python 3.11+).
+#
+# Defensive-code rules that fire on intentional best-effort/health-check paths
+# are silenced. Correctness, style, and imports are kept strict.
+
+target-version = "py311"
+line-length = 100
+
+extend-exclude = [
+    ".oh-venv",
+    "node_modules",
+    ".next",
+    "out",
+    "dist",
+]
+
+[lint]
+# Keep ruff's default rule set (E, F, UP, B, SIM, I, ...) but drop noisy
+# opinionated rules that don't fit a small local-first BFF.
+extend-ignore = [
+    # Broad `except Exception:` is intentional in health-check + best-effort
+    # parsing (return None/False on any failure). These are audited paths.
+    "BLE001",
+    # `try/except/pass` for optional cleanup / best-effort background work.
+    "S110",
+    # `logger.exception(f"...{e}")` — we intentionally interpolate the exc
+    # string for readable single-line logs.
+    "TRY401",
+    # `subprocess.run(...)` without explicit `check=` — we handle returncode
+    # manually in every call site.
+    "PLW1510",
+]

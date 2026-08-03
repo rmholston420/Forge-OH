@@ -77,7 +77,7 @@ def _line_stats(original: Optional[str], modified: Optional[str]) -> tuple[int, 
     additions = 0
     deletions = 0
     for line in difflib.unified_diff(orig_lines, mod_lines, n=0, lineterm=""):
-        if line.startswith("+++") or line.startswith("---") or line.startswith("@@"):
+        if line.startswith(("+++", "---", "@@")):
             continue
         if line.startswith("+"):
             additions += 1

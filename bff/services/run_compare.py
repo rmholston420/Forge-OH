@@ -91,7 +91,7 @@ def _diff_counts(a: Optional[str], b: Optional[str]) -> tuple[int, int]:
     b_lines = (b or "").splitlines(keepends=False)
     add = del_ = 0
     for line in difflib.unified_diff(a_lines, b_lines, n=0, lineterm=""):
-        if line.startswith("+++") or line.startswith("---") or line.startswith("@@"):
+        if line.startswith(("+++", "---", "@@")):
             continue
         if line.startswith("+"):
             add += 1
