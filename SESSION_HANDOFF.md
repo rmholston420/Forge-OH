@@ -5,78 +5,101 @@ Overwrite this file at the end of every session. Reflects current state only.
 ---
 
 ## Current stage
-**F.18 COMPLETE.** vLLM is primary, Ollama is fallback. Router honors
-`LLM_PRIMARY_BACKEND=vllm` in `.env`, verified end-to-end via
-`/api/settings/model-routing`. Bench data archived at
-`~/.forge-oh/bench/20260803_1419/` — see BUILD_LOG 2026-08-03 14:32 EDT for
-the full 8×-18× vLLM speedup table.
+**F.19-pre COMPLETE (ADR-009 accepted).** Bench + verdict + ADR
+committed. Coder role → `qwen3.5-nvfp4` (vLLM). Planner role →
+`qwen3-thinking-2507-awq` (vLLM). Both models are retained on disk;
+neither is wired into `bff/services/model_router.py` yet — that is F.19.
+
+Ready to start **F.19** (real router wiring for the two new endpoints).
 
 ## Ambient
-- vLLM: RUNNING at :8500 (qwen3-coder-30b GGUF, 29 GB VRAM).
-- Ollama: STOPPED + systemd unit `disabled` (must be started manually now).
-- Agent-server: RUNNING at :8090 (pid 4168753).
-- BFF: RUNNING at :8081 (with F.18c dotenv fix in place).
+- vLLM: RUNNING at :8500 serving **qwen3-coder-30b GGUF** (F.18 default,
+  still in place until F.19 rewires).
+- Ollama: STOPPED + systemd unit `disabled` (unchanged from F.18).
+- Agent-server: RUNNING at :8090.
+- BFF: RUNNING at :8081 (F.18c dotenv fix still in place).
 - Frontend: RUNNING at :3000.
-- GPU free: 3.1 GB / 32 GB (all in vLLM).
+- The bench-run weights (`qwen3.5-nvfp4` and `qwen3-thinking-2507-awq`)
+  are on disk in `~/.cache/huggingface/hub/` — see `bench/f19pre/`
+  launchers for the exact revisions.
+- GPU free: ~3.1 GB / 32 GB (vLLM holds ~29 GB for the F.18 model).
 
 ## What was completed this session
-1. **F.18** — vLLM 0.10.2 serving qwen3-coder-30b GGUF, all Blackwell/SM_120
-   pitfalls documented in DEBUG_LOG (venv orphan, GGUF bf16 rejection,
-   triton Python.h, FlashInfer SM_120 whitelist).
-2. **F.18b** — Router refactored: `LLM_PRIMARY_BACKEND` env knob, corrected
-   defaults, `/v1/models` readiness probe, unit tests (11/11 pass),
-   vllm_start/stop/status.sh triad. Commit `025bc3f`.
-3. **F.18c** — Router now loads `.env` via `python-dotenv` at import so
-   `os.getenv()` sees config that pydantic-settings parses. Commit
-   `1a30e4a`.
-4. **Head-to-head bench** — 52/52 OK each backend. vLLM wins by 8×-18× on
-   every scenario and every concurrency level. Decision recorded in
-   BUILD_LOG.
-5. **Wiring** — `.env` set to `LLM_PRIMARY_BACKEND=vllm` +
-   `VLLM_URL=http://localhost:8500` + `VLLM_FALLBACK_MODEL=qwen3-coder-30b`.
-   BFF hard-restarted. Ollama systemd disabled + process killed.
-6. **Verified** — `/api/settings/model-routing` returns
-   `primaryBackend: vllm`, all 3 probes select `vllm/qwen3-coder-30b`.
+1. **F.19-pre bench harness** — 8 cells (2 roles × 2 runtimes × 2
+   models) × 3 prompts = 24 answers.
+2. **c03 Ollama qwen3.5:35b-a3b think:false BROKEN** — thinking-mode
+   leaks, all 3 answers empty. Root cause: Ollama silently drops
+   `chat_template_kwargs.enable_thinking=false`.
+3. **c04 launched successfully** after `--max-num-seqs 128` fix for
+   qwen3.5-MoE Mamba cache (documented in DEBUG_LOG entry pending in
+   next session).
+4. **All 24 answers scored** across correctness / completeness /
+   executability / groundedness. Full table in
+   `bench/f19pre/results/scores_20260803.md`.
+5. **ADR-009 written and committed** to `docs/adr/009-local-llm-selection.md`.
+   (Note: originally planned as ADR-0007; 007 was already taken by
+   `007-verify-loop.md`. Numbering resumed at 009.)
+6. **BUILD_LOG appended** with F.19-pre entry.
 
-## What remains before Definition of Done for the plan
-Return to Forge-OH-Action-Plan-v4 **Step 1**: real OpenHands agent-server
-exercise. Agent-server is up on :8090; need to smoke-test a real
-conversation through `POST /api/conversations` and confirm the LiteLLM
-`openai/qwen3-coder-30b` bridge routes to vLLM at :8500 end-to-end.
+## What remains before Definition of Done for F.19
+1. Rewire `bff/services/model_router.py` to expose two named routes:
+   - `coder` → `http://localhost:8500/v1` (or new port), model
+     `qwen3.5-nvfp4`.
+   - `planner` → same vLLM host, model `qwen3-thinking-2507-awq`.
+2. Decide launcher topology: one vLLM process per role (2 ports) or a
+   single vLLM process serving both models. Single-GPU + 30 GiB VRAM
+   budget likely forces **swap on demand** — plan for a small
+   supervisor script under `ops/` that starts/stops the right launcher
+   per request.
+3. Add `/v1/models` readiness probe for whichever launcher(s) F.19
+   settles on.
+4. Add unit tests to `bff/tests/test_model_router.py` covering the new
+   role-based routing (mirror the F.18b test structure).
+5. Run a live 3-prompt smoke (P1/P2/P3 from F.19-pre) through the
+   rewired router and verify the emitted answers still hit c04/c08
+   quality bars.
 
 ## Open questions / ambiguity
-- Bench scripts `bench_ollama_vs_vllm.sh` and `bench_runner.py` are still
-  uncommitted (`~/dev/forge-oh/scripts/`). `.gitignore` excludes `scripts/`
-  — commit with `git add -f` once we're confident the scripts won't need
-  more changes.
-- Ollama fallback path in the router works, but Ollama cannot share VRAM
-  with vLLM. Real failover means stopping vLLM first, starting Ollama, and
-  we don't have automation for that yet. Acceptable for now (vLLM proven
-  stable), but flag for a future ADR: "how do we handle vLLM crash
-  recovery when only one backend fits in VRAM?"
+- **Planner max_tokens ceiling.** In F.19-pre, all thinking cells hit
+  the `max_completion_tokens=4096` ceiling on Prompt 3. c08 was the
+  only planner to emit any P3 content, and even it truncated mid-list.
+  Options for F.19:
+  - Bump planner budget to **8192**. Simple; costs a bit more latency;
+    likely lets c08 finish and might promote c05/c06 as faster planner
+    candidates (they scored 37/38 on P1+P2 before P3 truncation).
+  - Keep 4096 and accept partial plans, streaming to UI. Cheaper
+    latency-wise but weaker for the plan-generation use case.
+  - **Recommendation:** bump to 8192 for planner role only, keep 2048
+    for coder. Confirm with re-bench of c05/c06 before making 8192 the
+    permanent default.
+- **BFF port reconciliation.** Forge-OH BFF is on :8081. The
+  `colossus-ops` skill lists BFF on :8000. Not blocking F.19, but
+  should be sorted before UI wiring lands.
+- **VRAM headroom for two models.** qwen3.5-nvfp4 and
+  qwen3-thinking-2507-awq don't both fit in 30 GiB simultaneously. F.19
+  needs a swap-on-demand strategy (see item 2 above).
 
 ## Exact next action
-Fire a real conversation through the agent-server → BFF → vLLM path:
+Read `bff/services/model_router.py` to inventory current routes and
+health-check surfaces:
 
 ```bash
 cd ~/dev/forge-oh
-
-# Confirm all four services healthy
-~/dev/forge-oh/scripts/vllm_status.sh
-curl -sf http://127.0.0.1:8090/health && echo " agent-server OK"
-curl -sf http://127.0.0.1:8081/api/settings/model-routing >/dev/null && echo "BFF OK"
-
-# Then run the smoke test (need to check what BFF endpoint kicks off a
-# conversation — likely POST /api/runs or /api/conversations).
-grep -rn 'route_request\|create_conversation\|POST.*conversation' bff/routers/ | head -10
+grep -n 'route_request\|health_check\|VLLM_\|OLLAMA_\|def [a-z]' bff/services/model_router.py | head -40
+grep -n 'MODEL_ROUTE\|BACKEND\|coder\|planner' bff/services/model_router.py | head -40
 ```
 
-Once we identify the entrypoint, submit a "hello, run `ls`" task and
-confirm the agent picks up a vLLM-backed response.
+Then draft the F.19 wiring plan: exact commit sequence, new env vars
+(`LLM_CODER_MODEL`, `LLM_PLANNER_MODEL`, `LLM_CODER_URL`,
+`LLM_PLANNER_URL` if we go dual-port), test cases, and swap-strategy
+ADR if the supervisor script gets non-trivial.
 
 ## Key files/refs
-- Bench: `~/.forge-oh/bench/20260803_1419/{ollama,vllm}.csv`
-- vLLM log: `~/.forge-oh/vllm.log`
-- BFF log: `~/dev/forge-oh/.forge-logs/bff.log`
-- Agent-server log: `~/dev/forge-oh/.forge-logs/agent-server.log`
-- Commits this session: `463ac02`, `025bc3f`, `1a30e4a` on main.
+- **ADR-009:** `docs/adr/009-local-llm-selection.md`
+- **Scores:** `bench/f19pre/results/scores_20260803.md`
+- **Packed answers:** `bench/f19pre/results/bench_f19pre_20260803_175759.md`
+- **Raw JSON:** `bench/f19pre/results/raw/20260803_170129_run/`
+- **Launchers used in F.19-pre:** `bench/f19pre/vllm_launch.sh` (and
+  Ollama helpers alongside).
+- Commits this session: pack `4c25051`; ADR + scores + logs commit
+  follows (see push output).

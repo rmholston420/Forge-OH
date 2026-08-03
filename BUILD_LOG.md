@@ -2739,3 +2739,58 @@ Ollama can be brought back manually as a fallback when needed. Reached
 against the vLLM-backed router. Agent-server is already up on :8090; need
 to fire a real conversation through /api/conversations and confirm the
 LiteLLM openai/qwen3-coder-30b bridge to vLLM works end-to-end.
+
+---
+
+## 2026-08-03 18:15 EDT — F.19-pre COMPLETE (ADR-009 accepted)
+
+**Stage:** F.19-pre (path-D v2 blocker) — closed.
+
+**Scope closed:** 8-cell coder/planner bench (2 roles × 2 runtimes × 2
+models × 3 prompts = 24 answers), scored across correctness /
+completeness / executability / groundedness, and codified into ADR-009.
+
+**Decisions (verdict):**
+- **Coder role:** `qwen3.5-nvfp4` via vLLM (bench cell c04, 109/120).
+- **Planner role:** `qwen3-thinking-2507-awq` via vLLM (cell c08, 87/120).
+- **Runtime:** vLLM primary for both roles; Ollama retained as fallback
+  only.
+- **Retired:** `qwen3.5:35b-a3b think:false` on Ollama — the
+  `enable_thinking=false` toggle is a silent no-op, burns the token
+  budget on hidden reasoning, and returns empty final content (cell
+  c03, 0/120).
+
+**Files touched this slice:**
+- `docs/adr/009-local-llm-selection.md` (new)
+- `bench/f19pre/results/scores_20260803.md` (new — per-answer 4-dimension
+  scoring, aggregate table, head-to-head recommendations, length-ceiling
+  forensics)
+- `bench/f19pre/results/bench_f19pre_20260803_175759.md` (packed 24
+  answers — committed 2026-08-03 in an earlier turn as `4c25051`)
+- `bench/f19pre/results/raw/20260803_170129_run/*.json` (24 raw cell
+  outputs — committed with pack)
+- `BUILD_LOG.md` (this entry)
+- `SESSION_HANDOFF.md` (overwrite — see below)
+
+**Ports/adapters affected:** none this slice. Router changes go in F.19.
+
+**ADR / ledger updates:** ADR-009 accepted. No new PORTING_LEDGER entries
+(no upstream code vendored in F.19-pre).
+
+**Stop condition status:** F.19-pre stop condition ("bench + verdict +
+ADR committed to repo") met at 2026-08-03 18:15 EDT.
+
+**Next stage:** F.19 — wire `bff/services/model_router.py` to the new
+Coder/Planner endpoints, add health probes for both, retire the
+qwen3-coder-30b GGUF launcher as the vLLM default in favor of the
+nvfp4/awq launchers, and run a live 3-prompt smoke through the router.
+
+**Operational notes captured for F.19 (also mirrored into ADR-009 §5):**
+- vLLM ≥ **v0.26.0** required for `qwen3_5_moe` arch (v0.10.2 fails).
+- qwen3.5-MoE Mamba cache on single RTX 5090: **`--max-num-seqs 128`**
+  (default 256 aborts init).
+- HuggingFace repos with quant-suffixed names often ship as
+  **compressed-tensors** — do NOT pass `--quantization`; let vLLM
+  autodetect from `config.json.quantization_config`.
+- Usable Blackwell VRAM budget: ~30 GiB at
+  `--gpu-memory-utilization 0.90`.
