@@ -158,8 +158,8 @@ async function main() {
 
   // ---- 4. Detect the created run ----
   console.log(`[e2e] step 4: wait for run to appear`);
-  // Grab the newest run id from /api/runs
-  const runsResp = await page.request.get(`${BASE.replace(/:3000$/, ':8081')}/api/runs?pageSize=5`);
+  const BFF = BASE.replace(/:3000$/, ':8081');
+  const runsResp = await page.request.get(`${BFF}/api/runs?pageSize=5`);
   const runsJson = await runsResp.json();
   const newest = (runsJson.data ?? [])[0];
   if (!newest) throw new Error('no runs returned from BFF');
@@ -175,20 +175,34 @@ async function main() {
   // ---- 6. Poll until terminal ----
   console.log(`[e2e] step 6: poll BFF for terminal status (timeout ${TIMEOUT_MS} ms)`);
   const deadline = Date.now() + TIMEOUT_MS;
-  let status = newest.executionStatus ?? newest.status;
+  let status: string | undefined = newest.executionStatus ?? newest.status;
   while (Date.now() < deadline) {
-    await page.waitForTimeout(1500);
-    const r = await page.request.get(
-      `${BASE.replace(/:3000$/, ':8081')}/api/runs/${report.runId}`
-    );
+    await page.waitForTimeout(1000);
+    const r = await page.request.get(`${BFF}/api/runs/${report.runId}`);
     if (r.ok()) {
-      const d = await r.json();
-      status = d.executionStatus ?? d.status;
+      const body = await r.json();
+      // BFF envelope: single-item GETs return {data: {...}}, list GETs return {data:[...]}.
+      const d = body?.data ?? body;
+      status = d?.executionStatus ?? d?.status;
     }
     if (status && TERMINAL.has(status)) break;
   }
   report.terminalStatus = status ?? null;
   console.log(`[e2e] terminal status: ${status}`);
+
+  // Also snapshot the events endpoint to confirm relay + agent-server events pipeline.
+  try {
+    const er = await page.request.get(`${BFF}/api/runs/${report.runId}/events`);
+    if (er.ok()) {
+      const eb = await er.json();
+      const events = eb?.data ?? eb?.items ?? [];
+      console.log(`[e2e] /events returned ${Array.isArray(events) ? events.length : 'non-array'} event(s)`);
+      (report as any).eventCount = Array.isArray(events) ? events.length : null;
+      (report as any).eventSample = Array.isArray(events) ? events.slice(0, 3) : null;
+    }
+  } catch (e) {
+    console.log(`[e2e] /events fetch failed: ${e}`);
+  }
 
   // Give the timeline a moment to render final events.
   await page.waitForTimeout(2000);
