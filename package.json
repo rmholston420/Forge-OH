@@ -11,7 +11,9 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:real": "PLAYWRIGHT_REAL_BFF=1 playwright test",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "triage:browser": "playwright test src/tests/e2e/browser-triage.spec.ts",
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "@storybook/addon-a11y": "10.4.6",
     "@storybook/nextjs": "10.4.6",
     "@storybook/react": "10.4.6",

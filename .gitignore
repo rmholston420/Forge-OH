@@ -61,3 +61,6 @@ scripts/
 bff/data/
 data/
 workspace/
+
+# vitest coverage output
+coverage/

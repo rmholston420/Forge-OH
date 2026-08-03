@@ -11,8 +11,20 @@ export default defineConfig({
     setupFiles: ['./src/tests/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     coverage: {
-      reporter: ['text', 'json', 'html'],
-      exclude: ['node_modules/', '.storybook/', 'src/**/*.stories.*'],
+      provider: 'v8',
+      reporter: ['text', 'text-summary', 'json', 'html'],
+      reportsDirectory: './coverage',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'node_modules/**',
+        '.storybook/**',
+        'src/**/*.stories.*',
+        'src/**/*.d.ts',
+        'src/tests/**',
+        'src/app/**/layout.tsx',
+        'src/app/**/page.tsx',
+        'src/**/index.ts',
+      ],
     },
   },
   resolve: {
