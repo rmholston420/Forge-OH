@@ -2496,3 +2496,12 @@ Verified via the paste sample captured this session (`/home/user/workspace/uploa
 - Skip-guards: BFF unreachable, target test file missing, pytest binary missing.
 - Env knobs: `FORGE_TEST_WORKSPACE_PATH` (default `$HOME/forge-oh`), `FORGE_TEST_PYTEST` (default `.oh-venv/bin/pytest`), plus the same `PLAYWRIGHT_BFF_URL` / `FORGE_TEST_WORKSPACE_ID` / `FORGE_TEST_PRESET_ID` used by other online specs.
 - Requires manual cleanup between runs (remove the marker method) — spec fails-fast if the marker already exists so the +1 math stays honest.
+
+## 2026-08-03 11:47 EDT — F.16 verified on Colossus; G.1 fixup (test.setTimeout)
+
+- Colossus verification pass for F.16:
+  - `GET /api/gpu` → 200, RTX 5090 sample, `power_cutoff_w=435`, `cutoff_c=83`, `warn_c=52`, `critical_c=88`.
+  - `f15-fixups.spec.ts` — both cases pass (17.4s / 9.4s).
+- G.1 first run: skipped locally (default `FORGE_TEST_WORKSPACE_PATH=$HOME/forge-oh` is wrong on Colossus — repo lives at `~/dev/forge-oh`). After exporting `FORGE_TEST_WORKSPACE_PATH=$HOME/dev/forge-oh` and `FORGE_TEST_PYTEST=$HOME/dev/forge-oh/.oh-venv/bin/pytest` the spec ran and hit Playwright's default 30s per-test timeout — our own `RUN_TIMEOUT_MS=300_000` only bounds the poll loop, not Playwright.
+- Fix: added `test.setTimeout(RUN_TIMEOUT_MS + 60_000)` to `g1-self-testing.spec.ts` and to both cases in `f15-fixups.spec.ts` (defense in depth).
+- Files: `src/tests/e2e/g1-self-testing.spec.ts`, `src/tests/e2e/f15-fixups.spec.ts`.

@@ -165,6 +165,11 @@ test.describe('G.1 — Forge-OH self-testing', () => {
   test('agent adds one new passing test case to TestSymptomProducer', async ({
     request,
   }) => {
+    // Playwright's default per-test timeout is 30s. The agent run
+    // itself can take multiple minutes on a local model; give
+    // Playwright headroom over our own poll deadline.
+    test.setTimeout(RUN_TIMEOUT_MS + 60_000);
+
     const testFileAbs = join(WORKSPACE_PATH, TEST_FILE_REL);
 
     // Guard: don't run this spec if the marker case already exists

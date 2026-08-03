@@ -131,6 +131,7 @@ test.describe('F.14 / F.15 fixup verification', () => {
   test('happy path: fresh file create + run populates diffs, no symptom', async ({
     request,
   }) => {
+    test.setTimeout(RUN_TIMEOUT_MS + 60_000);
     // Use a per-run unique filename so a prior verification run's
     // artifact can't make `create` legitimately error out. That is
     // exactly what happened on the first Colossus run of this spec
@@ -177,6 +178,7 @@ test.describe('F.14 / F.15 fixup verification', () => {
   test('failing terminal: exit=1 becomes structured symptom', async ({
     request,
   }) => {
+    test.setTimeout(RUN_TIMEOUT_MS + 60_000);
     const cid = await createRun(
       request,
       'F.15 fixup — symptom path',
