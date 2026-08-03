@@ -7,9 +7,10 @@ any connected browser clients subscribed to that conversation's room.
 
 Wire protocol on the browser side (see src/lib/streaming/useRunStream.ts):
   Socket.IO namespace: /
-  Room / query param:  conversationId
-  Event name:          oh-event    (each ActionEvent/MessageEvent/etc)
-                       oh-status   (execution_status transitions)
+  Room / query param:  runId (aliased to conversationId per Stage-3 contract)
+  Event names emitted by BFF (frontend hook listens for these):
+    'event'  — each ActionEvent/MessageEvent/ObservationEvent/etc
+    'status' — execution_status transitions
 
 Poll cadence:
   running / waiting_for_confirmation -> 500 ms
@@ -105,17 +106,20 @@ async def _run_loop(cid: str) -> None:
     room = f"conversationId={cid}"
     last_status: str | None = None
     page_id: str | None = None
+    total_events = 0
     log.info("relay[%s]: starting", cid)
     try:
         while True:
             status = await _fetch_status(cid)
             if status is None:
-                # Conversation disappeared. Give up.
                 log.info("relay[%s]: conversation not found — stopping", cid)
                 return
 
             if status != last_status:
-                await _emit(room, "oh-status", {
+                log.info("relay[%s]: status %s -> %s", cid, last_status, status)
+                await _emit(room, "status", {
+                    "type": "status",
+                    "runId": cid,
                     "conversationId": cid,
                     "executionStatus": status,
                     "prev": last_status,
@@ -123,13 +127,20 @@ async def _run_loop(cid: str) -> None:
                 last_status = status
 
             events, next_page = await _fetch_page(cid, page_id)
+            if events:
+                total_events += len(events)
+                log.info("relay[%s]: forwarded %d event(s) (total=%d, next_page=%s)", cid, len(events), total_events, next_page)
             for ev in events:
-                await _emit(room, "oh-event", ev)
+                # Enrich with runId so the frontend normalizer can tag events
+                # without needing to parse the room name.
+                if isinstance(ev, dict) and "runId" not in ev:
+                    ev["runId"] = cid
+                await _emit(room, "event", ev)
             if next_page:
                 page_id = next_page
 
             if status in _TERMINAL_STATUSES:
-                log.info("relay[%s]: terminal status '%s' — stopping", cid, status)
+                log.info("relay[%s]: terminal status '%s' — stopping (total events forwarded=%d)", cid, status, total_events)
                 return
 
             await asyncio.sleep(_pick_interval(status))

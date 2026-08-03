@@ -220,3 +220,12 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - **Root cause:** `GET /api/agent-presets` returned a bare list `[AgentPreset,...]`; frontend `fetchAgentPresets` calls `unwrap(result).data` expecting the `{data: [...]}` envelope every other BFF endpoint uses.
 - **Fix:** `bff/routers/agent_presets.py` list_presets — wrap in `{'data': [...]}`. Kept single-item `GET /{preset_id}` and mutations unchanged (they had `response_model=AgentPreset` and were never envelope-wrapped, but no frontend caller exists yet).
 
+
+## 2026-08-02 22:44 EDT — Stage 3 fixes: list_runs endpoint + Socket.IO wire protocol
+- **Verified:** first real run executed end-to-end. `qwen3.6:35b-a3b` processed 12,491 prompt tokens, `execution_status=finished` after 8s.
+- **Fixed 3 issues surfaced by first run:**
+  1. `GET /api/conversations` on agent-server 1.40.0 is a batch-get by ids (422 without `ids` param). Switched `list_runs` to `GET /api/conversations/search?limit=N&sort_order=CREATED_AT_DESC`.
+  2. Frontend `useRunStream` sends `query: { runId, latestEventId }` and listens for events named `event`, `status`, `message`, `run:event`, `approval_required`, `error`. Backend was emitting `oh-event`, `oh-status` — zero overlap. **Now emits `event` and `status`** to match the frontend listener list.
+  3. Backend `connect` handler read only `conversationId` from the query string, but frontend sends `runId`. Added `_extract_cid` helper that accepts both (per identity contract `run_id == conversation_id`).
+- **Debug logging added to event_relay:** logs each status transition and event batch (count + next_page), plus final tally when reaching a terminal state.
+

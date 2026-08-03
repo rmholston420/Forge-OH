@@ -94,13 +94,19 @@ event_relay.set_sio(sio)
 #   client emits 'unsubscribe' to leave
 # -----------------------------------------------------------------------------
 
+def _extract_cid(source: dict) -> str | None:
+    """Accept either conversationId or runId — they are identical per the
+    Stage-3 identity contract (run_id == conversation_id)."""
+    return (source or {}).get("conversationId") or (source or {}).get("runId")
+
+
 @sio.event
 async def connect(sid, environ, auth):  # noqa: ARG001
-    # Query string carries conversationId=<uuid>.
-    qs = environ.get("QUERY_STRING", "")
     from urllib.parse import parse_qs
-    params = parse_qs(qs)
-    cid = (params.get("conversationId") or [None])[0]
+    params = parse_qs(environ.get("QUERY_STRING", ""))
+    # parse_qs returns lists; flatten first-value.
+    flat = {k: v[0] for k, v in params.items() if v}
+    cid = _extract_cid(flat)
     if cid:
         await sio.enter_room(sid, f"conversationId={cid}")
         event_relay.start_relay(cid)
@@ -108,7 +114,7 @@ async def connect(sid, environ, auth):  # noqa: ARG001
 
 @sio.event
 async def subscribe(sid, data):
-    cid = (data or {}).get("conversationId")
+    cid = _extract_cid(data or {})
     if cid:
         await sio.enter_room(sid, f"conversationId={cid}")
         event_relay.start_relay(cid)
@@ -116,7 +122,7 @@ async def subscribe(sid, data):
 
 @sio.event
 async def unsubscribe(sid, data):
-    cid = (data or {}).get("conversationId")
+    cid = _extract_cid(data or {})
     if cid:
         await sio.leave_room(sid, f"conversationId={cid}")
 

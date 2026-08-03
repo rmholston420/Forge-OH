@@ -111,20 +111,24 @@ async def list_runs(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
 ) -> dict:
+    # Agent-server 1.40.0: /api/conversations is batch-get by ids (422 without ids).
+    # The real list endpoint is /api/conversations/search (paginated, cursor-based).
     client = get_client()
     try:
-        resp = await client.get("/api/conversations")
+        resp = await client.get(
+            "/api/conversations/search",
+            params={"limit": pageSize, "sort_order": "CREATED_AT_DESC"},
+        )
         resp.raise_for_status()
     except Exception as exc:  # noqa: BLE001
         log.warning("list_runs: agent-server unreachable: %s", exc)
         return {"data": [], "pageInfo": {"total": 0, "page": page, "pageSize": pageSize}}
 
-    payload = resp.json()
-    # ConversationInfo list can come back either as a bare list or {items:[]}.
+    payload = resp.json() or {}
     if isinstance(payload, list):
         convs = payload
     else:
-        convs = payload.get("items") or payload.get("data") or []
+        convs = payload.get("items") or payload.get("data") or payload.get("conversations") or []
     runs = [_conv_to_run_summary(c) for c in convs]
     return {
         "data": runs,
