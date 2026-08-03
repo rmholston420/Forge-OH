@@ -1,43 +1,54 @@
 # SESSION_HANDOFF
 
 ## Current stage
-Step 7 — remaining OpenHands surfaces. Slice A pushed as `850f364`.
+Step 7 — remaining OpenHands surfaces. Two slices shipped.
 
-## Slice A: Files + Terminal tabs wired
-- Extracted `files/page.tsx` and `terminal/page.tsx` bodies into
-  `src/app/(dashboard)/runs/[runId]/tabs/FilesTab.tsx` and `TerminalTab.tsx`.
-- Subroute pages now re-render those components (single source of truth).
-- Run detail page's `selectedTab === 'files' | 'terminal'` branches now render
-  `<FilesTab />` and `<TerminalTab />` instead of hardcoded EmptyState
-  placeholders.
+## Slice A ✅ (verified in screenshots-20260803-060001)
+Wired `/runs/{id}` Files and Terminal tabs to real components
+(`FilesTab.tsx`, `TerminalTab.tsx`) that share bodies with the subroute
+pages. No more "will be available in Phase 1" placeholders.
+
+## Slice B (pushed as 93668b2, pending visual QA)
+Global Metrics dashboard now backed by real aggregation from upstream
+`/api/conversations/search`:
+
+- `bff/services/metrics_aggregation.py`: paginated fetch (cap 2000);
+  computes summary, daily, models, workspaces from MetricsSnapshot.
+- `bff/routers/metrics.py`: real endpoints replace zero-stubs.
+- `src/components/navigation/Sidebar.tsx`: `Metrics` nav item (📈).
+- `src/app/(dashboard)/metrics/page.tsx`: routes MetricsDashboardPage.
+- `bff/tests/test_metrics_router.py`: 10 tests, all passing locally.
+- `src/tests/e2e/visual-tour.spec.ts`: adds `/metrics` route capture.
 
 ## Next action (RUN ON COLOSSUS)
 ```bash
 cd ~/dev/forge-oh
 git pull --ff-only
-npm run type-check
 ./scripts/forge-test.sh
 ./scripts/forge-screenshots.sh
 ```
-Then paste the tail of each output back to the agent.
+Paste tails + branch name back.
 
 ## Expected visual result
-- `screenshots/13-run-tab-files.png`: should now match `15-run-files-subroute.png`
-  ("Changed Files" toolbar + "No files changed" empty state).
-- `screenshots/13-run-tab-terminal.png`: should now match `17-run-terminal-subroute.png`
-  ("Terminal" toolbar + "0 commands" + TerminalEmulator empty state).
-- No more "will be available in Phase 1" placeholders anywhere.
+- New screenshot `20-metrics-dashboard.png`: KPI cards populate (Total
+  runs, Total cost, Success rate, Avg duration). If the agent-server has
+  any conversations from the recent visual-QA runs, totals should be > 0.
+- Sidebar shows a 📈 Metrics entry between Plugins and Observability.
+
+## Slice C candidates (after B visual QA passes)
+Choose sequenced by remaining-stub × existing-frontend:
+
+1. **VSCode / Desktop quick links** — upstream `/api/vscode/url` +
+   `/api/desktop/url` are real. Add BFF `/api/runs/{id}/ide-links`
+   passthrough and small header buttons in run detail. Small isolated
+   change.
+2. **Real git diff wiring** — upstream `/api/git/diff/{path}` +
+   `/api/git/changes/{path}`. File-diff currently reconstructs from
+   events (functional). Wiring real git output would improve precision.
+   Fully-built frontend feature already consuming the diff shape.
+3. **Live bash streaming** — upstream `/api/bash/*` includes bash_events.
+   Bigger scope: needs SSE relay integration into the existing terminal
+   emulator. Frontend supports command streaming already.
 
 ## Open questions / ambiguities
-None flagged for Slice A. After this passes visual QA, Slice B candidates
-(sequenced by remaining stub × existing frontend):
-1. Global metrics dashboard router (bff/routers/metrics.py returns hardcoded
-   zeros for /summary /daily /models /workspaces). But
-   `MetricsDashboardPage.tsx` is not routed anywhere in nav → lower user impact.
-2. Wrap upstream `/api/desktop/url` + `/api/vscode/url` into BFF for quick
-   "Open desktop / Open VSCode" links in the run detail header.
-3. Wire real `/api/git/diff/{path}` + `/api/git/changes/{path}` upstream to
-   improve file-diff precision (currently reconstructs from events — works,
-   but noisier).
-
-Decide next slice based on Slice A visual QA outcome.
+None flagged.
