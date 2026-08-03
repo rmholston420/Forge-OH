@@ -24,6 +24,15 @@ aiohttp>=3.13.3
 # Database
 aiosqlite==0.22.1
 
+# Slice D — RepoGraph (Rec #1)
+# Neo4j driver for the code knowledge graph (DozerDB 5.26.27 on Colossus)
+neo4j>=5.26,<6
+# NetworkX for in-memory graph algorithms (PageRank ranking)
+networkx>=3.2,<4
+# Actively maintained replacement for tree_sitter_languages
+tree-sitter>=0.23,<1
+tree-sitter-language-pack>=0.4.0,<1
+
 # Optional dev/test
 # pytest==8.3.4
 # pytest-asyncio==0.24.0

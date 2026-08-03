@@ -16,8 +16,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # Slice D: also read Neo4j creds from a separate gitignored file so the
+    # sensitive password never lands in the shared .env. Files are read in
+    # order; later files override earlier ones for any duplicate keys.
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.neo4j"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -42,6 +45,17 @@ class Settings(BaseSettings):
     # Observability
     otel_exporter_otlp_endpoint: str = ""
     log_level: str = "INFO"
+
+    # Slice D — RepoGraph / Neo4j (DozerDB on Colossus)
+    # Populated from ~/dev/forge-oh/.env.neo4j on Colossus. Password is never
+    # committed. Empty defaults let unit tests run without a live Neo4j.
+    neo4j_bolt_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = ""
+    neo4j_database: str = "forgeoh"
+    # If false, /api/repograph/* endpoints return 503 without contacting Neo4j.
+    # Set to true only after Colossus verifies the DB is reachable.
+    repograph_enabled: bool = False
 
 
 @lru_cache(maxsize=1)

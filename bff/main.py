@@ -21,6 +21,7 @@ import socketio  # type: ignore[import-untyped]
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from bff.deps.neo4j_driver import close_neo4j_driver
 from bff.openhands_client import shutdown as oh_shutdown
 from bff.openhands_client import startup as oh_startup
 from bff.routers import (
@@ -32,6 +33,7 @@ from bff.routers import (
     notifications,
     observability,
     plugins,
+    repograph,
     runs,
     secrets,
     settings,
@@ -51,6 +53,8 @@ async def lifespan(app: FastAPI):
     await event_relay.shutdown_all()
     await oh_shutdown()
     await episodic_memory.close_db(app)
+    # Close the shared Neo4j driver pool if it was opened.
+    close_neo4j_driver()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -83,6 +87,7 @@ app.include_router(plugins.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(bash.router, prefix="/api")
 app.include_router(git.router, prefix="/api")
+app.include_router(repograph.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(workspaces.router, prefix="/api")
 

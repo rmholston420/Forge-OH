@@ -973,3 +973,77 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   src/features/file-diff/api.ts, src/features/file-diff/hooks.ts,
   src/tests/unit/gitDiff.test.tsx
 - DoD: unit tests green; forge-test.sh + forge-screenshots.sh to verify on Colossus next.
+
+## 2026-08-03 07:20 EDT — Step 8 Slice D.1: Neo4j wiring + RepoGraph health endpoint
+
+**Stage / plugin / port:** Forge-OH-Action-Plan Step 8, Slice D (Recommendation
+#1 from `forge-oh-improvements-research.md`) — Repository-Aware Structural
+Retrieval Layer, sub-slice D.1 of D.1..D.5.
+
+**Decision:** Structural port (Option A) chosen over verbatim vendor of
+`ozyyshr/RepoGraph@6c3977d8`. Rationale: upstream uses `exec()`/`eval()` on
+`import` statements parsed from user code (arbitrary code execution during
+graph construction), mangles source with string `.replace()` before AST parse,
+and hardcodes Python-only file filters + tree-sitter queries. The pattern is
+sound (tags → networkx graph → def/ref edges → PageRank ranking) but the code
+is not safe to run against arbitrary repos. PORTING_LEDGER entry lands in D.5
+crediting RepoGraph as architectural source per Apache-2.0 attribution.
+
+**Backend deps added** (bff/requirements.txt):
+- neo4j>=5.26,<6 (Bolt driver for DozerDB 5.26.27)
+- networkx>=3.2,<4 (in-memory graph for PageRank ranking)
+- tree-sitter>=0.23,<1 + tree-sitter-language-pack>=0.4.0,<1 (actively-
+  maintained replacement for the unmaintained tree_sitter_languages that
+  upstream RepoGraph uses; ships Python/TypeScript/TSX/JavaScript grammars
+  needed for Forge-OH's own codebase and typical user repos).
+
+**Settings** (bff/settings.py):
+- neo4j_bolt_uri (default bolt://localhost:7687)
+- neo4j_user (default "neo4j")
+- neo4j_password (default "" — must come from ~/dev/forge-oh/.env.neo4j)
+- neo4j_database (default "forgeoh" — created on Colossus 2026-08-03 07:11 EDT
+  via `CREATE DATABASE forgeoh IF NOT EXISTS`, verified online)
+- repograph_enabled (default False; must be flipped to true on Colossus after
+  verifying `/api/repograph/health` returns reachable=true)
+- env_file tuple now `(".env", ".env.neo4j")` so the sensitive password lives
+  in a separate 600-perm gitignored file.
+
+**Files added:**
+- bff/deps/__init__.py
+- bff/deps/neo4j_driver.py: lazy singleton driver; returns None (not raise)
+  when disabled or password missing so routers 503 cleanly.
+- bff/routers/repograph.py: `GET /api/repograph/health` returning
+  {enabled, reachable, bolt_uri, database, neo4j_version, neo4j_edition,
+  error}. Always 200 (even on failure) so callers distinguish "endpoint
+  missing" from "Neo4j down". D.4 endpoints stubbed in the same file with a
+  `_reject_if_disabled()` helper.
+- bff/tests/test_repograph_router.py: 8 tests covering disabled/no-password/
+  reachable/unreachable/singleton reset+close paths.
+
+**Files modified:**
+- bff/main.py: register repograph router, close_neo4j_driver() on lifespan
+  shutdown.
+- bff/requirements.txt: add four RepoGraph deps.
+- bff/settings.py: extend env-file tuple + add five neo4j_*/repograph_*
+  fields.
+
+**Local checks:**
+- ruff check + ruff format --check on all touched files: PASS
+- pytest bff/tests/test_repograph_router.py -x: 8/8 PASS
+- Wider BFF suite (excluding pre-existing mcp/plugins connect-error failures):
+  80 pass, 3 pre-existing failures in test_observability_router.py confirmed
+  identical on unmodified 17dcb1b.
+
+**DoD for D.1 (this slice):**
+- [x] Neo4j deps installed
+- [x] Settings + gitignored env file support
+- [x] Lazy singleton driver
+- [x] Health endpoint with reachability check
+- [x] Unit tests all green
+- [ ] Colossus verify: after this commit, run `curl -s http://localhost:8081/api/repograph/health | jq` after setting REPOGRAPH_ENABLED=true in `~/dev/forge-oh/.env`.
+
+**Next slices (in this session):**
+- D.2: tag extraction (tree-sitter Python + TS, clean-slate, no exec/eval)
+- D.3: graph builder + Neo4j Cypher store + queries
+- D.4: 6 RepoGraph BFF endpoints + tests
+- D.5: frontend Trace panel + ADR + PORTING_LEDGER + full BUILD_LOG close
