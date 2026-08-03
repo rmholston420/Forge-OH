@@ -14,12 +14,12 @@ openhands-tools==1.40.0
 openhands-agent-server==1.40.0
 openhands-workspace==1.40.0
 
-# HTTP client
-httpx==0.28.1
+# HTTP client (loose pin — openhands 1.40.x has its own upper bound)
+httpx>=0.28.1
 
-# WebSocket / Socket.IO
-python-socketio==5.11.4
-aiohttp==3.11.10
+# WebSocket / Socket.IO (aiohttp pin removed — openhands-tools/browser-use requires >=3.13.3)
+python-socketio>=5.11.4
+aiohttp>=3.13.3
 
 # Database
 aiosqlite==0.22.1
