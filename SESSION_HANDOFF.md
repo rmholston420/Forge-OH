@@ -1,31 +1,38 @@
 # Session Handoff
 
-**Current stage:** Step 7 Slice C.1 — live bash streaming (SSE relay) built; awaiting Colossus verification.
+**Current stage:** Step 7 Slice C.2 — real git diff wiring built; awaiting Colossus verification.
+**Also:** research report done, kicking off Recommendation #1 (RepoGraph structural retrieval) next.
 
 ## Completed this session
-- Slice B fully verified on Colossus (metrics dashboard shows real model + workspace).
-- **Slice C.1 built:** live bash streaming end-to-end.
-  - BFF `bff/routers/bash.py` — 5 endpoints wired to upstream `/api/bash/*`, incl. SSE relay `GET /api/runs/{id}/bash/stream`.
-  - Frontend `LiveBashPanel` + `useLiveBash` hook w/ `EventSource`.
-  - Wired into `TerminalTab` behind `NEXT_PUBLIC_FEATURE_LIVE_BASH_ENABLED` (default on).
-- Tests: `test_bash_router.py` 12 pass, `LiveBashPanel.test.tsx` 4 pass.
-- Design decision (option "a"): `runId` in the BFF path is cosmetic — upstream bash events are global. Kept in URL for future per-run scoping without breaking the client.
+- Slice B verified (metrics dashboard shows real model + workspace).
+- **Slice C.1 shipped + verified** on Colossus (`bd15311`, all 8 CI categories PASS, 16/16 e2e, LiveBashPanel renders on run terminal tab).
+- **Slice C.2 built:** BFF `git` router + frontend "Real git diff" toggle in FilesTab.
+  - BFF: `bff/routers/git.py` — `/api/runs/{id}/git/{changes,diff}`.
+  - Frontend: `useGitChanges` / `useGitDiff` + toggle wired to `useRunDetail`.
+  - Feature flag: `NEXT_PUBLIC_FEATURE_REAL_GIT_DIFF_ENABLED`.
+  - Tests: 9 pass (BFF) + 5 pass (frontend).
+- **Forge-OH improvement research report** delivered: `/home/user/workspace/forge-oh-improvements-research.md`.
+  Top 3, in order-of-value on Colossus:
+  1. Repository-Aware Structural Retrieval Layer (vendor `ozyyshr/RepoGraph`).
+  2. Execution-Verified Self-Debugging Loop (adapt `FloridSleeves/LLMDebugger`).
+  3. Trajectory Memory & Case-Retrieval System (schema inspired by SWE-Gym).
 
-## Definition of Done — Slice C.1
+## Definition of Done — Slice C.2
 - [x] BFF router + tests
-- [x] Frontend hook + component + tests
-- [x] Wired into TerminalTab
+- [x] Frontend hooks + toggle + tests
 - [ ] `./scripts/forge-test.sh && ./scripts/forge-screenshots.sh` on Colossus — pending
-- [ ] Manually confirm streaming works against live Ollama + agent-server — pending
+- [ ] Manually flip toggle on a real run w/ local abs workspace_path — pending
 
 ## Next actions
 1. Colossus: `cd ~/dev/forge-oh && git pull --ff-only && ./scripts/forge-test.sh && ./scripts/forge-screenshots.sh`
-2. Manually run a live command through TerminalTab; confirm streaming behaviour.
-3. Then Slice C.2 — real git diff wiring (upstream `/api/git/diff/{path}` + `/api/git/changes/{path}`).
+2. After Colossus green: start research-report Recommendation #1 (RepoGraph vendor + adapter).
+   Sequenced #1 → #2 → #3 as the report recommends.
 
 ## Open questions
-None currently blocking.
+- None blocking on C.2.
+- Rec #1 kickoff will confirm the exact commit hash we vendor from RepoGraph + PORTING_LEDGER entry format for the graph store schema.
 
 ## Deferred / follow-up
-- **Forge-OH improvement research (this session):** `/home/user/workspace/forge-oh-improvements-research.md` — top 3 leverage points ranked. Discuss ranking & sequencing after Slice C.2 lands.
-- Slice C.2 candidate outline: BFF proxy for `/api/git/diff/{path}` + `/api/git/changes/{path}`; Files tab gains "real diff" toggle backed by upstream git rather than reconstructed events.
+- Rec #1 (RepoGraph): ADR needed for graph storage backend (SQLite vs. Neo4j vs. in-memory pickle).
+- Rec #2 depends on Rec #1's graph queries being cheap enough per repair step.
+- Rec #3 depends on structured trajectory data emitted by #1 + #2.

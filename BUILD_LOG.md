@@ -940,3 +940,36 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   src/features/terminal/api.ts, src/features/terminal/hooks.ts,
   src/tests/unit/LiveBashPanel.test.tsx
 - DoD: unit tests green; forge-test.sh + forge-screenshots.sh to verify on Colossus next.
+
+2026-08-03 06:59 EDT — Slice C.2: real git diff wiring
+- Stage: Step 7 Slice C.2 (post-C.1 real diff)
+- New BFF router bff/routers/git.py:
+  - GET /api/runs/{run_id}/git/changes?workspace_path=<abs>
+      → proxies upstream GET /api/git/changes/{path}
+      → normalises statuses to lowercase (added|modified|deleted|renamed|untracked)
+  - GET /api/runs/{run_id}/git/diff?file_path=<abs|rel>[&workspace_path=<abs>]
+      → proxies upstream GET /api/git/diff/{path}
+      → joins workspace_path + file_path when both provided (workspace_path
+        stripped of trailing '/', file_path stripped of leading '/')
+      → returns {path, original, modified} verbatim; null sides preserved
+- Frontend:
+  - src/features/file-diff/api.ts: fetchGitChanges(), fetchGitDiff()
+  - src/features/file-diff/hooks.ts: useGitChanges(), useGitDiff() +
+    changeToSummary / sidesToDiff converters mapping upstream (status, path)
+    and (original, modified) into the existing FileDiff shape.
+    detectLanguage() covers py/ts/js/rb/go/rs/java/c/cpp/md/json/yaml/css/
+    scss/html/sh/sql/toml.
+  - src/app/(dashboard)/runs/[runId]/tabs/FilesTab.tsx: adds a
+    "Reconstructed / Real git diff" toggle wired to useRunDetail().
+    Toggle only shows when the run has a local absolute workspace path.
+    Default source = events (reconstructed) so behaviour is unchanged
+    unless the user opts in.
+- Feature flag: NEXT_PUBLIC_FEATURE_REAL_GIT_DIFF_ENABLED (default on).
+- Tests: bff/tests/test_git_router.py (9 pass) + src/tests/unit/gitDiff.test.tsx
+  (5 pass, incl. toggle render + hidden-when-no-abs-path).
+- runId in BFF path is still cosmetic; kept for consistency.
+- Files: bff/main.py, bff/routers/git.py, bff/tests/test_git_router.py,
+  src/app/(dashboard)/runs/[runId]/tabs/FilesTab.tsx,
+  src/features/file-diff/api.ts, src/features/file-diff/hooks.ts,
+  src/tests/unit/gitDiff.test.tsx
+- DoD: unit tests green; forge-test.sh + forge-screenshots.sh to verify on Colossus next.

@@ -1,7 +1,13 @@
 'use client';
-import React from 'react';
-import { useRunFiles, useFileDiff } from '@/features/file-diff/hooks';
+import React, { useState } from 'react';
+import {
+  useRunFiles,
+  useFileDiff,
+  useGitChanges,
+  useGitDiff,
+} from '@/features/file-diff/hooks';
 import { useFileDiffStore } from '@/features/file-diff/store';
+import { useRunDetail } from '@/features/run-detail/hooks';
 import { FileList } from '@/components/domain/FileList';
 import { DiffViewer } from '@/components/domain/DiffViewer';
 import { EmptyState } from '@/components/core/EmptyState';
@@ -10,11 +16,34 @@ import { Banner } from '@/components/core/Banner';
 import styles from '../files/files.module.css';
 
 const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_CODE_REVIEW_ENABLED !== 'false';
+const REAL_GIT_DIFF_ENABLED =
+  process.env.NEXT_PUBLIC_FEATURE_REAL_GIT_DIFF_ENABLED !== 'false';
 
 export function FilesTab({ runId }: { runId: string }) {
   const { selectedPath, setSelectedPath, diffMode, setDiffMode } = useFileDiffStore();
-  const { data: files = [], isLoading: filesLoading, error: filesError } = useRunFiles(runId);
-  const { data: diff, isLoading: diffLoading } = useFileDiff(runId, selectedPath);
+  const { data: run } = useRunDetail(runId);
+  const workspacePath =
+    run?.workspaceType === 'local' && run.workspaceId?.startsWith('/')
+      ? run.workspaceId
+      : null;
+  const [source, setSource] = useState<'events' | 'git'>('events');
+  const useGit = REAL_GIT_DIFF_ENABLED && source === 'git' && !!workspacePath;
+
+  const reconstructedFiles = useRunFiles(runId);
+  const reconstructedDiff = useFileDiff(runId, useGit ? null : selectedPath);
+  const gitChanges = useGitChanges(runId, useGit ? workspacePath : null);
+  const gitDiffQuery = useGitDiff(
+    runId,
+    useGit ? selectedPath : null,
+    useGit ? workspacePath : null,
+    gitChanges.data?.find((f) => f.path === selectedPath)?.status,
+  );
+
+  const files = useGit ? gitChanges.data ?? [] : reconstructedFiles.data ?? [];
+  const filesLoading = useGit ? gitChanges.isLoading : reconstructedFiles.isLoading;
+  const filesError = useGit ? gitChanges.error : reconstructedFiles.error;
+  const diff = useGit ? gitDiffQuery.data : reconstructedDiff.data;
+  const diffLoading = useGit ? gitDiffQuery.isLoading : reconstructedDiff.isLoading;
 
   if (!FEATURE_ENABLED) {
     return (
@@ -28,6 +57,46 @@ export function FilesTab({ runId }: { runId: string }) {
     <div className={styles.page}>
       <div className={styles.toolbar}>
         <span className={styles.heading}>Changed Files</span>
+        {REAL_GIT_DIFF_ENABLED && workspacePath && (
+          <div
+            className={styles.modeToggle}
+            role="group"
+            aria-label="Diff source"
+            data-testid="diff-source-toggle"
+          >
+            <button
+              className={[
+                styles.modeBtn,
+                source === 'events' ? styles['modeBtn--active'] : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              onClick={() => {
+                setSource('events');
+                setSelectedPath(null);
+              }}
+              aria-pressed={source === 'events'}
+            >
+              Reconstructed
+            </button>
+            <button
+              className={[
+                styles.modeBtn,
+                source === 'git' ? styles['modeBtn--active'] : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              onClick={() => {
+                setSource('git');
+                setSelectedPath(null);
+              }}
+              aria-pressed={source === 'git'}
+              data-testid="diff-source-git"
+            >
+              Real git diff
+            </button>
+          </div>
+        )}
         <div className={styles.modeToggle} role="group" aria-label="Diff mode">
           <button
             className={[styles.modeBtn, diffMode === 'split' ? styles['modeBtn--active'] : '']

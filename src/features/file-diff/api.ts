@@ -16,3 +16,44 @@ export async function fetchFileDiff(runId: string, path: string): Promise<FileDi
   const json = await res.json();
   return json.data;
 }
+
+// -------------------------------------------------------------------------
+// Real git diff (Slice C.2)
+// -------------------------------------------------------------------------
+
+export interface GitChangeRow {
+  status: string;
+  path: string;
+}
+
+export interface GitDiffSides {
+  path: string;
+  original: string | null;
+  modified: string | null;
+}
+
+export async function fetchGitChanges(
+  runId: string,
+  workspacePath: string,
+): Promise<GitChangeRow[]> {
+  const url = new URL(`${BFF}/api/runs/${runId}/git/changes`);
+  url.searchParams.set('workspace_path', workspacePath);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Failed to fetch git changes: ${res.status}`);
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function fetchGitDiff(
+  runId: string,
+  filePath: string,
+  workspacePath?: string | null,
+): Promise<GitDiffSides> {
+  const url = new URL(`${BFF}/api/runs/${runId}/git/diff`);
+  url.searchParams.set('file_path', filePath);
+  if (workspacePath) url.searchParams.set('workspace_path', workspacePath);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Failed to fetch git diff: ${res.status}`);
+  const json = await res.json();
+  return json.data;
+}

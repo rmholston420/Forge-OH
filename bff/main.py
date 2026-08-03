@@ -26,6 +26,7 @@ from bff.openhands_client import startup as oh_startup
 from bff.routers import (
     agent_presets,
     bash,
+    git,
     mcp,
     metrics,
     notifications,
@@ -81,6 +82,7 @@ app.include_router(observability.router, prefix="/api")
 app.include_router(plugins.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(bash.router, prefix="/api")
+app.include_router(git.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(workspaces.router, prefix="/api")
 
