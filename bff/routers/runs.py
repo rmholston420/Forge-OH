@@ -435,23 +435,45 @@ async def resume_run(run_id: str) -> dict:
     # from paused or idle.
     #
     # Race: /pause waits for the current LLM call to finish but returns
-    # success:true immediately when execution_status transitions to 'paused'.
-    # The arun() coroutine may still be unwinding when the user hits Resume,
-    # causing /run to reply 409 'conversation_already_running'. Retry with
-    # short backoff so a rapid pause→resume click cycle behaves correctly.
-    last_exc: Optional[HTTPException] = None
-    for attempt in range(5):
+    # success:true as soon as execution_status transitions to 'paused'. The
+    # underlying arun() coroutine may still be unwinding an in-flight LLM
+    # request when the user hits Resume, causing /run to reply 409
+    # 'conversation_already_running'. For long LLM turns this can take tens
+    # of seconds.
+    #
+    # We poll agent-server's execution_status until the coroutine has finished
+    # (status leaves 'running'), then POST /run. Bounded by 20s to keep the
+    # request from blocking forever — if we hit the ceiling we surface 409 so
+    # the user can hit Stop (which uses /interrupt) instead.
+    client = get_client()
+    deadline = asyncio.get_event_loop().time() + 20.0
+    while True:
         try:
             result = await _call_lifecycle(run_id, "run")
             return {"ok": True, "run_id": run_id, "status": "running", "agent_server": result}
         except HTTPException as exc:
-            if exc.status_code == 409 and attempt < 4:
-                await asyncio.sleep(0.4 * (attempt + 1))
-                last_exc = exc
-                continue
-            raise
-    assert last_exc is not None
-    raise last_exc
+            if exc.status_code != 409:
+                raise
+            if asyncio.get_event_loop().time() >= deadline:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Cannot resume: previous LLM turn still finishing after 20s. "
+                        "Use Stop (interrupt) to cancel it, then Resume."
+                    ),
+                )
+            # Sleep, then check status; only retry /run when it leaves 'running'.
+            await asyncio.sleep(0.5)
+            try:
+                info = await client.get(f"/api/conversations/{run_id}")
+                if info.status_code < 400:
+                    st = (info.json() or {}).get("execution_status")
+                    if st in ("running",):
+                        # Still finishing the prior turn; loop.
+                        continue
+            except Exception:  # noqa: BLE001
+                pass
+            # State suggests it should be resumable now; loop retries /run.
 
 
 @router.post("/runs/{run_id}/stop")
