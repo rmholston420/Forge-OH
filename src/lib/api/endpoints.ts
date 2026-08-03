@@ -189,4 +189,36 @@ export const ENDPOINTS = {
     spans: (traceId: string) =>
       `${BASE}/observability/traces/${traceId}/spans`,
   },
+
+  // ------------------------------------------------------------------
+  // RepoGraph (bff/routers/repograph.py — Slice D)
+  // ------------------------------------------------------------------
+  REPOGRAPH: {
+    health: () => `${BASE}/repograph/health`,
+    index: () => `${BASE}/repograph/index`,
+    search: (repoKey: string, q: string, limit = 20) =>
+      `${BASE}/repograph/search?repo_key=${encodeURIComponent(repoKey)}` +
+      `&q=${encodeURIComponent(q)}&limit=${limit}`,
+    callers: (repoKey: string, name: string, relPath?: string, limit = 20) => {
+      const rp = relPath
+        ? `&rel_path=${encodeURIComponent(relPath)}`
+        : '';
+      return (
+        `${BASE}/repograph/callers?repo_key=${encodeURIComponent(repoKey)}` +
+        `&name=${encodeURIComponent(name)}${rp}&limit=${limit}`
+      );
+    },
+    callees: (repoKey: string, relPath: string, limit = 20) =>
+      `${BASE}/repograph/callees?repo_key=${encodeURIComponent(repoKey)}` +
+      `&rel_path=${encodeURIComponent(relPath)}&limit=${limit}`,
+    coChanged: (
+      repoKey: string,
+      relPath: string,
+      window = 50,
+      limit = 10,
+    ) =>
+      `${BASE}/repograph/co_changed?repo_key=${encodeURIComponent(repoKey)}` +
+      `&rel_path=${encodeURIComponent(relPath)}&window=${window}&limit=${limit}`,
+    contextBundle: () => `${BASE}/repograph/context_bundle`,
+  },
 } as const;

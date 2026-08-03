@@ -151,7 +151,7 @@ describe('FEATURE_FLAGS registry', () => {
     }
   });
 
-  it('contains exactly 20 flags (full phase 0-5 registry)', () => {
-    expect(Object.keys(FEATURE_FLAGS).length).toBe(20);
+  it('contains exactly 21 flags (phases 0-5 + rec-#1 RepoGraph)', () => {
+    expect(Object.keys(FEATURE_FLAGS).length).toBe(21);
   });
 });

@@ -1314,3 +1314,90 @@ the D.3 store tests use.
 
 **Next:** D.5 \u2014 frontend Trace RepoGraph panel + ADR-0006 +
 PORTING_LEDGER + SESSION_HANDOFF close.
+
+## 2026-08-03 07:52 EDT — Step 8 Slice D.4 fixup + D.5: frontend Trace panel, ADR-0006, PORTING_LEDGER
+
+**D.4 fixup (commit 3a650d7):** search endpoint now matches Symbol.name
+OR Symbol.rel_path. Verified on Colossus: `q=run_metadata` now returns
+5 symbols from run_metadata_store.py including the class + methods.
+Logged in DEBUG_LOG.md.
+
+**Slice D.5 \u2014 sub-slice 5 of 5 for Recommendation #1:**
+
+**Frontend feature module:**
+- `src/lib/schemas/repograph.ts` \u2014 Zod schemas + inferred TS types for
+  the 5 RepoGraph payload shapes (Symbol, Caller, Callee,
+  CoChangedResponse, IndexResponse, Health).
+- `src/features/repograph/api.ts` \u2014 typed calls over `bffGet`/`bffPost`.
+  RepoGraph endpoints return unwrapped JSON (no `{data:...}` envelope),
+  the code notes this.
+- `src/features/repograph/hooks.ts` \u2014 TanStack Query hooks:
+  `useRepoGraphHealth`, `useIndexWorkspace`, `useSymbolSearch`,
+  `useCallers`, `useCallees`, `useCoChanged`, `useContextBundle`.
+- `src/lib/api/endpoints.ts` \u2014 new `ENDPOINTS.REPOGRAPH` namespace with
+  URL-encoded builders for all six endpoints.
+- `src/lib/query/query-keys.ts` \u2014 `QUERY_KEYS.repograph` with stable
+  keys per endpoint (contextBundle sorts seeds so key equality is
+  order-independent).
+- `src/lib/feature-flags/flags.ts` + `src/lib/feature-flags/index.ts` \u2014
+  new `REPOGRAPH` flag (`NEXT_PUBLIC_FEATURE_REPOGRAPH`). Panel gates on
+  it and renders a stub with instructions when off.
+
+**Component:**
+- `src/components/domain/RepoGraphPanel.tsx` (+ .module.css) \u2014
+  dark-first panel with tokens. Layout:
+  1. Header with title + Neo4j health badge (green/red).
+  2. Workspace path input + Index button (disabled unless Neo4j healthy).
+  3. Stats line: `repo <key> \u00b7 files N \u00b7 symbols N \u00b7 calls N`.
+  4. Search input; results list ranked by PageRank.
+  5. On symbol select: three-column detail view showing Callers,
+     Callees, and Co-changed files.
+
+**TraceTab mount:**
+- Appended `<RepoGraphPanel />` to both the empty-state and populated
+  branches of `TraceTab.tsx`. Mounted below the span tree so a run
+  investigator can immediately jump from "what did the agent do" to
+  "what does the repo look like around the code it touched".
+
+**Tests:**
+- `src/tests/unit/repograph-endpoints.test.ts` \u2014 10 tests covering
+  every `ENDPOINTS.REPOGRAPH.*` URL builder, including URL encoding of
+  paths, optional rel_path handling, and default parameters.
+- `src/tests/unit/RepoGraphPanel.test.tsx` \u2014 4 tests using MSW to stub
+  all six endpoints and drive a full index \u2192 search \u2192 select \u2192
+  callers/callees/co_changed flow. Covers flag-off stub too.
+- `src/tests/unit/feature-flags.test.ts` \u2014 assertion bumped from 20 to
+  21 to reflect the new REPOGRAPH flag.
+
+**Documentation:**
+- `docs/adr/006-repograph.md` \u2014 records the structural-port decision
+  (Option A), storage choice (DozerDB), feature-flag gating, PageRank
+  implementation, search predicate, trade-offs, and follow-ups.
+- `PORTING_LEDGER.md` \u2014 first entry created. RepoGraph upstream
+  (`6c3977d8`, MIT) marked as `reference-only`; explicit note that no
+  upstream code was copied and the reasons why.
+- `SESSION_HANDOFF.md` \u2014 overwritten to reflect Rec #1 complete.
+
+**Checks:**
+- ruff/format on touched Python files: clean.
+- `npx tsc --noEmit`: 0 errors on new frontend code.
+- `npx eslint src/features/repograph src/components/domain/RepoGraphPanel.tsx \u2026`:
+  0 errors (2 pre-existing warnings in TraceTab about unused imports).
+- `npx vitest run src/tests/unit/RepoGraphPanel.test.tsx src/tests/unit/repograph-endpoints.test.ts`:
+  14/14 PASS.
+- Full vitest suite: 813 pass / 1 pre-existing unrelated failure
+  (bffDownload Blob instanceof \u2014 jsdom quirk, was failing before D.5).
+
+**DoD for Rec #1 (D.1..D.5):**
+- [x] Neo4j driver + health endpoint (D.1).
+- [x] Tree-sitter tag extractor (D.2).
+- [x] Graph builder + Neo4j store + queries (D.3).
+- [x] Six BFF endpoints + workspace registry (D.4).
+- [x] Frontend panel + hooks + tests + ADR + PORTING_LEDGER (D.5).
+- [x] Real-repo smoke on Forge-OH itself: 420 files, 997 symbols,
+      2453 resolved calls; top-hub `run_metadata_store.get` @ pagerank
+      0.135; callers/callees/co_changed/context_bundle all returning
+      live data.
+
+**Next:** Recommendation #2 or #3 from the improvements research
+report, per user direction.

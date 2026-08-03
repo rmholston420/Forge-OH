@@ -67,4 +67,18 @@ export const QUERY_KEYS = {
     all: ['mcp'] as const,
     detail: (id: string) => ['mcp', id] as const,
   },
+  repograph: {
+    all: ['repograph'] as const,
+    health: () => ['repograph', 'health'] as const,
+    search: (repoKey: string, q: string) =>
+      ['repograph', 'search', repoKey, q] as const,
+    callers: (repoKey: string, name: string, relPath?: string) =>
+      ['repograph', 'callers', repoKey, name, relPath ?? null] as const,
+    callees: (repoKey: string, relPath: string) =>
+      ['repograph', 'callees', repoKey, relPath] as const,
+    coChanged: (repoKey: string, relPath: string) =>
+      ['repograph', 'coChanged', repoKey, relPath] as const,
+    contextBundle: (repoKey: string, seeds: string[]) =>
+      ['repograph', 'contextBundle', repoKey, [...seeds].sort()] as const,
+  },
 } as const;

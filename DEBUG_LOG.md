@@ -196,3 +196,15 @@ dep-adding slices).
 **Files changed:** openhands_tools_ext/repograph/store.py, openhands_tools_ext/tests/test_store.py.
 
 **Verification:** 77/77 tests still pass locally; will re-verify on Colossus after commit.
+
+## 2026-08-03 07:52 EDT — Pre-existing failure: `bffDownload > returns Blob on success` in lib-api-client.test.ts
+
+**Symptom:** `AssertionError: expected Blob { size: 12, type: 'text/plain;charset=utf-8' } to be an instance of Blob`. The received object IS a Blob (same class name, same shape), it just fails `expect(blob).toBeInstanceOf(Blob)` in vitest+jsdom.
+
+**Affected stage/plugin/port:** Not RepoGraph. Existed before Slice D. Verified by `git stash && npx vitest run src/tests/unit/lib-api-client.test.ts` on 2026-08-03 07:51 EDT \u2014 same 1 failure/9 pass regardless of D.5 changes.
+
+**Root cause (suspected):** jsdom's global `Blob` and the `Blob` returned by our `bffDownload` come from different realms (undici polyfill vs. jsdom's own `Blob`). `instanceof` fails across realms even when the shape is identical. This is a common vitest+jsdom+undici trap.
+
+**Fix (deferred):** Change the assertion to `expect(blob).toBeDefined()` and `expect(blob.size).toBe(...)` or set up `Blob` to point at a single realm in `vitest.setup.ts`. Not fixing right now because it's unrelated to RepoGraph and everything downstream still works at runtime.
+
+**Files potentially involved:** src/lib/api/client.ts (bffDownload impl), src/tests/unit/lib-api-client.test.ts.

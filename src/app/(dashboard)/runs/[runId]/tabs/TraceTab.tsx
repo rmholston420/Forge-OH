@@ -2,6 +2,7 @@
 import { useTraceSpans } from '@/features/trace/hooks';
 import { useTraceStore } from '@/features/trace/store';
 import { SpanRow } from '@/components/domain/SpanRow';
+import { RepoGraphPanel } from '@/components/domain/RepoGraphPanel';
 
 interface Props { runId: string; }
 
@@ -24,8 +25,13 @@ export function TraceTab({ runId }: Props) {
 
   if (!roots.length) {
     return (
-      <div className="empty-state">
-        <p>No trace spans recorded for this run.</p>
+      <div className="trace-tab">
+        <div className="empty-state">
+          <p>No trace spans recorded for this run.</p>
+        </div>
+        <div style={{ marginTop: '16px' }}>
+          <RepoGraphPanel />
+        </div>
       </div>
     );
   }
@@ -40,15 +46,18 @@ export function TraceTab({ runId }: Props) {
           <SpanRow
             key={span.id}
             span={span}
-           
+
             depth={0}
             traceStartTime={span.startedAt || new Date().toISOString()}
             traceDurationMs={span.durationMs || 1}
-           
-           
+
+
           />
         ))}
       </ul>
+      <div style={{ marginTop: '16px' }}>
+        <RepoGraphPanel />
+      </div>
     </div>
   );
 }

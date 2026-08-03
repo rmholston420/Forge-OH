@@ -63,6 +63,8 @@ const STATIC_FLAG_VALUES: Record<FeatureFlag, string | undefined> = {
   PLUGIN_MARKETPLACE: process.env.NEXT_PUBLIC_FEATURE_PLUGIN_MARKETPLACE,
   RUN_REPLAY: process.env.NEXT_PUBLIC_FEATURE_RUN_REPLAY,
   RIGPA_LMS: process.env.NEXT_PUBLIC_FEATURE_RIGPA_LMS,
+  // Recommendation #1 — RepoGraph
+  REPOGRAPH: process.env.NEXT_PUBLIC_FEATURE_REPOGRAPH,
 };
 
 function readEnvFlag(flag: FeatureFlag): string | undefined {

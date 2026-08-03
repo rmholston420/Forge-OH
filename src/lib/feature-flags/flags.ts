@@ -80,6 +80,17 @@ export const FEATURE_FLAGS = {
   RUN_REPLAY: 'RUN_REPLAY',
   /** 5C: Rigpa-LMS Integration (RBAC, course enrollment) */
   RIGPA_LMS: 'RIGPA_LMS',
+
+  // ------------------------------------------------------------------
+  // Recommendation #1 — Repository-aware structural retrieval
+  // ------------------------------------------------------------------
+  /**
+   * D (D.1..D.5): RepoGraph panel in the Trace tab; queries the
+   * /api/repograph endpoints backed by DozerDB/Neo4j. Gated so the
+   * whole feature can be turned off from the frontend even when the
+   * BFF-side REPOGRAPH_ENABLED is on.
+   */
+  REPOGRAPH: 'REPOGRAPH',
 } as const;
 
 export type FeatureFlag = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS];

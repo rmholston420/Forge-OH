@@ -1,49 +1,52 @@
-# Session Handoff
+# SESSION_HANDOFF
 
-**Current stage:** Step 8 Slice D — Repository-Aware Structural Retrieval Layer
-(Rec #1 from `forge-oh-improvements-research.md`). Sub-slice D.1 shipped;
-D.2..D.5 in progress this session.
+**Last updated:** 2026-08-03 07:52 EDT
+**Current stage:** Recommendation #1 (Repository-Aware Structural Retrieval Layer) — COMPLETE
+**Current tag:** `v1.0-alpha1` on `17dcb1b` (Slice C.2 baseline)
+**Latest commit:** `<pending — Slice D.5 push>` (frontend RepoGraph panel + ADR-0006 + PORTING_LEDGER)
 
-## Completed this session
-- Slice C.2 shipped and verified on Colossus (`17dcb1b`, all 8 CI + 16/16 e2e).
-- Tagged **`v1.0-alpha1`** on `17dcb1b`.
-- Improvement research report delivered (`forge-oh-improvements-research.md`).
-- DozerDB confirmed on Colossus (`kosmos-dozerdb`, 5.26.27 community, port 7687).
-- `forgeoh` DB created via HTTP tx API; verified `RETURN 1` returns.
-- `~/dev/forge-oh/.env.neo4j` written with 600 perms and gitignored.
-- **Slice D.1 shipped locally** — Neo4j settings + lazy driver + health endpoint
-  + 8/8 tests. Awaiting Colossus verify after this commit.
+## What was completed this session
 
-## Definition of Done — Slice D (full)
-- [x] D.1 — Neo4j deps + settings + health endpoint
-- [ ] D.2 — Tag extraction (tree-sitter Python + TS, clean-slate)
-- [ ] D.3 — Graph builder + Neo4j store + Cypher queries
-- [ ] D.4 — Six BFF endpoints (index / search / callers / callees / co_changed / context_bundle)
-- [ ] D.5 — Frontend Trace panel + ADR-0006 + PORTING_LEDGER entry + build log close
-- [ ] Colossus `./scripts/forge-test.sh && ./scripts/forge-screenshots.sh` all green
-- [ ] `curl /api/repograph/health` returns `reachable=true` on Colossus
+Recommendation #1 delivered end-to-end in five slices, D.1 → D.5:
 
-## Rec #1 port strategy
-Structural port (not verbatim vendor). Upstream `ozyyshr/RepoGraph@6c3977d8`
-has `exec()`/`eval()` on parsed imports and hardcodes Python-only filters —
-unsafe to vendor as-is against arbitrary repos. PORTING_LEDGER entry (D.5)
-credits RepoGraph as architectural source per Apache-2.0.
+- **D.1** `febe96c` — Neo4j driver singleton (`bff/deps/neo4j_driver.py`) + `GET /api/repograph/health` verified on Colossus against real DozerDB 5.26.27.
+- **D.2** `bdb8090` — Clean-slate tree-sitter tag extractor at `openhands_tools_ext/repograph/parser.py`. Python, TS, TSX, JS. No `exec`/`eval`. 27/27 tests.
+- **D.3** `242a042` — Graph builder + Neo4j store + read queries (`search_by_name`, `callers_of`, `callees_of`, `context_bundle`). Pure-Python power-iteration PageRank; dropped `networkx`. 51/51 tests.
+- **D.4** `d6aaf74` + fixup `3a650d7` — Six BFF endpoints under `/api/repograph` + `bff/services/repograph_registry.py`. Feature-flag guarded; workspace registry populated by `POST /index`; `GET /co_changed` shells out to git. Real-repo smoke on Colossus: 420 files, 997 symbols, 2453 calls; top-hub `run_metadata_store.get` @ pagerank 0.135. 26/26 router tests.
+- **D.5** (this commit) — Frontend `RepoGraphPanel` mounted in Trace tab. Feature-flag gated (`NEXT_PUBLIC_FEATURE_REPOGRAPH`). Typed Zod schemas + TanStack Query hooks + full MSW-driven test suite (14/14). ADR-006 + PORTING_LEDGER first entry.
 
-## Next actions (in order, this session)
-1. Commit + push D.1.
-2. Ask you to set `REPOGRAPH_ENABLED=true` in `~/dev/forge-oh/.env` on Colossus
-   (creds already loaded via `.env.neo4j`) and hit `/api/repograph/health`.
-3. Build D.2 tag extractor (tree-sitter Python + TS) — no exec/eval, clean-slate.
-4. Build D.3 graph builder + Neo4j store.
-5. Build D.4 BFF endpoints.
-6. Build D.5 frontend panel + ADR + PORTING_LEDGER.
+## What remains before Definition of Done is met
+
+Nothing for Recommendation #1. All five sub-slices shipped with green tests and end-to-end verification on Colossus. Full BFF suite: 96 pass (excluding pre-existing mcp/plugins/observability failures). Full frontend suite: 813 pass (excluding one pre-existing jsdom `Blob instanceof` failure in `lib-api-client.test.ts` that predates D.1–D.5).
 
 ## Open questions
-- None blocking D.1. D.4 will need one small decision on the exact
-  `context_bundle` token budget (Aider default is 1024).
 
-## Deferred / follow-up
-- Auto-index-on-file-save hook (D.4 exposes `POST /index` — background hook is
-  a follow-up slice after D.5 verifies).
-- Neo4j schema migration tool (using idempotent `MERGE` + constraints for MVP).
-- KGCompass-style issue/PR linking (report flagged as stretch; deferred).
+None from this session.
+
+## Exact next action
+
+Confirm D.5 verification on Colossus:
+
+```bash
+cd ~/dev/forge-oh && git pull --ff-only
+
+# Enable the frontend flag
+grep -q NEXT_PUBLIC_FEATURE_REPOGRAPH .env.local 2>/dev/null || \
+  echo "NEXT_PUBLIC_FEATURE_REPOGRAPH=true" >> .env.local
+
+# Rebuild the Next.js server so the flag is inlined
+./scripts/forge-up.sh 2>&1 | tail -5
+
+# Then open http://localhost:3000/runs/<any-run-id> and click the
+# "Trace" tab. RepoGraph panel should appear at the bottom, showing a
+# green "neo4j 5.26.27 / forgeoh" badge. Type a workspace path
+# (e.g. /home/rmholston/dev/forge-oh) → click Index → search for a
+# symbol name → click a result → see callers / callees / co-changed.
+```
+
+After successful verification, choose the next recommendation from `forge-oh-improvements-research.md`:
+
+- **#2:** OpenTelemetry / observability deep-instrumentation.
+- **#3:** Session-scoped skill orchestration.
+
+Or return to any deferred item on `Forge-OH-Action-Plan-v4.md` Step 9+.
