@@ -3164,3 +3164,52 @@ vLLM Docker image: `vllm/vllm-openai:latest` currently 0.26.0.
 
 **Stop condition met.** Router rewire (F.19.2a/b/c) already merged.
 Proceeding to F.19.3 (test expansion + `route_request` removal).
+
+## 2026-08-03 19:06 EDT — F.19.3 tests expanded, legacy router purged
+
+**Stage:** F.19.3.
+
+**Delivered:**
+
+1. **Removed dead functions** from `bff/services/model_router.py`:
+   - `route_request(task_complexity, context_length)` (F.18 shape)
+   - `try_model(primary, fallback=None)` (internal helper)
+   Module docstring rewritten to reflect role-first world.
+   `ALT_MODEL`, `VLLM_FALLBACK_MODEL`, `PRIMARY_MODEL`, `FAST_MODEL`,
+   `PRIMARY_CTX_LIMIT`, `LLM_PRIMARY_BACKEND` **retained** — they're
+   still exported for the settings-router display fields
+   (`primaryBackend`, `primaryModel`, `fastModel`, `vllmModel`).
+
+2. **Rebuilt legacy `probes` field** in
+   `bff/routers/settings.py` on top of `route_by_role`:
+   - Added `_LEGACY_TASK_TO_ROLE` map (mirrors runs.py, kept local to
+     avoid router↔router import cycle).
+   - Each probe scenario now maps its taskComplexity to a role,
+     calls `route_by_role(role, context_length=ctx)`, and reports
+     `route.tagged` as `selected`.
+   - FE contract preserved: `probes` shape unchanged (3 entries,
+     same fields).
+
+3. **Test suite cleanup** in
+   `bff/tests/test_model_router.py`:
+   - Deleted 6 dead tests targeting `try_model` /
+     `LLM_PRIMARY_BACKEND` prefer-fallback semantics
+     (functionality removed).
+   - Retained `test_primary_backend_env_is_case_insensitive` and
+     3 `vllm_health_check` tests — the underlying code paths still
+     exist for settings-router display.
+   - Added `test_route_by_role_max_tokens_env_override` — verifies
+     `LLM_CODER_MAX_TOKENS` / `LLM_PLANNER_MAX_TOKENS` env vars
+     propagate through `RoleRoute.max_tokens`.
+
+**Test count:** 20 → 14 (6 removed, 1 added). All 14 pass in
+sandbox. Sandbox lacks `socketio` so `test_settings_router.py` +
+`test_hook_config.py` still need Colossus for full validation.
+
+**Files changed:**
+- `bff/services/model_router.py`
+- `bff/routers/settings.py`
+- `bff/tests/test_model_router.py`
+
+**Stop condition:** F.19.3 DONE. Router surface is now
+role-only. Legacy display fields preserved for FE compat.

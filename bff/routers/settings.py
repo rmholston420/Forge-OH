@@ -31,9 +31,22 @@ from bff.services.model_router import (
     _vllm_role_health,
     ollama_health_check,
     route_by_role,
-    route_request,
     vllm_health_check,
 )
+
+# F.19.3: taskComplexity → role for the legacy F.18 probe scenarios.
+# Mirrors bff/routers/runs.py::_TASK_COMPLEXITY_TO_ROLE; agentic is a
+# planner-class task, simple is a coder-class task. Kept here (not
+# imported from runs.py) to avoid a router → router import cycle.
+_LEGACY_TASK_TO_ROLE: dict[str, str] = {
+    "fast": "coder",
+    "simple": "coder",
+    "medium": "coder",
+    "complex": "planner",
+    "reasoning": "planner",
+    "planning": "planner",
+    "agentic": "planner",
+}
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -148,6 +161,8 @@ def reset_settings_handler():
 @router.get("/model-routing", response_model=ModelRoutingStatus)
 async def get_model_routing_handler():
     # --- Legacy task-complexity probes (F.18 shape, kept for FE compat) ---
+    # F.19.3: rebuilt on top of route_by_role. Each scenario maps its
+    # taskComplexity to a role via _LEGACY_TASK_TO_ROLE and probes it.
     probes: list[RoutingProbe] = []
     scenarios = [
         ("agentic", 8000),
@@ -155,13 +170,14 @@ async def get_model_routing_handler():
         ("simple", 50000),
     ]
     for task_complexity, context_length in scenarios:
+        role = _LEGACY_TASK_TO_ROLE.get(task_complexity.lower(), "coder")
         try:
-            selected = await route_request(task_complexity, context_length)
+            route = await route_by_role(role, context_length=context_length)
             probes.append(
                 RoutingProbe(
                     taskComplexity=task_complexity,
                     contextLength=context_length,
-                    selected=selected,
+                    selected=route.tagged,
                 )
             )
         except ModelUnavailableError as exc:

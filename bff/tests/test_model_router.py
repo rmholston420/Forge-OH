@@ -27,112 +27,6 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-# ---------- LLM_PRIMARY_BACKEND=ollama (default) ----------
-
-
-def test_ollama_primary_prefers_ollama_when_healthy(monkeypatch):
-    mr = _reload_router(monkeypatch, "ollama")
-
-    async def yes(model=None):
-        return True
-
-    monkeypatch.setattr(mr, "ollama_health_check", yes)
-    monkeypatch.setattr(mr, "vllm_health_check", yes)
-
-    result = _run(mr.try_model("qwen3.6:35b-a3b"))
-    assert result == "ollama/qwen3.6:35b-a3b"
-
-
-def test_ollama_primary_falls_back_to_vllm(monkeypatch):
-    mr = _reload_router(monkeypatch, "ollama")
-
-    async def no(model=None):
-        return False
-
-    async def yes():
-        return True
-
-    monkeypatch.setattr(mr, "ollama_health_check", no)
-    monkeypatch.setattr(mr, "vllm_health_check", yes)
-
-    result = _run(mr.try_model("qwen3.6:35b-a3b"))
-    assert result.startswith("vllm/")
-
-
-# ---------- LLM_PRIMARY_BACKEND=vllm ----------
-
-
-def test_vllm_primary_prefers_vllm_when_healthy(monkeypatch):
-    mr = _reload_router(monkeypatch, "vllm")
-
-    async def yes_o(model=None):
-        return True
-
-    async def yes_v():
-        return True
-
-    monkeypatch.setattr(mr, "ollama_health_check", yes_o)
-    monkeypatch.setattr(mr, "vllm_health_check", yes_v)
-
-    result = _run(mr.try_model("qwen3.6:35b-a3b"))
-    assert result.startswith("vllm/")
-
-
-def test_vllm_primary_falls_back_to_ollama(monkeypatch):
-    mr = _reload_router(monkeypatch, "vllm")
-
-    async def yes_o(model=None):
-        return True
-
-    async def no_v():
-        return False
-
-    monkeypatch.setattr(mr, "ollama_health_check", yes_o)
-    monkeypatch.setattr(mr, "vllm_health_check", no_v)
-
-    result = _run(mr.try_model("qwen3.6:35b-a3b"))
-    assert result == "ollama/qwen3.6:35b-a3b"
-
-
-# ---------- Both down ----------
-
-
-@pytest.mark.parametrize("primary_backend", ["ollama", "vllm"])
-def test_both_backends_down_raises(monkeypatch, primary_backend):
-    mr = _reload_router(monkeypatch, primary_backend)
-
-    async def no_o(model=None):
-        return False
-
-    async def no_v():
-        return False
-
-    monkeypatch.setattr(mr, "ollama_health_check", no_o)
-    monkeypatch.setattr(mr, "vllm_health_check", no_v)
-
-    with pytest.raises(mr.ModelUnavailableError):
-        _run(mr.try_model("qwen3.6:35b-a3b"))
-
-
-# ---------- Fallback model override ----------
-
-
-def test_explicit_fallback_model_overrides_env_default(monkeypatch):
-    mr = _reload_router(monkeypatch, "ollama")
-
-    async def no(model=None):
-        return False
-
-    async def yes():
-        return True
-
-    monkeypatch.setattr(mr, "ollama_health_check", no)
-    monkeypatch.setattr(mr, "vllm_health_check", yes)
-
-    result = _run(mr.try_model("qwen3.6:35b-a3b", fallback="explicit-vllm-tag"))
-    assert result == "vllm/explicit-vllm-tag"
-
-
 # ---------- LLM_PRIMARY_BACKEND normalization ----------
 
 
@@ -359,6 +253,27 @@ def test_supervisor_disabled_env_short_circuits(monkeypatch):
 
     route = _run(mr.route_by_role("coder"))
     assert route.backend == "ollama"
+
+
+def test_route_by_role_max_tokens_env_override(monkeypatch):
+    """F.19.3: LLM_CODER_MAX_TOKENS / LLM_PLANNER_MAX_TOKENS env vars
+    flow through the returned RoleRoute.max_tokens."""
+    monkeypatch.setenv("LLM_CODER_MAX_TOKENS", "1234")
+    monkeypatch.setenv("LLM_PLANNER_MAX_TOKENS", "5678")
+    mr = _reload_router_for_roles(monkeypatch)
+
+    async def _healthy(url):
+        return True
+
+    monkeypatch.setattr(mr, "_vllm_role_health", _healthy)
+
+    coder_route = _run(mr.route_by_role("coder"))
+    assert coder_route.max_tokens == 1234
+    assert coder_route.backend == "vllm"
+
+    planner_route = _run(mr.route_by_role("planner"))
+    assert planner_route.max_tokens == 5678
+    assert planner_route.backend == "vllm"
 
 
 def test_role_route_dataclass_is_frozen():

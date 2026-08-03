@@ -3,28 +3,26 @@
 The frontend NEVER selects models — all routing happens here in the BFF.
 Never go below Q4_K_M quantization.
 
-Two public APIs live here:
+Role-based routing via ``route_by_role(role, context_length=0)``
+(F.19.2a). Returns a ``RoleRoute`` dataclass carrying backend, model,
+base_url, and max_tokens. Roles are ``"coder"`` and ``"planner"``.
+Backed by the dual-port vLLM topology (ADR-009 §3a) and the
+``ops/vllm_supervisor.sh`` swap-on-demand controller (F.19.1a).
 
-1. Legacy ``route_request(task_complexity, context_length)`` (F.18 shape).
-   Returns a backend-tagged model string (``ollama/<tag>`` or ``vllm/<tag>``).
-   Still used by ``bff/routers/settings.py`` and ``bff/routers/runs.py``.
-   Deprecated by F.19 but kept working until F.19.2b (runs.py) and F.19.2c
-   (settings.py) migrate their call sites.
+The legacy ``route_request(task_complexity, context_length)`` and its
+helper ``try_model`` were removed in F.19.3 after all three call
+sites migrated to ``route_by_role``. taskComplexity → role mapping
+now lives in ``bff/routers/runs.py::_TASK_COMPLEXITY_TO_ROLE``.
 
-2. Role-based ``route_by_role(role, context_length=0)`` (F.19.2a, this
-   commit). Returns a ``RoleRoute`` dataclass carrying backend, model,
-   base_url, and max_tokens. Roles are ``"coder"`` and ``"planner"``.
-   Backed by the dual-port vLLM topology (ADR-009 §3a) and the
-   ``ops/vllm_supervisor.sh`` swap-on-demand controller (F.19.1a).
-
-Endpoints (legacy)
-------------------
+Endpoints (Ollama + generic vLLM probe)
+---------------------------------------
 - ``OLLAMA_URL`` (default ``http://localhost:11434``) — used for the
-  ``/api/tags`` health probe.
+  ``/api/tags`` health probe and by Ollama-fallback role routes.
 - ``OLLAMA_BASE_URL`` (default ``http://localhost:11434/v1``) — used by
   callers for OpenAI-compatible requests.
-- ``VLLM_URL`` (default ``http://localhost:8500``) — vLLM OpenAI-compatible
-  root; the health probe hits ``{VLLM_URL}/v1/models``.
+- ``VLLM_URL`` (default ``http://localhost:8500``) — legacy F.18 vLLM
+  OpenAI-compatible root; still exported for the settings probe UI
+  (``vllmHealthy``) but no longer part of live routing.
 
 Endpoints (role-based, F.19)
 ----------------------------
@@ -33,13 +31,11 @@ Endpoints (role-based, F.19)
 - ``LLM_PLANNER_URL`` (default ``http://localhost:8511``) — planner-role
   vLLM root. Health probe hits ``{LLM_PLANNER_URL}/v1/models``.
 
-Primary backend (legacy)
-------------------------
-``LLM_PRIMARY_BACKEND`` (default ``ollama``) selects which backend to try
-first. When set to ``vllm``, vLLM is probed first and Ollama becomes the
-fallback. The other-side probe is only attempted if the primary side is
-unhealthy — meaning the fallback backend can be entirely absent and normal
-routing still succeeds.
+Primary backend (settings display)
+----------------------------------
+``LLM_PRIMARY_BACKEND`` (default ``ollama``) is retained as a settings
+display hint (``primaryBackend`` field). It no longer gates live
+routing — role selection is explicit via ``route_by_role``.
 """
 
 from __future__ import annotations
@@ -200,60 +196,6 @@ async def vllm_health_check() -> bool:
             return len(data) > 0
     except Exception:
         return False
-
-
-async def try_model(primary: str, fallback: str | None = None) -> str:
-    """Try the configured primary backend first, then fall back to the other.
-
-    Args:
-        primary: Ollama model name (e.g. ``qwen3.6:35b-a3b``). Used only for
-            the Ollama-side probe; ignored when Ollama is not consulted.
-        fallback: vLLM served-model name (e.g. ``qwen3-coder-30b``). Defaults
-            to ``VLLM_FALLBACK_MODEL``.
-
-    Returns:
-        ``"ollama/<tag>"`` or ``"vllm/<tag>"``.
-
-    Raises:
-        ModelUnavailableError: neither backend is healthy.
-    """
-    resolved_fallback = fallback or VLLM_FALLBACK_MODEL
-
-    if LLM_PRIMARY_BACKEND == "vllm":
-        if await vllm_health_check():
-            return f"vllm/{resolved_fallback}"
-        if await ollama_health_check(primary):
-            return f"ollama/{primary}"
-    else:
-        if await ollama_health_check(primary):
-            return f"ollama/{primary}"
-        if await vllm_health_check():
-            return f"vllm/{resolved_fallback}"
-
-    raise ModelUnavailableError(
-        "No local LLM available. Ensure Ollama or vLLM is running."
-    )
-
-
-async def route_request(task_complexity: str, context_length: int) -> str:
-    """Route to the optimal local model based on complexity and context length.
-
-    task_complexity values:
-      - ``"agentic"`` (default) — primary MoE model, best throughput/quality balance.
-      - ``"fast"``              — speed-priority fallback (long context, low complexity).
-      - ``"alt"``               — manual higher-quality dense model (requires pull).
-
-    Long-context inputs (> ``PRIMARY_CTX_LIMIT``) are always routed to the
-    fast model regardless of complexity, because the primary MoE model has no
-    KV-cache headroom above its default 32K context window.
-    """
-    if context_length > PRIMARY_CTX_LIMIT:
-        return await try_model(FAST_MODEL)
-    if task_complexity == "alt":
-        return await try_model(ALT_MODEL)
-    if task_complexity == "agentic":
-        return await try_model(PRIMARY_MODEL)
-    return await try_model(FAST_MODEL)
 
 
 # ---------------------------------------------------------------------------
