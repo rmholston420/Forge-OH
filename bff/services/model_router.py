@@ -19,6 +19,7 @@ The Ollama OpenAI-compatible endpoint lives at OLLAMA_BASE_URL (default
 http://localhost:11434/v1); the /api/tags health probe uses OLLAMA_URL
 (default http://localhost:11434).
 """
+
 from __future__ import annotations
 
 import os

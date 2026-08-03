@@ -10,6 +10,7 @@ TODO(foh-phase2):
 - Define a proper metrics contract consumed by the dashboard
 
 """
+
 from fastapi import APIRouter
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])

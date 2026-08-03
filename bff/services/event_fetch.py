@@ -4,6 +4,7 @@ Used by:
 - bff.routers.runs (plan/commands/artifacts derivations)
 - bff.routers.observability (trace/span derivation)
 """
+
 from __future__ import annotations
 
 from typing import Any

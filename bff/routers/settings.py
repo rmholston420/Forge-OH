@@ -8,6 +8,7 @@ shadowing the `get_settings` name imported from bff.settings (Pydantic
 Settings singleton). Previously the collision caused the GET /api/settings
 endpoint to return the Pydantic Settings object instead of SettingsResponse.
 """
+
 from typing import Literal
 
 from fastapi import APIRouter
@@ -83,6 +84,7 @@ _SETTINGS = SettingsResponse()
 # NOTE: routes use "" (empty string) not "/" to avoid FastAPI registering
 # /api/settings/ with a trailing slash, which causes 307 redirects for
 # clients that request /api/settings (no slash).
+
 
 @router.get("", response_model=SettingsResponse)
 def get_settings_handler():

@@ -25,6 +25,7 @@ Task lifecycle:
   is a no-op. stop_relay(cid) cancels the task.  When a conversation
   reaches a terminal execution_status the relay self-stops.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -117,19 +118,29 @@ async def _run_loop(cid: str) -> None:
 
             if status != last_status:
                 log.info("relay[%s]: status %s -> %s", cid, last_status, status)
-                await _emit(room, "status", {
-                    "type": "status",
-                    "runId": cid,
-                    "conversationId": cid,
-                    "executionStatus": status,
-                    "prev": last_status,
-                })
+                await _emit(
+                    room,
+                    "status",
+                    {
+                        "type": "status",
+                        "runId": cid,
+                        "conversationId": cid,
+                        "executionStatus": status,
+                        "prev": last_status,
+                    },
+                )
                 last_status = status
 
             events, next_page = await _fetch_page(cid, page_id)
             if events:
                 total_events += len(events)
-                log.info("relay[%s]: forwarded %d event(s) (total=%d, next_page=%s)", cid, len(events), total_events, next_page)
+                log.info(
+                    "relay[%s]: forwarded %d event(s) (total=%d, next_page=%s)",
+                    cid,
+                    len(events),
+                    total_events,
+                    next_page,
+                )
             for ev in events:
                 # Enrich with runId so the frontend normalizer can tag events
                 # without needing to parse the room name.
@@ -140,7 +151,12 @@ async def _run_loop(cid: str) -> None:
                 page_id = next_page
 
             if status in _TERMINAL_STATUSES:
-                log.info("relay[%s]: terminal status '%s' — stopping (total events forwarded=%d)", cid, status, total_events)
+                log.info(
+                    "relay[%s]: terminal status '%s' — stopping (total events forwarded=%d)",
+                    cid,
+                    status,
+                    total_events,
+                )
                 return
 
             await asyncio.sleep(_pick_interval(status))

@@ -25,6 +25,7 @@ Design notes:
   dedicated rotate endpoint and PUT semantics for existing names are unclear
   from the openapi (a PUT with a colliding name may 409).
 """
+
 from __future__ import annotations
 
 import time
@@ -42,6 +43,7 @@ router = APIRouter(prefix="/secrets", tags=["secrets"])
 # Reshape upstream {name, description} → frontend SecretRef
 # ---------------------------------------------------------------------------
 
+
 def _to_ref(item: dict[str, Any]) -> dict[str, Any]:
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     name = item.get("name") or ""
@@ -58,6 +60,7 @@ def _to_ref(item: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Request bodies
 # ---------------------------------------------------------------------------
+
 
 class CreateSecretBody(BaseModel):
     # Frontend contract sends {name, value, description?}. Legacy stub accepted
@@ -83,6 +86,7 @@ class ConversationSecretsBody(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 async def _upstream_list() -> list[dict[str, Any]]:
     client = get_client()
@@ -116,6 +120,7 @@ async def _upstream_delete(name: str) -> None:
 # Endpoints
 # ---------------------------------------------------------------------------
 
+
 @router.get("")
 async def list_secrets(scope: str | None = None) -> list[dict[str, Any]]:
     """List secrets (metadata only).
@@ -139,7 +144,9 @@ async def create_secret(body: CreateSecretBody) -> dict[str, Any]:
 
     # Refetch to return canonical metadata
     items = await _upstream_list()
-    match = next((i for i in items if i.get("name") == name), {"name": name, "description": body.description})
+    match = next(
+        (i for i in items if i.get("name") == name), {"name": name, "description": body.description}
+    )
     return _to_ref(match)
 
 
@@ -156,7 +163,10 @@ async def rotate_secret(secret_id: str, body: RotateSecretBody) -> dict[str, Any
     await _upstream_create(secret_id, body.newValue, description)
 
     items = await _upstream_list()
-    match = next((i for i in items if i.get("name") == secret_id), {"name": secret_id, "description": description})
+    match = next(
+        (i for i in items if i.get("name") == secret_id),
+        {"name": secret_id, "description": description},
+    )
     return _to_ref(match)
 
 

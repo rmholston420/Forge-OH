@@ -3,6 +3,7 @@
 Addresses the documented 27.67% merge conflict rate in agentic PRs.
 Attempts auto-resolution for simple cases; flags complex conflicts in PR descriptions.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -35,7 +36,9 @@ class ConflictChecker:
                 timeout=30,
             )
             if result.returncode == 0:
-                return ConflictReport(has_conflicts=False, check_available=True, summary="Clean merge")
+                return ConflictReport(
+                    has_conflicts=False, check_available=True, summary="Clean merge"
+                )
 
             conflicting = self._parse_conflicts(result.stdout)
             return ConflictReport(

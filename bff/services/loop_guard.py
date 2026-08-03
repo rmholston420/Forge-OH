@@ -1,13 +1,14 @@
 """Loop Guard — detects repetitive agent action cycles and suggests escalation."""
+
 from collections import deque
 from dataclasses import dataclass
 
 
 @dataclass
 class ActionFingerprint:
-    operation_class: str   # "edit_file", "run_test", "rewrite_func"
-    target: str            # normalized file path or function name
-    approach: str          # "syntax", "logic", "structural"
+    operation_class: str  # "edit_file", "run_test", "rewrite_func"
+    target: str  # normalized file path or function name
+    approach: str  # "syntax", "logic", "structural"
 
 
 class LoopGuard:
@@ -27,7 +28,7 @@ class LoopGuard:
         occurrence, not the (threshold+1)-th.
         """
         h = self.fingerprint(fp)
-        self.history.append(h)          # append first
+        self.history.append(h)  # append first
         count = sum(1 for x in self.history if x == h)  # then count
         return count >= self.threshold
 

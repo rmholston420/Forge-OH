@@ -22,6 +22,7 @@ Stage 6 changes:
   - test_workspace_connection() now does a real path check.
   - reset_workspace endpoint removed (destructive, unused by any spec DoD).
 """
+
 from __future__ import annotations
 
 import logging
@@ -118,7 +119,9 @@ async def _list_agent_workspaces() -> list[dict]:
         r = await client.get("/api/workspaces")
         r.raise_for_status()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"agent-server workspace list failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"agent-server workspace list failed: {exc}"
+        ) from exc
     data = r.json() or {}
     return list(data.get("workspaces", []))
 
@@ -171,7 +174,9 @@ async def create_workspace(body: CreateWorkspaceRequest) -> Workspace:
         r = await client.post("/api/workspaces", json={"workspaces": [item]})
         r.raise_for_status()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"agent-server workspace create failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"agent-server workspace create failed: {exc}"
+        ) from exc
 
     # Look up the freshly added item (agent-server may normalize fields).
     fresh = await _get_agent_workspace_by_id(wid)

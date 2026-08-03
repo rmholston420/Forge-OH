@@ -23,6 +23,7 @@ Frontend `Plugin` shape (src/lib/schemas/plugin.ts):
   {id, name, version, description?, author?, status, configSchema?,
    installedAt?, updatedAt}
 """
+
 from __future__ import annotations
 
 import time
@@ -39,6 +40,7 @@ router = APIRouter(prefix="/plugins", tags=["plugins"])
 # ---------------------------------------------------------------------------
 # Reshapers: agent-server InstalledPluginResponse → frontend Plugin
 # ---------------------------------------------------------------------------
+
 
 def _to_plugin(u: dict[str, Any]) -> dict[str, Any]:
     """Reshape agent-server InstalledPluginResponse into a frontend `Plugin`."""
@@ -71,6 +73,7 @@ def _to_marketplace(u: dict[str, Any]) -> dict[str, Any]:
 # Request bodies
 # ---------------------------------------------------------------------------
 
+
 class InstallBody(BaseModel):
     # Frontend may send just an id/name; we translate to the upstream {source, ref, repo_path}
     # request. Accept both shapes for compatibility.
@@ -87,6 +90,7 @@ class InstallBody(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _get_installed_plugin(name: str) -> dict[str, Any]:
     client = get_client()
     resp = await client.get(f"/api/plugins/installed/{name}")
@@ -100,6 +104,7 @@ async def _get_installed_plugin(name: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("")
 async def list_plugins() -> dict[str, Any]:

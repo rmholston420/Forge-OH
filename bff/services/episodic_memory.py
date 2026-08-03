@@ -12,6 +12,7 @@ Lifetime management:
   NEVER call `aiosqlite.connect()` per-request — that creates a new file
   handle on every call and causes SQLite locking errors under concurrency.
 """
+
 from __future__ import annotations
 
 import json
@@ -41,9 +42,7 @@ async def init_db(app: FastAPI) -> None:
         )
         """
     )
-    await conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_memory_run_id ON memory_entries (run_id)"
-    )
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_run_id ON memory_entries (run_id)")
     await conn.commit()
     app.state.memory_db = conn
 

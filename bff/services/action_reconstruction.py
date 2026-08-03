@@ -19,6 +19,7 @@ Forge-OH endpoints reshape that stream into UI-shaped lists:
 All three functions operate on the same in-memory events list returned by
 ``_fetch_all_events`` and are pure — no I/O, no dependency on ``get_client``.
 """
+
 from __future__ import annotations
 
 import os
@@ -79,6 +80,7 @@ def _duration_ms(start: str | None, end: str | None) -> int | None:
 # Commands
 # ---------------------------------------------------------------------------
 
+
 def _extract_command_str(action: dict[str, Any]) -> str:
     """Best-effort extract of the shell command string from an action payload."""
     if not isinstance(action, dict):
@@ -134,9 +136,7 @@ def build_commands(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "output": output,
                 "exitCode": exit_code,
                 "startedAt": e.get("timestamp") or "",
-                "durationMs": _duration_ms(
-                    e.get("timestamp"), (obs or {}).get("timestamp")
-                ),
+                "durationMs": _duration_ms(e.get("timestamp"), (obs or {}).get("timestamp")),
             }
         )
     return out
@@ -146,14 +146,38 @@ def build_commands(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # Artifacts
 # ---------------------------------------------------------------------------
 
+
 def _looks_binary(path: str) -> bool:
     ext = os.path.splitext(path)[1].lower()
     return ext in {
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp",
-        ".pdf", ".zip", ".gz", ".tar", ".bz2", ".xz",
-        ".mp3", ".mp4", ".wav", ".ogg", ".mov",
-        ".woff", ".woff2", ".ttf", ".eot",
-        ".so", ".dylib", ".dll", ".exe", ".class", ".pyc",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".ico",
+        ".bmp",
+        ".pdf",
+        ".zip",
+        ".gz",
+        ".tar",
+        ".bz2",
+        ".xz",
+        ".mp3",
+        ".mp4",
+        ".wav",
+        ".ogg",
+        ".mov",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".so",
+        ".dylib",
+        ".dll",
+        ".exe",
+        ".class",
+        ".pyc",
     }
 
 
@@ -198,6 +222,7 @@ def build_artifacts(events: list[dict[str, Any]], run_id: str) -> list[dict[str,
 # ---------------------------------------------------------------------------
 # Plan
 # ---------------------------------------------------------------------------
+
 
 def _normalize_plan_status(raw: Any) -> str:
     if isinstance(raw, str):

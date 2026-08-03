@@ -13,6 +13,7 @@ CRITICAL — two constraints that must never be changed without a migration plan
    servers, plugins, etc.) is process-local.  Do not scale workers until
    state is externalised.
 """
+
 import os
 from contextlib import asynccontextmanager
 
@@ -95,6 +96,7 @@ event_relay.set_sio(sio)
 #   client emits 'unsubscribe' to leave
 # -----------------------------------------------------------------------------
 
+
 def _extract_cid(source: dict) -> str | None:
     """Accept either conversationId or runId — they are identical per the
     Stage-3 identity contract (run_id == conversation_id)."""
@@ -104,6 +106,7 @@ def _extract_cid(source: dict) -> str | None:
 @sio.event
 async def connect(sid, environ, auth):
     from urllib.parse import parse_qs
+
     params = parse_qs(environ.get("QUERY_STRING", ""))
     # parse_qs returns lists; flatten first-value.
     flat = {k: v[0] for k, v in params.items() if v}

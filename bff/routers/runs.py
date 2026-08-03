@@ -32,6 +32,7 @@ Contract:
   we call agent-server; if it raises ModelUnavailableError we short-circuit
   with status='blocked' and never touch agent-server.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,6 +61,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
+
 
 class CreateRunRequest(BaseModel):
     title: str
@@ -132,6 +134,7 @@ def _conv_to_run_summary(conv: dict[str, Any]) -> dict[str, Any]:
 # GET /runs  — list
 # ---------------------------------------------------------------------------
 
+
 @router.get("/runs")
 async def list_runs(
     page: int = Query(1, ge=1),
@@ -166,30 +169,35 @@ async def list_runs(
 # POST /runs  — start conversation + kick off + open event relay
 # ---------------------------------------------------------------------------
 
+
 @router.post("/runs")
 async def create_run(body: CreateRunRequest) -> dict:
     task_complexity = body.taskComplexity or "agentic"
-    context_length = body.contextLength if body.contextLength is not None else len(body.taskPrompt or "")
+    context_length = (
+        body.contextLength if body.contextLength is not None else len(body.taskPrompt or "")
+    )
 
     # 1) Route.
     try:
         routed = await route_request(task_complexity, context_length)
     except ModelUnavailableError as exc:
-        return {"data": {
-            "id": "",
-            "title": body.title,
-            "status": "blocked",
-            "agentPresetName": body.agentPresetId,
-            "workspaceId": body.workspaceId,
-            "workspaceType": "local",
-            "selectedModel": None,
-            "routing": {
-                "taskComplexity": task_complexity,
-                "contextLength": context_length,
-                "selected": None,
-                "error": str(exc),
-            },
-        }}
+        return {
+            "data": {
+                "id": "",
+                "title": body.title,
+                "status": "blocked",
+                "agentPresetName": body.agentPresetId,
+                "workspaceId": body.workspaceId,
+                "workspaceType": "local",
+                "selectedModel": None,
+                "routing": {
+                    "taskComplexity": task_complexity,
+                    "contextLength": context_length,
+                    "selected": None,
+                    "error": str(exc),
+                },
+            }
+        }
 
     litellm_model = _translate_model(routed)
 
@@ -262,7 +270,9 @@ async def create_run(body: CreateRunRequest) -> dict:
             if pol_resp.status_code >= 400:
                 log.warning(
                     "create_run: setting AlwaysConfirm on %s failed: %s %s",
-                    cid, pol_resp.status_code, pol_resp.text[:200],
+                    cid,
+                    pol_resp.status_code,
+                    pol_resp.text[:200],
                 )
         except Exception as exc:
             log.warning("create_run: confirmation_policy call failed: %s", exc)
@@ -295,6 +305,7 @@ async def create_run(body: CreateRunRequest) -> dict:
 # otherwise "compare" is captured as a run_id.
 # ---------------------------------------------------------------------------
 
+
 @router.get("/runs/compare")
 async def compare_runs(
     base: str = Query(..., description="Base run ID"),
@@ -303,6 +314,7 @@ async def compare_runs(
     from bff.services.run_compare import (
         compare_runs as _do_compare,  # local import to avoid cycles
     )
+
     client = get_client()
 
     base_events = await _fetch_all_events(base)
@@ -334,6 +346,7 @@ async def compare_runs(
 # GET /runs/{run_id}  — real status
 # ---------------------------------------------------------------------------
 
+
 @router.get("/runs/{run_id}")
 async def get_run(run_id: str) -> dict:
     try:
@@ -351,6 +364,7 @@ async def get_run(run_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # GET /runs/{run_id}/events  — persisted events (paged)
 # ---------------------------------------------------------------------------
+
 
 @router.get("/runs/{run_id}/events")
 async def get_run_events(
@@ -438,6 +452,7 @@ async def get_run_traces(run_id: str) -> dict:
 # Lifecycle helpers (Stage 5)
 # ---------------------------------------------------------------------------
 
+
 async def _call_lifecycle(
     run_id: str,
     subpath: str,
@@ -463,7 +478,9 @@ async def _call_lifecycle(
         # E.g. respond_to_confirmation when conversation isn’t waiting.
         raise HTTPException(status_code=409, detail=f"invalid state: {resp.text[:200]}")
     if resp.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"agent-server error {resp.status_code}: {resp.text[:200]}")
+        raise HTTPException(
+            status_code=502, detail=f"agent-server error {resp.status_code}: {resp.text[:200]}"
+        )
     try:
         return resp.json() or {}
     except Exception:

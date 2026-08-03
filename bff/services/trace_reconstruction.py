@@ -18,6 +18,7 @@ Frontend contract (src/lib/schemas/trace.ts):
       estimatedCostUsd?
     }
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -153,11 +154,7 @@ def _tool_span(
 def _extract_llm_usage(msg: dict[str, Any]) -> tuple[int | None, int | None]:
     """Best-effort extraction of {input,output} token usage from a MessageEvent."""
     llm_msg = msg.get("llm_message") or {}
-    usage = (
-        llm_msg.get("usage")
-        or msg.get("usage")
-        or {}
-    )
+    usage = llm_msg.get("usage") or msg.get("usage") or {}
     if not isinstance(usage, dict):
         return (None, None)
     inp = usage.get("input_tokens") or usage.get("prompt_tokens")
@@ -207,7 +204,7 @@ def build_spans(events: list[dict[str, Any]], run_id: str) -> list[dict[str, Any
                 "name": "llm.completion",
                 "kind": "llm",
                 "startTime": ts,
-                "endTime": ts,           # duration unavailable — collapse
+                "endTime": ts,  # duration unavailable — collapse
                 "durationMs": 0,
                 "status": "ok",
                 "attributes": attrs,

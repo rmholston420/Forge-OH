@@ -5,59 +5,60 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-router = APIRouter(prefix='/agent-presets', tags=['agent-presets'])
+router = APIRouter(prefix="/agent-presets", tags=["agent-presets"])
 
-ModelId = Literal['gpt-4o', 'claude-opus-4', 'gemini-2.5-pro', 'local-llama']
+ModelId = Literal["gpt-4o", "claude-opus-4", "gemini-2.5-pro", "local-llama"]
 
 
 class LoopGuardConfig(BaseModel):
-    enabled:    bool = True
-    windowSize: int  = 20
-    threshold:  int  = 3
+    enabled: bool = True
+    windowSize: int = 20
+    threshold: int = 3
 
 
 class AgentPreset(BaseModel):
-    id:            str
-    name:          str
-    description:   str | None       = None
-    systemPrompt:  str                 = ''
-    model:         ModelId             = 'gpt-4o'
-    maxSteps:      int                 = 100
-    maxCost:       float               = 5.0
-    temperature:   float               = 0.2
-    topP:          float               = 0.95
-    toolAllowlist: list[str]           = []
-    loopGuard:     LoopGuardConfig     = Field(default_factory=LoopGuardConfig)
-    isDefault:     bool                = False
-    createdAt:     str
-    updatedAt:     str
+    id: str
+    name: str
+    description: str | None = None
+    systemPrompt: str = ""
+    model: ModelId = "gpt-4o"
+    maxSteps: int = 100
+    maxCost: float = 5.0
+    temperature: float = 0.2
+    topP: float = 0.95
+    toolAllowlist: list[str] = []
+    loopGuard: LoopGuardConfig = Field(default_factory=LoopGuardConfig)
+    isDefault: bool = False
+    createdAt: str
+    updatedAt: str
 
 
 class CreateRequest(BaseModel):
-    name:          str
-    description:   str | None       = None
-    systemPrompt:  str                 = ''
-    model:         ModelId             = 'gpt-4o'
-    maxSteps:      int                 = 100
-    maxCost:       float               = 5.0
-    temperature:   float               = 0.2
-    topP:          float               = 0.95
-    toolAllowlist: list[str]           = []
-    loopGuard:     LoopGuardConfig     = Field(default_factory=LoopGuardConfig)
+    name: str
+    description: str | None = None
+    systemPrompt: str = ""
+    model: ModelId = "gpt-4o"
+    maxSteps: int = 100
+    maxCost: float = 5.0
+    temperature: float = 0.2
+    topP: float = 0.95
+    toolAllowlist: list[str] = []
+    loopGuard: LoopGuardConfig = Field(default_factory=LoopGuardConfig)
 
 
 class UpdateRequest(BaseModel):
     """All fields optional — only provided fields are merged."""
-    name:          str | None       = None
-    description:   str | None       = None
-    systemPrompt:  str | None       = None
-    model:         ModelId | None   = None
-    maxSteps:      int | None       = None
-    maxCost:       float | None     = None
-    temperature:   float | None     = None
-    topP:          float | None     = None
+
+    name: str | None = None
+    description: str | None = None
+    systemPrompt: str | None = None
+    model: ModelId | None = None
+    maxSteps: int | None = None
+    maxCost: float | None = None
+    temperature: float | None = None
+    topP: float | None = None
     toolAllowlist: list[str] | None = None
-    loopGuard:     LoopGuardConfig | None = None
+    loopGuard: LoopGuardConfig | None = None
 
 
 def _now() -> str:
@@ -65,22 +66,33 @@ def _now() -> str:
 
 
 _PRESETS: dict[str, AgentPreset] = {
-    'ap-1': AgentPreset(
-        id='ap-1', name='General Dev',
-        description='Balanced preset for software development tasks.',
-        systemPrompt='You are an expert software engineer. Think step by step.',
-        model='gpt-4o', maxSteps=150, maxCost=8.0, isDefault=True,
-        toolAllowlist=['filesystem', 'bash', 'browser'],
+    "ap-1": AgentPreset(
+        id="ap-1",
+        name="General Dev",
+        description="Balanced preset for software development tasks.",
+        systemPrompt="You are an expert software engineer. Think step by step.",
+        model="gpt-4o",
+        maxSteps=150,
+        maxCost=8.0,
+        isDefault=True,
+        toolAllowlist=["filesystem", "bash", "browser"],
         loopGuard=LoopGuardConfig(enabled=True, windowSize=20, threshold=3),
-        createdAt=_now(), updatedAt=_now()),
-    'ap-2': AgentPreset(
-        id='ap-2', name='Research Agent',
-        description='Optimised for web research and document synthesis.',
-        systemPrompt='You are a research assistant. Cite sources.',
-        model='claude-opus-4', maxSteps=80, maxCost=12.0,
-        toolAllowlist=['browser', 'search'],
+        createdAt=_now(),
+        updatedAt=_now(),
+    ),
+    "ap-2": AgentPreset(
+        id="ap-2",
+        name="Research Agent",
+        description="Optimised for web research and document synthesis.",
+        systemPrompt="You are a research assistant. Cite sources.",
+        model="claude-opus-4",
+        maxSteps=80,
+        maxCost=12.0,
+        toolAllowlist=["browser", "search"],
         loopGuard=LoopGuardConfig(enabled=True, windowSize=15, threshold=2),
-        createdAt=_now(), updatedAt=_now()),
+        createdAt=_now(),
+        updatedAt=_now(),
+    ),
 }
 
 
@@ -88,16 +100,17 @@ _PRESETS: dict[str, AgentPreset] = {
 # Read endpoints — no auth required
 # ---------------------------------------------------------------------------
 
-@router.get('')
+
+@router.get("")
 def list_presets() -> dict:
-    return {'data': [p.model_dump() for p in _PRESETS.values()]}
+    return {"data": [p.model_dump() for p in _PRESETS.values()]}
 
 
-@router.get('/{preset_id}', response_model=AgentPreset)
+@router.get("/{preset_id}", response_model=AgentPreset)
 def get_preset(preset_id: str):
     p = _PRESETS.get(preset_id)
     if not p:
-        raise HTTPException(404, 'Preset not found')
+        raise HTTPException(404, "Preset not found")
     return p
 
 
@@ -105,60 +118,62 @@ def get_preset(preset_id: str):
 # Write endpoints — require 'write' role
 # ---------------------------------------------------------------------------
 
-@router.post('', response_model=AgentPreset)
+
+@router.post("", response_model=AgentPreset)
 def create_preset(body: CreateRequest):
     p = AgentPreset(
-        id=str(uuid4()), isDefault=False,
-        createdAt=_now(), updatedAt=_now(),
-        **body.model_dump())
+        id=str(uuid4()), isDefault=False, createdAt=_now(), updatedAt=_now(), **body.model_dump()
+    )
     _PRESETS[p.id] = p
     return p
 
 
-@router.patch('/{preset_id}', response_model=AgentPreset)
-def update_preset(
-    preset_id: str,
-    body: UpdateRequest):
+@router.patch("/{preset_id}", response_model=AgentPreset)
+def update_preset(preset_id: str, body: UpdateRequest):
     p = _PRESETS.get(preset_id)
     if not p:
-        raise HTTPException(404, 'Preset not found')
-    updated = p.model_copy(update={**body.model_dump(exclude_none=True), 'updatedAt': _now()})
+        raise HTTPException(404, "Preset not found")
+    updated = p.model_copy(update={**body.model_dump(exclude_none=True), "updatedAt": _now()})
     _PRESETS[preset_id] = updated
     return updated
 
 
-@router.delete('/{preset_id}')
+@router.delete("/{preset_id}")
 def delete_preset(preset_id: str):
     p = _PRESETS.get(preset_id)
     if not p:
-        raise HTTPException(404, 'Preset not found')
+        raise HTTPException(404, "Preset not found")
     if p.isDefault:
-        raise HTTPException(400, 'Cannot delete the default preset')
+        raise HTTPException(400, "Cannot delete the default preset")
     del _PRESETS[preset_id]
-    return {'ok': True}
+    return {"ok": True}
 
 
-@router.post('/{preset_id}/duplicate', response_model=AgentPreset)
+@router.post("/{preset_id}/duplicate", response_model=AgentPreset)
 def duplicate_preset(preset_id: str):
     p = _PRESETS.get(preset_id)
     if not p:
-        raise HTTPException(404, 'Preset not found')
-    clone = p.model_copy(update={
-        'id': str(uuid4()),
-        'name': f'{p.name} (copy)',
-        'isDefault': False,
-        'createdAt': _now(),
-        'updatedAt': _now(),
-    })
+        raise HTTPException(404, "Preset not found")
+    clone = p.model_copy(
+        update={
+            "id": str(uuid4()),
+            "name": f"{p.name} (copy)",
+            "isDefault": False,
+            "createdAt": _now(),
+            "updatedAt": _now(),
+        }
+    )
     _PRESETS[clone.id] = clone
     return clone
 
 
-@router.post('/{preset_id}/set-default', response_model=AgentPreset)
+@router.post("/{preset_id}/set-default", response_model=AgentPreset)
 def set_default(preset_id: str):
     p = _PRESETS.get(preset_id)
     if not p:
-        raise HTTPException(404, 'Preset not found')
+        raise HTTPException(404, "Preset not found")
     for pid, preset in _PRESETS.items():
-        _PRESETS[pid] = preset.model_copy(update={'isDefault': pid == preset_id, 'updatedAt': _now()})
+        _PRESETS[pid] = preset.model_copy(
+            update={"isDefault": pid == preset_id, "updatedAt": _now()}
+        )
     return _PRESETS[preset_id]

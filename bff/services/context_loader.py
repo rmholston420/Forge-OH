@@ -4,6 +4,7 @@ Reads .openhands/context/ directory and scores documents by keyword overlap
 with the current task. Injecting relevant architectural docs increases agent
 compliance from ~46% to ~95%.
 """
+
 from __future__ import annotations
 
 import os

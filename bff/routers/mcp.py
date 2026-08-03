@@ -26,6 +26,7 @@ Reshape upstream MCPServer + settings_key → frontend McpServer:
   toolCount     = last ping tool count (0 until first ping)
   tools         = last ping tools (populated after ping)
 """
+
 from __future__ import annotations
 
 import time
@@ -49,6 +50,7 @@ _PING_CACHE: dict[str, dict[str, Any]] = {}
 # ---------------------------------------------------------------------------
 # Reshape
 # ---------------------------------------------------------------------------
+
 
 def _infer_transport(server: dict[str, Any]) -> str:
     t = server.get("transport")
@@ -91,9 +93,10 @@ def _reshape(name: str, server: dict[str, Any]) -> dict[str, Any]:
 # Request bodies
 # ---------------------------------------------------------------------------
 
+
 class RegisterMcpRequest(BaseModel):
     name: str
-    transport: str = "stdio"           # 'stdio' | 'http' | 'sse'
+    transport: str = "stdio"  # 'stdio' | 'http' | 'sse'
     url: str | None = None
     command: str | None = None
     args: list[str] | None = None
@@ -106,6 +109,7 @@ class RegisterMcpRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 async def _load_settings() -> dict[str, Any]:
     client = get_client()
@@ -135,7 +139,9 @@ def _build_upstream_server(body: RegisterMcpRequest) -> dict[str, Any]:
             raise HTTPException(status_code=422, detail="stdio transport requires 'command'")
     else:
         if not body.url:
-            raise HTTPException(status_code=422, detail=f"{body.transport} transport requires 'url'")
+            raise HTTPException(
+                status_code=422, detail=f"{body.transport} transport requires 'url'"
+            )
 
     out: dict[str, Any] = {
         "enabled": body.enabled,
@@ -159,6 +165,7 @@ def _build_upstream_server(body: RegisterMcpRequest) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("")
 async def list_mcp() -> list[dict[str, Any]]:

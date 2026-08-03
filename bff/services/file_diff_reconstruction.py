@@ -17,6 +17,7 @@ Supported FileEditorObservation.command values:
 Fields used from the observation:
   is_error, command, path, prev_exist, new_content, old_content
 """
+
 from __future__ import annotations
 
 import difflib
@@ -94,7 +95,9 @@ class _FileState:
     prev_exist_at_first_touch: bool = False
     touched: bool = False
 
-    def apply(self, command: str, old_content: str | None, new_content: str | None, prev_exist: bool) -> None:
+    def apply(
+        self, command: str, old_content: str | None, new_content: str | None, prev_exist: bool
+    ) -> None:
         if not self.touched:
             # First time we see this path in the run
             self.prev_exist_at_first_touch = bool(prev_exist)

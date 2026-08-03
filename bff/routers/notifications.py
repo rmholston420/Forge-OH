@@ -10,6 +10,7 @@ TODO(foh-phase2):
 - Revisit API shape (filters, pagination, unread counts)
 
 """
+
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException

@@ -10,6 +10,7 @@ Strategy (Slice X+1):
 
 Return shape matches src/lib/schemas/file-diff.ts FileDiff.
 """
+
 from __future__ import annotations
 
 import difflib
@@ -19,20 +20,68 @@ from typing import Any
 from bff.services.action_reconstruction import build_artifacts
 
 _LANG_BY_EXT: dict[str, str] = {
-    ".py": "python", ".ts": "typescript", ".tsx": "tsx", ".js": "javascript",
-    ".jsx": "jsx", ".md": "markdown", ".json": "json", ".yaml": "yaml",
-    ".yml": "yaml", ".toml": "toml", ".sh": "shell", ".bash": "shell",
-    ".html": "html", ".css": "css", ".scss": "scss", ".sql": "sql",
-    ".go": "go", ".rs": "rust", ".java": "java", ".c": "c", ".cpp": "cpp",
-    ".h": "c", ".hpp": "cpp", ".rb": "ruby", ".php": "php", ".txt": "plaintext",
+    ".py": "python",
+    ".ts": "typescript",
+    ".tsx": "tsx",
+    ".js": "javascript",
+    ".jsx": "jsx",
+    ".md": "markdown",
+    ".json": "json",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".toml": "toml",
+    ".sh": "shell",
+    ".bash": "shell",
+    ".html": "html",
+    ".css": "css",
+    ".scss": "scss",
+    ".sql": "sql",
+    ".go": "go",
+    ".rs": "rust",
+    ".java": "java",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".rb": "ruby",
+    ".php": "php",
+    ".txt": "plaintext",
 }
 
 _BINARY_EXTS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp",
-    ".pdf", ".zip", ".gz", ".tar", ".tgz", ".7z", ".xz", ".bz2",
-    ".mp3", ".mp4", ".wav", ".flac", ".ogg", ".webm", ".mov",
-    ".exe", ".dll", ".so", ".dylib", ".class", ".jar", ".pyc",
-    ".ttf", ".otf", ".woff", ".woff2",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".bmp",
+    ".pdf",
+    ".zip",
+    ".gz",
+    ".tar",
+    ".tgz",
+    ".7z",
+    ".xz",
+    ".bz2",
+    ".mp3",
+    ".mp4",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".webm",
+    ".mov",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".class",
+    ".jar",
+    ".pyc",
+    ".ttf",
+    ".otf",
+    ".woff",
+    ".woff2",
 }
 
 
@@ -117,9 +166,9 @@ def compare_runs(
         in_base = path in base_paths
         in_fork = path in fork_paths
         if in_base and not in_fork:
-            status = "deleted"          # base has it, fork doesn't touch it
+            status = "deleted"  # base has it, fork doesn't touch it
         elif in_fork and not in_base:
-            status = "added"            # only fork introduced changes
+            status = "added"  # only fork introduced changes
         else:
             status = "modified"
 
@@ -130,16 +179,18 @@ def compare_runs(
         total_add += adds
         total_del += dels
 
-        files.append({
-            "path": path,
-            "status": status,
-            "additions": adds,
-            "deletions": dels,
-            "original": original,
-            "modified": modified,
-            "language": _language_for(path),
-            "isBinary": binary,
-        })
+        files.append(
+            {
+                "path": path,
+                "status": status,
+                "additions": adds,
+                "deletions": dels,
+                "original": original,
+                "modified": modified,
+                "language": _language_for(path),
+                "isBinary": binary,
+            }
+        )
 
     return {
         "baseRunId": base_run_id,

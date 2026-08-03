@@ -5,6 +5,7 @@ HTTP client wrapper for the OpenHands SDK REST API.
 Base URL is read from Settings (default: http://localhost:8090).
 Never hardcode port numbers here — use settings.openhands_base_url.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -25,9 +26,11 @@ async def startup() -> None:
         timeout=httpx.Timeout(60.0),
         headers={
             "Content-Type": "application/json",
-            **({
-                "Authorization": f"Bearer {settings.openhands_api_key}"
-            } if settings.openhands_api_key else {}),
+            **(
+                {"Authorization": f"Bearer {settings.openhands_api_key}"}
+                if settings.openhands_api_key
+                else {}
+            ),
         },
     )
 

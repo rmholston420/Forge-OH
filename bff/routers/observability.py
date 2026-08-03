@@ -13,6 +13,7 @@ Contract (frontend consumers under /observability):
 
 trace_id == run_id == conversation UUID. Each conversation is one trace.
 """
+
 from __future__ import annotations
 
 from typing import Any
