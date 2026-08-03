@@ -208,6 +208,66 @@ async function main() {
   await page.waitForTimeout(2000);
   await page.screenshot({ path: path.join(OUT, 'e2e-05-run-detail-final.png'), fullPage: true });
 
+  // ---- 7. Stage 4: click the Files tab and assert real diff appears ----
+  console.log(`[e2e] step 7: open Files tab`);
+  const filesTab = page.getByRole('tab', { name: /^files$/i }).first();
+  const filesLink = page.getByRole('link', { name: /^files$/i }).first();
+  let opened = false;
+  try {
+    if (await filesTab.count()) {
+      await filesTab.click({ timeout: 3000 });
+      opened = true;
+    } else if (await filesLink.count()) {
+      await filesLink.click({ timeout: 3000 });
+      opened = true;
+    } else {
+      // Fallback: some layouts use a plain button.
+      await page.getByRole('button', { name: /^files$/i }).first().click({ timeout: 3000 });
+      opened = true;
+    }
+  } catch (e) {
+    console.log(`[e2e] Files tab click failed: ${e}`);
+  }
+  if (opened) {
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: path.join(OUT, 'e2e-06-files-tab.png'), fullPage: true });
+  }
+
+  // Independently query the BFF for the file list and any per-file diff.
+  try {
+    const fr = await page.request.get(`${BFF}/api/runs/${report.runId}/files`);
+    if (fr.ok()) {
+      const fj = await fr.json();
+      const files = fj?.data ?? [];
+      (report as any).fileCount = Array.isArray(files) ? files.length : null;
+      (report as any).files = files;
+      console.log(`[e2e] /files returned ${files.length} entr${files.length === 1 ? 'y' : 'ies'}`);
+      if (files.length > 0) {
+        const p = files[0].path;
+        const encoded = encodeURIComponent(p);
+        const dr = await page.request.get(`${BFF}/api/runs/${report.runId}/files/${encoded}`);
+        if (dr.ok()) {
+          const dj = await dr.json();
+          const d = dj?.data ?? {};
+          (report as any).firstFileDiff = {
+            path: d.path,
+            status: d.status,
+            additions: d.additions,
+            deletions: d.deletions,
+            modifiedPreview: (d.modified ?? '').slice(0, 200),
+          };
+          console.log(`[e2e] first file: ${d.path} status=${d.status} +${d.additions}/-${d.deletions}`);
+        } else {
+          console.log(`[e2e] /files/{path} returned ${dr.status()}`);
+        }
+      }
+    } else {
+      console.log(`[e2e] /files returned ${fr.status()}`);
+    }
+  } catch (e) {
+    console.log(`[e2e] /files fetch failed: ${e}`);
+  }
+
   // Snapshot the timeline DOM (whatever the current implementation calls it).
   const timelineHtml = await page
     .locator('[data-testid=timeline], [data-testid=events], main')
