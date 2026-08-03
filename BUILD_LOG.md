@@ -519,3 +519,33 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - delete → HTTP 204; list empty
   - legacy body {key, rawValue} accepted; LEGACY_KEY created and deleted (HTTP 204)
 - No stub markers remain in secrets router.
+
+## 2026-08-03 01:22 EDT — Slice 7F CLOSED (traces via reconstruct-on-demand)
+- Stage: 7F — observability traces. Option A chosen: reconstruct from event stream,
+  no SQLite, no background worker (single-user local-first doesn't need persistence).
+- Changed:
+  - NEW bff/services/event_fetch.py     shared fetch_all_events helper
+  - NEW bff/services/trace_reconstruction.py  build_spans + build_trace_summary
+  - bff/routers/observability.py  4 endpoints now derive from events
+  - bff/routers/runs.py  /runs/{id}/traces un-stubbed, _fetch_all_events → alias to shared helper
+  - NEW bff/tests/test_trace_reconstruction.py  9 tests, all passing
+- Endpoints wired:
+  - GET /api/runs/{run_id}/traces                 [TraceSpan]
+  - GET /api/observability/runs/{run_id}/traces   [TraceSummary]
+  - GET /api/observability/traces/{trace_id}      {TraceSummary + spans}
+  - GET /api/observability/traces/{trace_id}/spans [TraceSpan]
+- Span rules:
+  - ActionEvent + ObservationEvent (paired by action_id) → tool span
+  - agent MessageEvent → llm span (with input/output tokens if usage present)
+  - Kind: bash/file_editor/etc → 'workspace', browser_* → 'browser',
+    task_tracker/think/finish/switch_llm/workflow → 'internal', mcp_* → 'network'
+  - Status: exit_code!=0 or observation.error/is_error → 'error'; missing obs → 'unset'; else 'ok'
+- Verified on Colossus against run b983c992...:
+  - 9/9 unit tests pass
+  - /runs/{id}/traces returns 3 real spans (2 file_editor + 1 finish)
+  - Trace summary: spanCount=3, duration=2359ms, status='error', errorCount=1
+    (first file_editor span correctly flagged: its ObservationEvent has is_error=true
+    due to the legacy path</path> corruption we saw earlier — exact fidelity)
+  - Event distribution matches: 3 ActionEvent → 3 spans, 0 agent MessageEvents → 0 llm spans
+  - stub-count = 0 across all 4 endpoints
+- runs.py now has zero stub returns except /runs/compare (out of scope per plan).
