@@ -294,3 +294,61 @@ class TestSearchTrajectories:
         hits = r.json()["hits"]
         # The combined query was used → semantic_score is ~1.0.
         assert hits[0]["semantic_score"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Slice F.13 — POST /api/trajectories/drain endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestDrainEndpoint:
+    """POST /api/trajectories/drain forces an immediate indexer pass."""
+
+    def test_empty_store_returns_zero_indexed(
+        self, client: TestClient, store: TrajectoryStore
+    ) -> None:
+        r = client.post("/api/trajectories/drain")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["indexed"] == 0
+        assert body["pending_before"] == 0
+        assert body["pending_after"] == 0
+        assert body["errors"] == 0
+        assert body["last_error"] == ""
+
+    def test_drains_pending_records(
+        self, client: TestClient, store: TrajectoryStore
+    ) -> None:
+        """A store with unembedded records reports them drained.
+
+        The default embedder needs the fake install to avoid a real
+        model call. We install one that returns a fixed vector.
+        """
+        # Insert two pending records (embedding=None by default).
+        for i in range(2):
+            store.insert(_rec(f"pending-{i}", task="do the thing", embedding=None))
+        _install_fake_embedder({"": [1.0, 0.0, 0.0, 0.0]})
+
+        r = client.post("/api/trajectories/drain")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["pending_before"] == 2
+        assert body["indexed"] == 2
+        assert body["pending_after"] == 0
+
+    def test_response_schema_shape(
+        self, client: TestClient, store: TrajectoryStore
+    ) -> None:
+        """DrainResponse has the documented fields."""
+        r = client.post("/api/trajectories/drain")
+        assert r.status_code == 200
+        body = r.json()
+        for key in (
+            "indexed",
+            "pending_before",
+            "pending_after",
+            "passes",
+            "errors",
+            "last_error",
+        ):
+            assert key in body, f"missing field {key!r} in {body}"

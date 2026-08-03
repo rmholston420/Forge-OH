@@ -40,7 +40,7 @@ from bff.routers import (
     trajectories,
     workspaces,
 )
-from bff.services import episodic_memory, event_relay
+from bff.services import episodic_memory, event_relay, trajectory_drain
 
 
 @asynccontextmanager
@@ -49,8 +49,24 @@ async def lifespan(app: FastAPI):
     await oh_startup()
     # Initialise shared aiosqlite connection for episodic memory.
     await episodic_memory.init_db(app)
+    # Slice F.13: start the trajectory drain scheduler so records
+    # written by the trajectory STOP hook (without inline indexing)
+    # get embedded in the background. Best-effort: an import failure
+    # of the trajectory store (e.g. sqlite path missing) must not sink
+    # BFF startup.
+    try:
+        from bff.deps.trajectory_store import get_trajectory_store
+
+        await trajectory_drain.start_scheduler(get_trajectory_store())
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "trajectory drain scheduler failed to start: %s", exc
+        )
     yield
     # Graceful shutdown.
+    await trajectory_drain.stop_scheduler()
     await event_relay.shutdown_all()
     await oh_shutdown()
     await episodic_memory.close_db(app)

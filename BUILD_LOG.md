@@ -2206,3 +2206,105 @@ under the correct interpreter and against the correct filesystem.
 a mechanical way to prove the hook wiring after every future change.
 Slice F itself remains at `v1.0-alpha3`; this is a follow-up quality
 gate, not a new capability.
+
+## 2026-08-03 09:56 EDT — Slice F.12: trajectory sidecar producer
+
+**Stage/plugin/port:** Forge-OH kernel, Slice F (Trajectory Memory),
+Rec #3, sidecar producer half of the BFF ↔ hook contract.
+
+**Files touched:**
+- `bff/services/sidecar.py` — new pure-python sidecar writer.
+- `bff/routers/runs.py` — calls `seed_sidecar()` after conversation
+  create; wrapped in defensive try/except.
+- `bff/tests/test_sidecar.py` — 19 tests (path layout, seeding
+  semantics, corrupt-file recovery, concurrency, hook round-trip).
+- `bff/tests/test_hook_config.py` — 2 new tests asserting router
+  wiring + defensive swallowing.
+
+**What was built:**
+Trajectory hook falls back to `OPENHANDS_TASK` env for
+`task_description` when the sidecar is absent. The SDK never sets that
+env, so every trajectory row was landing with an empty task. F.12
+adds the missing producer:
+
+- `seed_sidecar(workspace, session_id, task_description)` writes
+  `$WORKSPACE/.forge-oh/trajectory-sidecar.json` keyed by session id.
+  Idempotent — re-seeding only fills an empty `task_description`; any
+  downstream-populated field (plan/symptom/etc) is preserved.
+- `update_sidecar(workspace, session_id, fields)` — additive helper
+  for future writers (planner, verify branch, indexer).
+- Both use a shared `_rmw()` helper that runs the whole
+  read-modify-write cycle under a persistent `.lock` file with
+  `fcntl.LOCK_EX`. The lock file is intentionally NOT unlinked
+  post-write — unlinking would break mutual exclusion across writers
+  that open the file between an unlink and a re-create (concurrent
+  test caught this; a naive approach lost 12/16 updates).
+- Atomic write-then-rename with a per-(pid, tid) tmp path so parallel
+  writers can't race each other's rename step.
+- Every write is best-effort: an I/O error is logged at WARNING and
+  swallowed. Router additionally wraps `seed_sidecar` in its own
+  try/except as defense-in-depth (regression-tested).
+
+**Verified:**
+- 31 targeted tests pass (`test_sidecar.py` + updated
+  `test_hook_config.py`).
+- 409 offline-safe backend tests pass (baseline was 387; +22 new).
+- 14 pre-existing localhost-only failures unchanged.
+- Ruff clean.
+
+**ADRs/ledger:** none — pure additive service.
+
+**Stop-condition status:** F.12 done. Trajectory rows created from
+here on will carry the real user prompt. Diffs / plan / symptom /
+repograph_symbols still empty — future slices can add specialized
+producers using `update_sidecar()`.
+
+## 2026-08-03 09:58 EDT — Slice F.13: trajectory drain scheduler
+
+**Stage/plugin/port:** Forge-OH kernel, Slice F (Trajectory Memory),
+Rec #3, background embedder loop.
+
+**Files touched:**
+- `bff/services/trajectory_drain.py` — new scheduler service.
+- `bff/main.py` — lifespan hook wires start/stop of the scheduler.
+- `bff/routers/trajectories.py` — new `POST /api/trajectories/drain`
+  endpoint + `DrainResponse` schema.
+- `bff/tests/test_trajectory_drain.py` — 19 unit tests.
+- `bff/tests/test_trajectories_router.py` — 3 new endpoint tests.
+
+**What was built:**
+Trajectory hook by default writes records with `embedding IS NULL`
+(inline embedding would add GPU tail latency to every STOP). Nothing
+was picking them up. F.13 closes that gap:
+
+- `TrajectoryDrainScheduler(store)` — owns an asyncio background task
+  that calls `TrajectoryIndexer.index_pending()` on a configurable
+  interval. Runs the indexer in `asyncio.to_thread` so the event
+  loop stays responsive. Interval + batch size read from env
+  (`FORGE_OH_TRAJECTORY_DRAIN_INTERVAL`, `FORGE_OH_TRAJECTORY_DRAIN_BATCH`);
+  defaults 60s / 32 records.
+- `DrainMetrics` dataclass exposes `passes`, `indexed`, `errors`,
+  `last_error` — simple counters (no Prometheus dep for a
+  single-user local system).
+- Any exception inside `drain_once()` is caught and reflected in
+  metrics; the loop never crashes.
+- Process-wide singleton wired to BFF lifespan. `FORGE_OH_TRAJECTORY_DRAIN_DISABLED=1`
+  opts out.
+- `POST /api/trajectories/drain` triggers an immediate pass and
+  returns `{indexed, pending_before, pending_after, passes, errors,
+  last_error}` — useful for E2E tests and manual admin work.
+
+**Verified:**
+- 40 targeted tests pass (`test_trajectory_drain.py` +
+  drain-endpoint tests in `test_trajectories_router.py`).
+- 409 offline-safe backend tests pass total (unchanged from F.12).
+- Ruff clean.
+
+**ADRs/ledger:** none — pure additive service. Retention policy ADR
+still deferred (separate concern from indexing cadence).
+
+**Stop-condition status:** Slice F trajectory-memory pipeline is now
+end-to-end complete for the async-embedding path: hook writes rows
+with the real prompt (F.12), scheduler embeds them in the background
+(F.13). `LIVE_HOOKS_E2E=1` E2E from F.11 will now populate
+searchable rows on every completed run.

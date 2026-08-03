@@ -1,75 +1,87 @@
-# Forge-OH Session Handoff
+# Forge-OH — Session Handoff
 
-**Current stage:** Slice F (Trajectory Memory, Rec #3) shipped at
-`v1.0-alpha3`. Follow-up quality gates F.10 (topology fix) and F.11
-(live E2E) both landed on `main`.
+**Last updated:** 2026-08-03 10:00 EDT
 
-## Last commits
+## Current build-sequencing stage
 
-- `6c290da` — F.10: agent-server topology change (docker → .oh-venv +
-  `FORGE_OH_TRAJECTORY_DB` env pin so BFF, hook, and agent all share a
-  single SQLite path).
-- `e2e7350` — F.9: `hook_config` injected into the create body of
-  `POST /api/conversations`; `.openhands/hooks.json` published as the
-  canonical workspace config; 10 new unit tests for `build_hook_config()`.
-- `de8c837` — F.8: ADR-008 (Trajectory Memory) + first E2E for the
-  Trajectory Memory panel; tag `v1.0-alpha3`.
+Slice F (Trajectory Memory, Rec #3). Kernel side of the pipeline is
+end-to-end wired.
 
-## Verified this session
+## What was completed this session
 
-- Agent-server runs in `.oh-venv` (no docker container). Pidfile at
-  `.forge-logs/agent-server.pid`, log at `.forge-logs/agent-server.log`.
-- Smoke-tested `openhands_tools_ext.trajectory.hook` end-to-end against
-  a synthetic `Stop` HookEvent — wrote and read back
-  `traj_smoke-test-1` in `~/.forge-oh/trajectories.db`. Row deleted
-  after verification.
-- Both STOP hooks fire only when `execution_status == FINISHED` — i.e.
-  the agent naturally reached a `finish` tool call. Interrupt-driven
-  stops do NOT fire hooks (confirmed against the SDK source).
+- **F.12** — trajectory sidecar producer (`bff/services/sidecar.py`,
+  wired in `bff/routers/runs.py`). BFF now seeds
+  `$WORKSPACE/.forge-oh/trajectory-sidecar.json` at conversation
+  create with `session_id` + `task_description`. Trajectory STOP hook
+  reads this and produces rows with the real user prompt instead of
+  an empty string. 19 unit tests + 2 router tests.
+- **F.13** — trajectory drain scheduler
+  (`bff/services/trajectory_drain.py`, wired into `bff/main.py`
+  lifespan). Background async task calls
+  `TrajectoryIndexer.index_pending()` every 60 s (configurable via
+  `FORGE_OH_TRAJECTORY_DRAIN_INTERVAL` / `FORGE_OH_TRAJECTORY_DRAIN_BATCH`).
+  `POST /api/trajectories/drain` forces an immediate pass and
+  returns metrics. 19 unit tests + 3 endpoint tests.
 
-## Next up
+**Test totals:** 409 passing offline-safe backend (baseline 387;
++22 new). 0 regressions. 14 pre-existing localhost-only failures
+unchanged (`test_mcp_router`, `test_observability_router`,
+`test_plugins_router`). Ruff clean.
 
-**Immediate:**
-1. Run the new live E2E on Colossus after a fresh `git pull`:
-   ```
-   LIVE_HOOKS_E2E=1 npx playwright test src/tests/e2e/hooks-live.spec.ts
-   ```
-   This creates a real run, waits for it to finish, and asserts both
-   STOP hooks wrote their expected artifacts. Reports pass/fail
-   without any manual UI interaction. Skips cleanly without the env
-   gate so it is safe in CI.
-2. If the run times out at 4 minutes, bump
-   `LIVE_HOOKS_E2E_TIMEOUT_MS`. If the trajectory row is missing but
-   the run succeeded, check `.forge-logs/agent-server.log` for hook
-   stderr — that's the most likely failure mode.
+## What remains before the current DoD is met
 
-**Deferred (non-blocking, listed in priority order):**
-1. Sidecar producer for `.forge-oh/trajectory-sidecar.json` — trajectory
-   hook degrades gracefully today but populates fewer fields (empty
-   `plan`, `symptom`, `repograph_symbols`, `diffs`).
-2. Indexer drain schedule (background embedding for records inserted
-   without `FORGE_OH_TRAJECTORY_INDEX_INLINE=1`).
-3. Retention policy ADR for `trajectories.db`.
-4. Fresh recommendation outside Rec 1/2/3.
+Slice F kernel work is done. Full-loop E2E confirmation on Colossus
+still needed:
 
-## Open questions
+1. Pull latest on Colossus (`~/dev/forge-oh/`) and restart the BFF
+   so the drain scheduler is running.
+2. Re-run `scripts/forge-up.sh` and issue a live run through the
+   agent-server.
+3. After the run finishes, confirm the row in
+   `~/.forge-oh/trajectories.db` has (a) a non-empty
+   `task_description` and (b) a non-null `embedding` blob (via
+   `POST /api/trajectories/drain` for an immediate pass, or wait
+   60 s).
+4. Then re-run the live E2E (`LIVE_HOOKS_E2E=1 pnpm playwright test`
+   in `frontend/`).
 
-None outstanding.
+## Open questions / ambiguities awaiting your answer
 
-## Repo state
+None currently.
 
-- Mirror: `/home/user/workspace/forge-oh-mirror/` on `main`, uncommitted
-  F.11 changes (new spec + this handoff + BUILD_LOG entry) about to be
-  committed and pushed as part of this turn.
-- Colossus: `~/dev/forge-oh/` on `main` at `6c290da` — needs to pull
-  F.11 before running the new live spec.
+## Deferred items (non-blocking)
 
-## Test totals
+- Fix verify hook so it actually writes `verify-state.json`
+  (workspaces/*/.forge-oh/ empty on live runs — trajectory rows still
+  work because trajectory hook doesn't depend on verify state).
+- Retention policy ADR for `trajectories.db`.
+- Additional sidecar producers (planner, verify symptom, repograph
+  symbols, diffs) — can layer on top using
+  `sidecar.update_sidecar()`.
+- Fresh recommendation outside Rec 1/2/3.
 
-- Backend offline-safe: **270 passed** (14 pre-existing localhost-only
-  failures unchanged).
-- Frontend unit: 838 passed (1 pre-existing jsdom Blob flake in
-  `lib-api-client.test.ts` — leave alone).
-- E2E: 3 specs — `repograph-panel.spec.ts`,
-  `trajectory-memory-panel.spec.ts`, and now
-  `hooks-live.spec.ts` (skip-guarded).
+## Exact next action to take
+
+Pull on Colossus and run the live E2E:
+
+```bash
+cd ~/dev/forge-oh
+git pull --ff-only
+# restart BFF so the F.13 drain scheduler picks up on lifespan startup
+pkill -f 'uvicorn bff.main:app' || true
+scripts/forge-up.sh
+# in another terminal, once BFF healthy:
+cd ~/dev/forge-oh/frontend
+LIVE_HOOKS_E2E=1 pnpm playwright test
+```
+
+After the run completes, force an immediate embed and inspect the DB:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/trajectories/drain | jq
+sqlite3 ~/.forge-oh/trajectories.db \
+  "SELECT run_id, task_description, length(embedding) FROM trajectories ORDER BY started_at DESC LIMIT 3;"
+```
+
+Both `task_description` non-empty AND `length(embedding) > 0` is the
+Slice F Definition of Done.

@@ -156,7 +156,63 @@ def search_trajectories(
     )
 
 
+class DrainResponse(BaseModel):
+    """Return payload for :func:`drain_trajectories`.
+
+    Fields:
+
+    * ``indexed`` — number of records embedded during this pass.
+    * ``pending_before`` — count of unembedded records *before* the pass.
+    * ``pending_after``  — count of unembedded records *after* the pass.
+    * ``passes`` / ``errors`` — cumulative scheduler counters.
+    * ``last_error`` — repr of the most recent scheduler exception.
+    """
+
+    indexed: int
+    pending_before: int
+    pending_after: int
+    passes: int
+    errors: int
+    last_error: str
+
+
+@router.post("/drain", response_model=DrainResponse)
+async def drain_trajectories(
+    store: TrajectoryStore = _STORE_DEP,
+) -> DrainResponse:
+    """Force an immediate drain of pending trajectory embeddings (F.13).
+
+    Uses the process-wide :class:`TrajectoryDrainScheduler` if one is
+    running so metrics accumulate across manual + scheduled passes;
+    otherwise falls back to a one-shot local scheduler. Never raises —
+    the scheduler catches embedder errors and reports them via metrics.
+    """
+    from bff.services import trajectory_drain
+
+    pending_before = len(store.list_unembedded(limit=10_000))
+
+    scheduler = trajectory_drain.get_scheduler()
+    if scheduler is None:
+        # Fall back to a fire-and-forget local drain so this endpoint
+        # works even when the lifespan scheduler was disabled
+        # (e.g. in unit-test app instances without a running loop).
+        scheduler = trajectory_drain.TrajectoryDrainScheduler(store)
+    indexed = await scheduler.drain_once()
+
+    pending_after = len(store.list_unembedded(limit=10_000))
+
+    return DrainResponse(
+        indexed=indexed,
+        pending_before=pending_before,
+        pending_after=pending_after,
+        passes=scheduler.metrics.passes,
+        errors=scheduler.metrics.errors,
+        last_error=scheduler.metrics.last_error,
+    )
+
+
 __all__: tuple[str, ...] = (
+    "DrainResponse",
     "ListResponse",
     "SearchHit",
     "SearchRequest",
