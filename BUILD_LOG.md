@@ -141,3 +141,13 @@ first port lands in a later step.
 - Stub `POST /api/runs` still returns hardcoded run — Step 3 wires it to real conversation lifecycle
 - Fresh router tests for `runs`, `workspaces`, `secrets`, `agent_presets` — write against real behaviour, not seeded tokens
 
+
+## 2026-08-02 21:47 EDT — requirements.txt aligned to openhands 1.40.0
+- **Symptom:** `uvicorn bff.main:app_with_sio` fails with `ModuleNotFoundError: No module named 'socketio'` in `.oh-venv` (which only has openhands 1.40.0)
+- **Cause:** `bff/requirements.txt` and root `requirements.txt` both still pinned `openhands-sdk==1.29.3`; BFF deps (fastapi, python-socketio, aiosqlite, httpx) never installed into `.oh-venv`
+- **Fix:**
+  - Bumped both files to `openhands-sdk/tools/agent-server/workspace==1.40.0`
+  - Removed `python-jose`+`passlib` from `bff/requirements.txt` (auth stripped in Step 2)
+- **Files touched:** `bff/requirements.txt`, `requirements.txt`
+- **Next:** user runs `pip install -r bff/requirements.txt` inside `.oh-venv`, then retries uvicorn
+

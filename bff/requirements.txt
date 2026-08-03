@@ -8,8 +8,11 @@ uvicorn==0.39.0
 pydantic==2.12.5
 pydantic-settings==2.6.1
 
-# OpenHands SDK
-openhands-sdk==1.29.3
+# OpenHands SDK (aligned with .oh-venv from Step 1)
+openhands-sdk==1.40.0
+openhands-tools==1.40.0
+openhands-agent-server==1.40.0
+openhands-workspace==1.40.0
 
 # HTTP client
 httpx==0.28.1
@@ -17,10 +20,6 @@ httpx==0.28.1
 # WebSocket / Socket.IO
 python-socketio==5.11.4
 aiohttp==3.11.10
-
-# Auth
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
 
 # Database
 aiosqlite==0.22.1

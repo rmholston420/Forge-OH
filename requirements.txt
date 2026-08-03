@@ -3,7 +3,10 @@ pydantic==2.12.5
 pydantic-settings==2.6.1
 uvicorn==0.39.0
 python-socketio==5.11.4
-openhands-sdk==1.29.3
+openhands-sdk==1.40.0
+openhands-tools==1.40.0
+openhands-agent-server==1.40.0
+openhands-workspace==1.40.0
 ollama>=0.31.2
 # vllm is optional; install separately if needed
 aiosqlite==0.22.1
