@@ -2,11 +2,13 @@
 import React from 'react';
 import { useRunCommands } from '@/features/terminal/hooks';
 import { TerminalEmulator } from '@/components/domain/TerminalEmulator';
+import { LiveBashPanel } from '@/components/domain/LiveBashPanel';
 import { Banner } from '@/components/core/Banner';
 import { Skeleton } from '@/components/core/Skeleton';
 import styles from '../terminal/terminal.module.css';
 
 const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_TERMINAL_ENABLED !== 'false';
+const LIVE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_LIVE_BASH_ENABLED !== 'false';
 
 export function TerminalTab({ runId }: { runId: string }) {
   const { data: commands = [], isLoading, error } = useRunCommands(runId);
@@ -37,6 +39,7 @@ export function TerminalTab({ runId }: { runId: string }) {
       ) : (
         <TerminalEmulator commands={commands} sessionKey={runId} />
       )}
+      {LIVE_ENABLED && <LiveBashPanel runId={runId} />}
     </div>
   );
 }

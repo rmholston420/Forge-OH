@@ -915,3 +915,28 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   - `src/tests/e2e/plugins.spec.ts` \u2014 removed placeholder-retry hack
 
 ## 2026-08-03 06:31 EDT \u2014 DEBUG_LOG entry (see DEBUG_LOG.md)
+
+2026-08-03 06:49 EDT — Slice C.1: live bash streaming (SSE relay)
+- Stage: Step 7 Slice C.1 (post-metrics live tooling)
+- New BFF router bff/routers/bash.py:
+  - POST   /api/runs/{run_id}/bash               → upstream /api/bash/start_bash_command
+  - POST   /api/runs/{run_id}/bash/execute       → upstream /api/bash/execute_bash_command
+  - GET    /api/runs/{run_id}/bash/events        → upstream /api/bash/bash_events/search (paginated)
+  - GET    /api/runs/{run_id}/bash/stream        → SSE relay, polls upstream every 500ms,
+                                                    closes on BashOutput.exit_code != null,
+                                                    hard cap 10 min per stream.
+  - DELETE /api/runs/{run_id}/bash/events        → upstream DELETE /api/bash/bash_events
+- Frontend:
+  - src/features/terminal/api.ts: startBash(), bashStreamUrl()
+  - src/features/terminal/hooks.ts: useLiveBash() with EventSource state machine
+  - src/components/domain/LiveBashPanel.tsx + .module.css: input + streamed output pane
+  - Wired into TerminalTab behind NEXT_PUBLIC_FEATURE_LIVE_BASH_ENABLED (default on)
+- Tests: bff/tests/test_bash_router.py (12 pass) + src/tests/unit/LiveBashPanel.test.tsx (4 pass)
+- Design decision (option "a"): runId in the BFF path is cosmetic; upstream bash events are global.
+  Kept the runId in the URL so we can add per-run scoping later without breaking the client.
+- Files: bff/main.py, bff/routers/bash.py, bff/tests/test_bash_router.py,
+  src/app/(dashboard)/runs/[runId]/tabs/TerminalTab.tsx,
+  src/components/domain/LiveBashPanel.tsx, src/components/domain/LiveBashPanel.module.css,
+  src/features/terminal/api.ts, src/features/terminal/hooks.ts,
+  src/tests/unit/LiveBashPanel.test.tsx
+- DoD: unit tests green; forge-test.sh + forge-screenshots.sh to verify on Colossus next.
