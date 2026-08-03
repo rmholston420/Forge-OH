@@ -22,10 +22,10 @@ export type CreateRunInput = {
   title?: string;
 };
 
+import { bffFetch } from '@/lib/http/bff-client';
+
 export async function fetchRuns(): Promise<RunListResponse> {
-  const res = await fetch("/api/runs", {
-    cache: "no-store",
-  });
+  const res = await bffFetch("/api/runs", { cache: "no-store" });
 
   if (!res.ok) {
     throw new Error("Failed to load runs");
@@ -35,9 +35,7 @@ export async function fetchRuns(): Promise<RunListResponse> {
 }
 
 export async function fetchRun(runId: string): Promise<Run> {
-  const res = await fetch(`/api/runs/${runId}`, {
-    cache: "no-store",
-  });
+  const res = await bffFetch(`/api/runs/${runId}`, { cache: "no-store" });
 
   if (!res.ok) {
     throw new Error(`Failed to load run ${runId}`);
@@ -47,11 +45,8 @@ export async function fetchRun(runId: string): Promise<Run> {
 }
 
 export async function createRun(input: CreateRunInput): Promise<Run> {
-  const res = await fetch("/api/runs", {
+  const res = await bffFetch("/api/runs", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify(input),
   });
 

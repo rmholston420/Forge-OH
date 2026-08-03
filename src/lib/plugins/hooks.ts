@@ -1,17 +1,18 @@
 'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { bffFetch } from '@/lib/http/bff-client';
 import type { PluginManifest } from './schemas';
 
 const PLUGINS_KEY = ['plugins'] as const;
 
 async function fetchPlugins(): Promise<PluginManifest[]> {
-  const res = await fetch('/api/plugins');
+  const res = await bffFetch('/api/plugins');
   if (!res.ok) throw new Error('Failed to fetch plugins');
   return res.json();
 }
 
 async function pingPlugin(id: string): Promise<{ ok: boolean; latencyMs: number }> {
-  const res = await fetch(`/api/plugins/${id}/ping`, { method: 'POST' });
+  const res = await bffFetch(`/api/plugins/${id}/ping`, { method: 'POST' });
   if (!res.ok) throw new Error('Ping failed');
   return res.json();
 }
@@ -32,10 +33,9 @@ export function useRegisterPlugin() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (manifest: Omit<PluginManifest, 'id'>) => {
-      const res = await fetch('/api/plugins', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(manifest),
+      const res = await bffFetch('/api/plugins', {
+        method: 'POST',
+        body:   JSON.stringify(manifest),
       });
       if (!res.ok) throw new Error('Registration failed');
       return res.json() as Promise<PluginManifest>;

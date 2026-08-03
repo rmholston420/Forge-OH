@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Modal } from '@/components/core/Modal';
 import { Banner } from '@/components/core/Banner';
+import { bffFetch } from '@/lib/http/bff-client';
 
 const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED !== 'false';
 
@@ -28,7 +29,7 @@ export function ForkRunModal({ runId, runTitle, open, onClose }: Props) {
 
   const { mutate: forkRun, isPending, error, reset } = useMutation<ForkResponse, Error>({
     mutationFn: async () => {
-      const res = await fetch(`/api/runs/${runId}/fork`, { method: 'POST' });
+      const res = await bffFetch(`/api/runs/${runId}/fork`, { method: 'POST' });
       if (!res.ok) throw new Error(`Fork failed: ${res.status}`);
       return res.json();
     },
