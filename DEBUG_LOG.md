@@ -229,3 +229,50 @@ dep-adding slices).
 **Verification:** `npx vitest run src/tests/unit/RepoGraphPanel.test.tsx src/tests/unit/repograph-endpoints.test.ts` → 14/14 pass after fix (assertions updated to match real glyphs).
 
 **Lesson for future slices:** whenever writing JSX text or markdown, use the literal glyph. Reserve `\uXXXX` for JS/TS string literals only.
+
+## 2026-08-03 12:15 EDT — Python venv orphaned by OS upgrade
+
+**Symptom:** `ModuleNotFoundError: No module named 'vllm'` in venv that previously worked. `~/venv/vllm/bin/python -c "import vllm"` fails; `vllm` package still visible in `~/venv/vllm/lib/python3.13/site-packages/`.
+**Affected stage/plugin/port:** F.18 (vLLM standalone).
+**Root cause:** An OS upgrade removed `/usr/bin/python3.13`. The venv's `bin/python` symlink pointed at `/usr/bin/python` which silently switched to 3.14. All 3.13 site-packages were orphaned.
+**Fix:**
+```
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt install python3.13 python3.13-venv python3.13-dev
+```
+Recreated venv symlinks manually if needed.
+**Files changed:** none (system packages only).
+
+## 2026-08-03 12:50 EDT — vLLM GGUF loader rejects bf16
+
+**Symptom:** vLLM launch dies with `ValueError: bfloat16 is not supported for GGUF quantization`.
+**Affected stage/plugin/port:** F.18.
+**Root cause:** vLLM's GGUF loader path only accepts float16 or float32, even when the source model is bf16.
+**Fix:** Add `--dtype float16` to launcher. Warns "Casting torch.bfloat16 to torch.float16" but loads.
+**Files changed:** `scripts/vllm_start.sh`.
+
+## 2026-08-03 13:31 EDT — Triton JIT missing Python.h
+
+**Symptom:** Model loads (17.4 GiB), then engine dies during `_dummy_run`/profile phase with:
+`/tmp/tmpjs0coger/cuda_utils.c:5:10: fatal error: Python.h: No such file or directory`.
+**Affected stage/plugin/port:** F.18.
+**Root cause:** Triton compiles a small C extension (`cuda_utils.c`) at runtime for its GPU launch path. Requires Python development headers, which `python3.13` alone doesn't install.
+**Fix:**
+```
+sudo apt-get install -y python3.13-dev
+```
+Verify: `ls /usr/include/python3.13/Python.h`.
+**Files changed:** none.
+
+## 2026-08-03 13:32 EDT — FlashInfer refuses SM_120
+
+**Symptom:** vLLM engine startup fails during sampler init:
+`RuntimeError: FlashInfer requires GPUs with sm75 or higher` — despite RTX 5090 being SM_120.
+**Affected stage/plugin/port:** F.18.
+**Root cause:** FlashInfer's `check_cuda_arch()` in this build (0.10.2 bundled) does a whitelist check, not a floor check. Blackwell/SM_120 is not in the whitelist. Error message is misleading.
+**Fix:** Disable FlashInfer sampler, fall back to PyTorch-native top-k/top-p:
+```
+export VLLM_USE_FLASHINFER_SAMPLER=0
+```
+Sampler falls back cleanly; performance impact TBD by bench.
+**Files changed:** `scripts/vllm_start.sh`.

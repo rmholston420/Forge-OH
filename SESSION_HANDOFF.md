@@ -1,26 +1,35 @@
-# Session Handoff — 2026-08-03 12:15 EDT
+# Session Handoff — 2026-08-03 13:50 EDT
 
 ## Current State
-- **F.16 (GPU monitor)**: COMPLETE + Colossus-verified. Poller, `/api/gpu` + `/api/gpu/history`, PRE-tool hook, always-visible top-right GPU strip. Cutoffs: warn 52 C, cap 83 C, crit 88 C, power cap 435 W. Playwright screenshot spec (`gpu-strip.spec.ts`) auto-commits + pushes PNGs to origin/main. Live sample on idle 5090: T 32 C · U 0% · V 23% · 19 W (all green).
-- **G.1 (self-testing)**: COMPLETE + Colossus-verified. Agent reads a spec, writes a new pytest case to `TestSymptomProducer` with the correct event shape, and the new case passes in isolation (31 s run).
-- **F.17**: cut per user decision (G.1 supersedes).
+- **F.16 (GPU monitor + sparkline popover)**: COMPLETE + Colossus-verified.
+- **G.1 (self-testing)**: COMPLETE + Colossus-verified.
+- **F.18 (vLLM standalone, OFF-PLAN)**: vLLM 0.10.2 serving `qwen3-coder-30b` GGUF on `127.0.0.1:8500`. First chat completion successful. VRAM 28.8 GB / 32 GB at `--gpu-memory-utilization 0.85`. Cannot coexist with Ollama on same GPU.
 
-## What Remains
-- Nothing on the current stop-condition. Ready to pick next slice.
+## In Progress
+- **Head-to-head bench: Ollama vs vLLM** on qwen3-coder-30b, num_ctx=32768, 4 prompts × 3 concurrency levels (1, 4, 8).
+  - Script: `~/dev/forge-oh/scripts/bench_ollama_vs_vllm.sh` (not committed — lives on Colossus only).
+  - Runner: `~/dev/forge-oh/scripts/bench_runner.py`.
+  - Output: `~/.forge-oh/bench/YYYYMMDD_HHMM/{ollama,vllm}.csv` + `summary.md`.
+  - Sequential (single GPU): Ollama phase → shut down → vLLM phase → summary.
+- Decides which backend is primary vs fallback in the BFF router.
 
-## Open Options (user requested evaluation)
-1. **F.18 vLLM backend** — already running on Colossus; router swap likely a URL change + payload adjustment. Small slice, real perf win.
-2. **F.16 polish** — GPU history sparkline / mini-trend chart consuming `/api/gpu/history`.
-3. **Sidecar producer coverage** — more `Producer.observe` cases; leverage G.1's proven agent-writes-tests capability.
-4. **Backfill task_description on pre-F.12 orphan runs.**
-5. **Retention policy ADR for `trajectories.db`.**
-6. **Fix 14 pre-existing `httpx.ConnectError` failures** in `test_mcp_router.py` / `test_observability_router.py` / `test_plugins_router.py` — need agent-server on :8090 or a proper offline deselect.
-7. **Caddy HMR fix** — Turbopack HMR websocket handshake fails via Caddy in fresh Chromium (works in your regular browser because of cached state). Not blocking, but foundational hygiene.
+## Remaining Before Current DoD
+- [ ] Bench completes and yields a decision.
+- [ ] Wire winning backend into BFF router env vars (`VLLM_URL`, `VLLM_FALLBACK_MODEL` or the reverse).
+- [ ] Restart BFF, curl through router, confirm fallback path.
+- [ ] Fix `vllm_start.sh` watchdog false-negative in ad-hoc launch loops (loop checks `vllm serve` but child is named `VLLM::EngineCore`, so healthy child looked dead).
+
+## Open Questions Awaiting User Answer
+- None right now.
+
+## Exact Next Action
+1. Wait for bench to finish (~10-15 min from 2026-08-03 13:44 start).
+2. Read `summary.md`, decide primary/fallback.
+3. Set BFF env vars accordingly, restart BFF, smoke-test router.
+4. Then return to plan Step 1 (real OpenHands agent-server on Colossus).
 
 ## Ambient
-- Next prod server may still be running on 127.0.0.1:3100 from screenshot spec (started manually — Playwright didn't manage it). Kill with `fuser -k 3100/tcp` when done.
-- Frontend dev server on 3000 was killed during debugging; restart with normal flow.
-- BFF on 8081, workspace ID `18c99443b23c452899010095abd5f29b`, preset `ap-1`.
-
-## Next Action
-User is evaluating options. Await direction.
+- Ollama: currently stopped for bench.
+- BFF: currently stopped for clean bench isolation.
+- Frontend dev server: not running.
+- vLLM: managed by the bench script (started/stopped between phases).

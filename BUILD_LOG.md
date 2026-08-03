@@ -2535,3 +2535,44 @@ Slice F.16-UI (always-visible GPU strip):
 - Refactored `GpuStrip.tsx`: chips are now `<button>` elements with hover / focus-visible states. Clicking a chip toggles its popover; ARIA `aria-haspopup="dialog"` + `aria-expanded` per chip.
 - Threshold reference lines: warn dashed yellow, critical dashed red. Y domain clamped to [0, 100] for percentage metrics.
 - New: `src/tests/e2e/gpu-popover.spec.ts`. Clicks temperature chip, awaits `/api/gpu/history`, screenshots popover to `screenshots/gpu-popover-temperature.png`, auto-pushes under `PLAYWRIGHT_GPU_STRIP_PUSH=1`.
+
+## 2026-08-03 13:45 EDT — F.18 vLLM standalone on Colossus (OFF-PLAN)
+
+**Stage/plugin/port:** OFF-PLAN — sibling LLM backend to Ollama for router A/B testing.
+**Rationale:** Router code is already vLLM-ready; wanted a working vLLM endpoint before Step 1 so the fallback path can be validated in-flight.
+**Files touched:**
+- `scripts/vllm_start.sh` (new, launcher script — points at `~/venv/vllm-new`, injects env vars, serves qwen3-coder-30b GGUF on :8500)
+- `~/venv/vllm-new/` (fresh venv, vLLM 0.10.2, torch 2.8.0+cu128, transformers 4.57.6, python3.13)
+
+**Ports/adapters affected:** none in Forge-OH core. New external LLM endpoint at `http://127.0.0.1:8500/v1`. Router env: `VLLM_URL=http://127.0.0.1:8500`, `VLLM_FALLBACK_MODEL=qwen3-coder-30b` (not yet wired into BFF).
+
+**vLLM version selection (critical for Blackwell + GGUF MoE):**
+- 0.23.0: has GGUF loader but CANNOT map Qwen3-Coder MoE fused `gate_up_proj` tensors (48 layers fail)
+- 0.26.0: GGUF support REMOVED entirely from LoadFormats
+- **0.10.2**: GGUF fused-tensor unpacking works, torch 2.8+cu128 knows SM_120
+
+**Required env for SM_120 (Blackwell):**
+```
+export VLLM_USE_FLASHINFER_SAMPLER=0
+export VLLM_ATTENTION_BACKEND=FLASH_ATTN
+```
+FlashInfer's `check_cuda_arch()` refuses SM_120 despite its "requires sm75 or higher" error message.
+
+**Required launcher flags for GGUF:**
+```
+--dtype float16                       # bf16 rejected by GGUF loader
+--hf-config-path Qwen/Qwen3-Coder-30B-A3B-Instruct   # tokenizer + arch source
+--gpu-memory-utilization 0.85
+--max-model-len 32768
+```
+
+**System prereqs discovered:**
+- `python3.13-dev` required (triton JIT compiles C extensions at runtime, needs Python.h)
+- Python 3.13 was removed by OS upgrade — re-installed via deadsnakes PPA
+- CUDA 12.8 works despite "SM 12.x requires CUDA >= 12.9" warning (warning is cosmetic; kernels present in arch_list)
+
+**VRAM footprint:** 28.8GB / 32GB at `--gpu-memory-utilization 0.85`. Cannot coexist with Ollama on same GPU.
+
+**Stop condition:** vLLM serving `qwen3-coder-30b` at :8500, first chat completion successful. Reached 2026-08-03 13:39 EDT.
+
+**Next:** Head-to-head bench Ollama vs vLLM (in progress). Decision on primary/fallback pending bench results.
