@@ -32,6 +32,11 @@ async def fetch_all_events(run_id: str) -> list[dict[str, Any]]:
             raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
         if resp.status_code == 404:
             raise HTTPException(status_code=404, detail="run not found")
+        # Treat any 4xx from the agent-server as "run not found" — the caller
+        # doesn't care whether the run_id was malformed, mismatched, or missing.
+        # (Prevents 422 leakage into observability endpoints for unknown runs.)
+        if 400 <= resp.status_code < 500:
+            raise HTTPException(status_code=404, detail="run not found")
         resp.raise_for_status()
         payload = resp.json() or {}
         if isinstance(payload, list):
