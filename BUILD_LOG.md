@@ -352,3 +352,19 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - Stage: 1E (bug found during verify).
 - Change: bff/routers/runs.py reject_run() now performs respond_to_confirmation + /interrupt unconditionally. /interrupt 400 (already idle) is tolerated; response now returns status:"rejected" with an agent_server object containing both sub-calls' outcomes.
 - Verification: pending re-run of scripts/e2e-approval.ts.
+
+## 2026-08-03 00:14 EDT \u2014 Stage 1E CLOSED: APPROVAL_GATE verified e2e on Colossus
+- Stage: 1E (Approval Gate) \u2014 Definition of Done met.
+- Verified via scripts/e2e-approval.ts:
+  - Leg 1 (approve): run 0070c8a8-86fe-4887-86d3-8669432cb900 reached awaiting_approval in 7576ms, POST /approve returned 200, execution_status transitioned to 'running' in 5ms.
+  - Leg 2 (reject): run e008be8d-7975-4fd0-889a-c029f0265653 reached awaiting_approval in 9092ms, POST /reject returned {status:"rejected", agent_server:{respond:{success:true}, interrupt:"interrupted"}}, execution_status transitioned to 'paused' in 4ms.
+  - Leg 3 (UI): NewRunComposer modal renders "Require approval before each tool call (HITL)" checkbox when NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
+- Files changed this stage:
+  - bff/routers/runs.py \u2014 CreateRunRequest.requireApproval, confirmation_policy call in create_run, reject_run interrupts after decline.
+  - src/lib/schemas/run.ts \u2014 requireApproval added.
+  - src/components/domain/NewRunComposer.tsx \u2014 gated checkbox.
+  - src/app/(dashboard)/runs/[runId]/page.tsx \u2014 Awaiting Approval banner reacts to run.status.
+  - src/lib/feature-flags/index.ts \u2014 static literal map so NEXT_PUBLIC_* inline in client bundles.
+  - .env.local.example \u2014 sample NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
+- Stop condition honored: /runs POST with requireApproval:true drives conversation to waiting_for_confirmation; approve resumes; reject hard-cancels via /interrupt. No cloud/multi-user coupling introduced.
+- Next: Stage 6 (Workspaces \u2014 per-conversation working_dir isolation).
