@@ -65,6 +65,8 @@ const STATIC_FLAG_VALUES: Record<FeatureFlag, string | undefined> = {
   RIGPA_LMS: process.env.NEXT_PUBLIC_FEATURE_RIGPA_LMS,
   // Recommendation #1 — RepoGraph
   REPOGRAPH: process.env.NEXT_PUBLIC_FEATURE_REPOGRAPH,
+  // Recommendation #3 — Trajectory memory
+  TRAJECTORY_MEMORY: process.env.NEXT_PUBLIC_FEATURE_TRAJECTORY_MEMORY,
 };
 
 function readEnvFlag(flag: FeatureFlag): string | undefined {

@@ -91,6 +91,18 @@ export const FEATURE_FLAGS = {
    * BFF-side REPOGRAPH_ENABLED is on.
    */
   REPOGRAPH: 'REPOGRAPH',
+
+  // ------------------------------------------------------------------
+  // Recommendation #3 — Trajectory memory & case-retrieval
+  // ------------------------------------------------------------------
+  /**
+   * F (F.1..F.8): Trajectory memory panel on the Overview tab. Queries
+   * POST /api/trajectories/search for the top-k semantically + structurally
+   * similar completed runs and displays them proactively as prior-case
+   * suggestions. Gated so the whole widget can be turned off from the
+   * frontend independently of the backend hook / indexer.
+   */
+  TRAJECTORY_MEMORY: 'TRAJECTORY_MEMORY',
 } as const;
 
 export type FeatureFlag = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS];

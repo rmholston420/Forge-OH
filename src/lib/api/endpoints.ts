@@ -221,4 +221,26 @@ export const ENDPOINTS = {
       `&rel_path=${encodeURIComponent(relPath)}&window=${window}&limit=${limit}`,
     contextBundle: () => `${BASE}/repograph/context_bundle`,
   },
+
+  // ------------------------------------------------------------------
+  // Trajectory memory (bff/routers/trajectories.py) — Slice F
+  // ------------------------------------------------------------------
+  TRAJECTORIES: {
+    list: (params?: {
+      limit?: number;
+      status?: string;
+      repoKey?: string;
+    }) => {
+      const qs: string[] = [];
+      if (params?.limit !== undefined) qs.push(`limit=${params.limit}`);
+      if (params?.status) qs.push(`status=${encodeURIComponent(params.status)}`);
+      if (params?.repoKey)
+        qs.push(`repo_key=${encodeURIComponent(params.repoKey)}`);
+      const q = qs.length ? `?${qs.join('&')}` : '';
+      return `${BASE}/trajectories${q}`;
+    },
+    get: (trajectoryId: string) =>
+      `${BASE}/trajectories/${encodeURIComponent(trajectoryId)}`,
+    search: () => `${BASE}/trajectories/search`,
+  },
 } as const;

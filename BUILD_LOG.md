@@ -1855,3 +1855,85 @@ Runs *alongside* the verify hook (not instead of); both subprocesses see the sam
 - Ruff clean.
 
 **Stop-condition status:** F.5b complete. Slice F backend fully wired: schema (F.1), store (F.2), embedder (F.3), retriever (F.4), writer + indexer (F.5), BFF endpoints (F.6), STOP hook (F.5b). Next: F.7 (Overview widget) and F.8 (ADR-008 + Playwright E2E + tag `v1.0-alpha3`).
+
+## 2026-08-03 10:15 EDT — Slice F.7: Overview trajectory memory widget
+
+**Stage:** Step 8, Slice F.7.
+
+**What:** Frontend case-retrieval widget on the run detail Overview tab.
+Renders proactively above the event timeline. Given the current run's
+`title` (task description), calls `POST /api/trajectories/search` and
+lists the top-k similar prior verified runs with:
+- prior task description (ellipsized)
+- final-status pill (success / failed / verified failure / other)
+- co-ranked score, semantic score, symbol overlap (2dp)
+- symptom line (line-clamped to 2)
+- diff count / verify iteration count / repo key / prior run id
+
+Excludes the current run id from results.
+
+**Files created:**
+- `src/features/trajectory-memory/api.ts` — thin wrappers around
+  `bffGet` / `bffPost`, Zod-parsed via
+  `TrajectoryListResponseSchema` / `TrajectorySearchResponseSchema` /
+  `TrajectoryRecordSchema`.
+- `src/features/trajectory-memory/hooks.ts` — `useTrajectoryList`,
+  `useTrajectoryDetail`, `useTrajectorySearch`. Search is auto-disabled
+  until `task_description` is non-empty.
+- `src/components/domain/TrajectoryMemoryPanel.tsx` (246 lines) — the
+  component. Feature-flag-gated on `FEATURE_TRAJECTORY_MEMORY`
+  (env `NEXT_PUBLIC_FEATURE_TRAJECTORY_MEMORY=true`).
+- `src/components/domain/TrajectoryMemoryPanel.module.css`.
+- `src/tests/unit/TrajectoryMemoryPanel.test.tsx` — 7 tests: disabled,
+  idle (empty task), idle (undefined task), empty hits, populated hits
+  (2 rows w/ scores + status pills), 500 error surface,
+  verified_failure label.
+- `src/tests/unit/trajectory-endpoints.test.ts` — 7 tests: list without
+  params, list with limit only, status/repoKey encoded, all three
+  combined in order, get id encoded, search path.
+
+**Files modified:**
+- `src/lib/api/endpoints.ts` — added `ENDPOINTS.TRAJECTORIES.{list,get,search}`.
+- `src/lib/query/query-keys.ts` — added `trajectoryKeys` + registered
+  in `QUERY_KEYS.trajectories` / `QUERY_KEYS.trajectoryKeys`.
+- `src/lib/schemas/trajectory.ts` — added `TrajectorySearchHitSchema`,
+  `TrajectorySearchResponseSchema`, `TrajectoryListResponseSchema`,
+  and the `TrajectorySearchRequest` interface, all mirroring
+  `bff/routers/trajectories.py`.
+- `src/lib/feature-flags/flags.ts` + `index.ts` — added
+  `TRAJECTORY_MEMORY` flag.
+- `src/app/(dashboard)/runs/[runId]/page.tsx` — mount
+  `<TrajectoryMemoryPanel>` above the timeline layout inside the
+  `selectedTab === 'overview'` block. Passes `run?.title` as the task
+  description (RunDetail's `taskPrompt` isn't on the summary response)
+  and excludes the current `run.id` from search results.
+- `src/tests/unit/feature-flags.test.ts` — bumped total flag count 21 → 22.
+
+**Design notes:**
+- **Task source of truth:** `RunSummary.title` on the current-run
+  endpoint. `taskPrompt` is only present on the extended `RunDetail`
+  schema which the summary endpoint doesn't return. This matches the
+  same field used by `NewRunComposer` when the user leaves the prompt
+  blank (it copies title → taskPrompt on submit).
+- **Retrieval budget:** default `DEFAULT_RETRIEVAL_K = 3` from the
+  schema module; the panel accepts a `k` prop override up to 25
+  (Pydantic-enforced upstream).
+- **`verified_only: true`** by default — a failed run's memory isn't
+  useful unless the failure itself was verified.
+- **Envelope:** trajectories router is plain-typed (no `{data: ...}`
+  envelope), same as RepoGraph — Zod-parsed after `unwrap()`.
+
+**Tests:**
+- `npx vitest run src/tests/unit/TrajectoryMemoryPanel.test.tsx src/tests/unit/trajectory-endpoints.test.ts`
+  → 14 passed.
+- Full frontend suite: **838 passed, 2 failed, 6 skipped** — the 2
+  failures are (a) the flag-count assertion, now updated, and (b) a
+  pre-existing `bffDownload` jsdom Blob-identity flake unrelated to
+  this slice. Bumping the flag count leaves **1 pre-existing failure**.
+- Backend regression: no change (still 260 passed on
+  `bff/tests/test_trajectories_router.py` + `openhands_tools_ext/`).
+
+**Stop-condition status:** F.7 complete. Overview widget renders and
+routes to the F.6 search endpoint end-to-end. Next: **F.8** — ADR-008,
+Playwright E2E test with fixture-served trajectories + screenshots, and
+tag `v1.0-alpha3` once E2E is green on Colossus.

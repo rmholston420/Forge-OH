@@ -47,6 +47,15 @@ export const observabilityKeys = {
   summary: (filters?: Record<string, unknown>) => ['observability', filters ?? {}] as const,
 };
 
+export const trajectoryKeys = {
+  all: ['trajectories'] as const,
+  list: (filters?: Record<string, unknown>) =>
+    ['trajectories', 'list', filters ?? {}] as const,
+  detail: (id: string) => ['trajectories', 'detail', id] as const,
+  search: (query: Record<string, unknown>) =>
+    ['trajectories', 'search', query] as const,
+};
+
 export const QUERY_KEYS = {
   runs: runKeys,
   runKeys,
@@ -59,6 +68,8 @@ export const QUERY_KEYS = {
   notificationKeys,
   observability: observabilityKeys,
   observabilityKeys,
+  trajectories: trajectoryKeys,
+  trajectoryKeys,
   plugins: {
     all: ['plugins'] as const,
     detail: (id: string) => ['plugins', id] as const,

@@ -53,3 +53,44 @@ export const TRAJECTORY_API_PREFIX = '/trajectories' as const;
 
 /** Default retrieval budget (top-k) for the case-retrieval widget. */
 export const DEFAULT_RETRIEVAL_K = 3;
+
+// ---------------------------------------------------------------------------
+// Search response — mirrors bff/routers/trajectories.py::SearchHit /
+// SearchResponse. Parity is guarded by test_trajectories_router.py::
+// TestFrontendParity.
+// ---------------------------------------------------------------------------
+
+export const TrajectorySearchHitSchema = z.object({
+  record: TrajectoryRecordSchema,
+  score: z.number(),
+  semantic_score: z.number(),
+  symbol_overlap: z.number(),
+});
+export type TrajectorySearchHit = z.infer<typeof TrajectorySearchHitSchema>;
+
+export const TrajectorySearchResponseSchema = z.object({
+  query: z.string(),
+  k: z.number().int(),
+  hits: z.array(TrajectorySearchHitSchema),
+});
+export type TrajectorySearchResponse = z.infer<
+  typeof TrajectorySearchResponseSchema
+>;
+
+export const TrajectoryListResponseSchema = z.object({
+  total: z.number().int(),
+  records: z.array(TrajectoryRecordSchema),
+});
+export type TrajectoryListResponse = z.infer<
+  typeof TrajectoryListResponseSchema
+>;
+
+export interface TrajectorySearchRequest {
+  task_description: string;
+  symptom?: string;
+  k?: number;
+  verified_only?: boolean;
+  repo_key?: string;
+  current_symbols?: string[];
+  exclude_run_ids?: string[];
+}

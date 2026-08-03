@@ -21,6 +21,7 @@ import { Banner } from '@/components/core/Banner';
 import { Skeleton } from '@/components/core/Skeleton';
 import { EmptyState } from '@/components/core/EmptyState';
 import { Tabs } from '@/components/core/Tabs';
+import { TrajectoryMemoryPanel } from '@/components/domain/TrajectoryMemoryPanel';
 import BrowserTab from './tabs/BrowserTab';
 import PlanTab from './tabs/PlanTab';
 import MetricsTab from './tabs/MetricsTab';
@@ -214,9 +215,14 @@ export default function RunDetailPage({
         variant="underline"
       />
 
-      {/* Overview — event timeline + inspector */}
+      {/* Overview — trajectory memory (proactive) + event timeline + inspector */}
       {selectedTab === 'overview' && (
-        <div className={styles.timelineLayout}>
+        <>
+          <TrajectoryMemoryPanel
+            taskDescription={run?.title}
+            excludeRunIds={run?.id ? [run.id] : undefined}
+          />
+          <div className={styles.timelineLayout}>
           <div className={styles.timeline}>
             {runLoading && (
               <div className={styles.skeletonList}>
@@ -248,6 +254,7 @@ export default function RunDetailPage({
 
           {selectedEventId && (
             <aside className={styles.inspector} aria-label="Event inspector">
+
               {(() => {
                 const ev = allEvents.find((e) => e.id === selectedEventId);
                 const displayEv = ev ? toDisplayEvent(ev) : null;
@@ -278,7 +285,8 @@ export default function RunDetailPage({
               })()}
             </aside>
           )}
-        </div>
+          </div>
+        </>
       )}
 
       {selectedTab === 'files' && <FilesTab runId={runId} />}
