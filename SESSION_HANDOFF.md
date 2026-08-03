@@ -1,33 +1,51 @@
-# SESSION HANDOFF — 2026-08-03 00:34 EDT
+# SESSION_HANDOFF
 
-## Just closed: Stage 6 (Workspaces)
-- BFF: bff/routers/workspaces.py now proxies to agent-server's `/api/workspaces` registry. No SQLite, no in-memory stub.
-- BFF: bff/routers/runs.py resolves `body.workspaceId` via agent-server and passes that workspace's real `path` as `working_dir` — verified on run c98f24a8-09bb-4ff9-9f6f-f1315fcdfe36.
-- Frontend: workspace type collapsed to `Literal['local']`. Removed docker/e2b/remote_api/modal branches, drawer duplicates, reset endpoint, WorkspaceHealth/activeRunCount clutter from cards.
-- Verifier: scripts/e2e-stage6.ts (Playwright) — reruns any time; requires BFF@8081, agent-server@8090, Next@3000, ≥1 workspace present.
+Last updated: 2026-08-03 01:22 EDT
 
-## Verified running on Colossus
-- agent-server:  http://127.0.0.1:8090  (openhands 1.40.0)
-- BFF:           http://127.0.0.1:8081  (uvicorn from .oh-venv, PID managed via /tmp/bff.log)
-- Next.js:       http://localhost:3000  (Turbopack; requires `pkill -9 -f 'next dev|next-server' && rm -rf .next` before restart if cache corrupts)
-- Ollama:        http://localhost:11434 (qwen3.6:35b-a3b primary)
-- Workspaces registered: 1 (id=18c99443b23c452899010095abd5f29b, name=forge-oh-repo, path=/home/rmholston/dev/forge-oh)
+## Current state: PLAN COMPLETE (Steps 1–7 all closed)
 
-## Latest commits (main)
-- ea73b0e  BUILD_LOG: fix Stage 6 frontend entry
-- 2c47b10  Stage 6: workspaces UI collapsed to local-only
-- c01a1ea  Stage 6: workspaces router passes through to agent-server; runs use selected workspace path
-- cf1f867  Stage 1E CLOSED + SESSION_HANDOFF for Stage 6
+Forge-OH stop condition from `Forge-OH-Action-Plan-v4.md` is met and exceeded:
+- Real conversation create → run detail → live events ✓
+- Real file diffs ✓
+- Lifecycle controls (pause/resume/stop/approve/reject) ✓
+- No `"stub": True` in Runs/Workspaces/Files core flow ✓
+- Step 7 (wrap all remaining OpenHands surfaces): 6 slices closed, zero remaining stubs
+  except `/api/runs/compare` (not in stop-condition scope)
 
-## Known debt (surfaced, not addressed)
-- `pnpm type-check` returns ~50 pre-existing errors (secrets, plugins, trace, RunCard, StatusBadge, artifact/browser/event schemas). None from Stage 6.
-- next.config.ts deprecation warnings: move `experimental.typedRoutes` → `typedRoutes`; `middleware` → `proxy`.
-- Duplicate WorkspaceCard/WorkspaceFormModal pattern gone; keep an eye on other `src/features/*` vs `src/components/domain/*` duplicates in future stages.
+## Verified end-to-end on Colossus this session
+- 9/9 unit tests for `action_reconstruction`
+- 9/9 unit tests for `trace_reconstruction`
+- Full lifecycle probes for plugins, MCP, secrets, fork, traces (curl-driven)
+- Playwright verifier for Stage 6 (`scripts/e2e-stage6.ts`) still passing
 
-## Next stage per action-plan-v4
-Read `Forge-OH-Action-Plan-v4.md` for the next step following Step 6. Confirm scope before building.
+## Remaining loose ends (all out of Plan v4 scope)
+- `/api/runs/compare` — still returns `{stub:True}`. Not called by the stop-condition
+  flow. Implement as a diff between two runs' artifacts if UX ever wires it in.
+- Pre-existing type-check errors (~50 across secrets/plugins/trace/RunCard/StatusBadge
+  schema surfaces). Explicitly deferred to a housekeeping stage; none introduced by
+  Stage 7 work.
+- No Playwright verifiers for Stage 7 slices yet (unit tests + curl smoke suffice for
+  the plan; add if a regression appears).
 
-## Exact next action
-1. `git pull --ff-only`
-2. Read the next stage in Forge-OH-Action-Plan-v4.md, restate the scope, flag ambiguity if any.
-3. Wait for user confirmation before touching code.
+## Next possible directions (user picks)
+1. **Housekeeping stage** — clean up the ~50 pre-existing TS errors, remove dead code
+   from the "Forge-OH temporary registry" era, drop `TODO(foh-phase2)` markers.
+2. **`/runs/compare`** — implement the last stub if compare UI is wanted.
+3. **Stage 8 — Kosmos/Rigpa-LMS integration** — start `plugin_adapter.py`,
+   `EventBusPort` wiring, retarget context_loader to Kosmos paths. This is explicitly
+   deferred per Plan v4 but is the next real feature.
+4. **Playwright verifiers for Stage 7** — 6 new e2e scripts (one per slice)
+   for regression insurance.
+
+## Colossus running services (as of session end)
+- agent-server: `http://127.0.0.1:8090`
+- BFF: `http://127.0.0.1:8081` (uvicorn `bff.main:app_with_sio`)
+- Next.js: `http://localhost:3000`
+- Ollama: `http://localhost:11434`
+- Workspace: id=18c99443b23c452899010095abd5f29b, path=/home/rmholston/dev/forge-oh
+
+## Ports touched this session (Stage 7 all slices)
+- bff/routers/{runs,plugins,mcp,secrets,observability}.py
+- bff/services/{action_reconstruction,trace_reconstruction,event_fetch}.py (NEW)
+- bff/tests/{test_action_reconstruction,test_trace_reconstruction}.py (NEW)
+- bff/main.py (registered conv_secrets_router)
