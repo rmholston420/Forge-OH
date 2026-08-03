@@ -339,7 +339,7 @@ async def get_run_events(
 
 
 # ---------------------------------------------------------------------------
-# Deferred: still-stub endpoints (Steps 4 / 5 / 6)
+# /runs/compare — artifacts diff + best-effort content diff
 # ---------------------------------------------------------------------------
 
 @router.get("/runs/compare")
@@ -347,17 +347,33 @@ async def compare_runs(
     base: str = Query(..., description="Base run ID"),
     fork: str = Query(..., description="Fork run ID"),
 ) -> dict:
-    return {
-        "data": {
-            "baseRunId": base,
-            "forkRunId": fork,
-            "baseTitle": f"Run {base[:8]}",
-            "forkTitle": f"Run {fork[:8]} (fork)",
-            "files": [],
-            "stats": {"totalFiles": 0, "additions": 0, "deletions": 0},
-        },
-        "stub": True,
-    }
+    from bff.services.run_compare import compare_runs as _do_compare  # local import to avoid cycles
+    client = get_client()
+
+    # Fetch events for both runs in parallel would be nicer; sequential is fine for now.
+    base_events = await _fetch_all_events(base)
+    fork_events = await _fetch_all_events(fork)
+
+    async def _conv(cid: str) -> dict:
+        try:
+            resp = await client.get(f"/api/conversations/{cid}")
+            if resp.status_code != 200:
+                return {}
+            return resp.json() or {}
+        except Exception:
+            return {}
+
+    base_conv = await _conv(base)
+    fork_conv = await _conv(fork)
+    base_wd = (base_conv.get("workspace") or {}).get("working_dir")
+    fork_wd = (fork_conv.get("workspace") or {}).get("working_dir")
+
+    data = _do_compare(base, fork, base_events, fork_events, base_wd, fork_wd)
+    if base_conv.get("title"):
+        data["baseTitle"] = base_conv["title"]
+    if fork_conv.get("title"):
+        data["forkTitle"] = fork_conv["title"]
+    return {"data": data}
 
 
 @router.get("/runs/{run_id}/plan")
