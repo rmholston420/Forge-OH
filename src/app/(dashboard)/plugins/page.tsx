@@ -1,8 +1,10 @@
 'use client';
-import React from 'react';
-import { usePlugins, useInstallPlugin } from '@/features/plugins/hooks';
+import React, { useState } from 'react';
+import { usePlugins } from '@/features/plugins/hooks';
 import { usePluginsStore } from '@/features/plugins/store';
 import { PluginCard } from '@/components/domain/PluginCard';
+import { PluginMarketplaceGrid } from '@/components/domain/PluginMarketplaceGrid';
+import { Tabs } from '@/components/core/Tabs';
 import { EmptyState } from '@/components/core/EmptyState';
 import { Banner } from '@/components/core/Banner';
 import { Skeleton } from '@/components/core/Skeleton';
@@ -19,9 +21,15 @@ const STATUS_LABELS: Record<PluginStatus | 'all', string> = {
   installing: 'Installing',
 };
 
+const PAGE_TABS = [
+  { id: 'installed', label: 'Installed' },
+  { id: 'marketplace', label: 'Marketplace' },
+];
+
 export default function PluginsPage() {
   const { statusFilter, setStatusFilter } = usePluginsStore();
   const { data: plugins = [], isLoading, error } = usePlugins();
+  const [activeTab, setActiveTab] = useState('installed');
 
   const filtered = statusFilter === 'all'
     ? plugins
@@ -33,52 +41,65 @@ export default function PluginsPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.toolbar}>
-        <div className={styles.filters} role="group" aria-label="Filter by status">
-          {(['all', 'enabled', 'disabled', 'error'] as (PluginStatus | 'all')[]).map((s) => (
-            <button
-              key={s}
-              className={[styles.filterBtn, statusFilter === s ? styles['filterBtn--active'] : ''].filter(Boolean).join(' ')}
-              onClick={() => setStatusFilter(s)}
-              aria-pressed={statusFilter === s}
+      <Tabs
+        tabs={PAGE_TABS}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        variant="underline"
+      />
+
+      {activeTab === 'installed' && (
+        <>
+          <div className={styles.toolbar}>
+            <div className={styles.filters} role="group" aria-label="Filter by status">
+              {(['all', 'enabled', 'disabled', 'error'] as (PluginStatus | 'all')[]).map((s) => (
+                <button
+                  key={s}
+                  className={[styles.filterBtn, statusFilter === s ? styles['filterBtn--active'] : ''].filter(Boolean).join(' ')}
+                  onClick={() => setStatusFilter(s)}
+                  aria-pressed={statusFilter === s}
+                >
+                  {STATUS_LABELS[s]}
+                </button>
+              ))}
+            </div>
+            <a
+              href="https://github.com/modelcontextprotocol/servers"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.browseLink}
             >
-              {STATUS_LABELS[s]}
-            </button>
-          ))}
-        </div>
-        <a
-          href="https://github.com/modelcontextprotocol/servers"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.browseLink}
-        >
-          Browse MCP Registry ↗
-        </a>
-      </div>
+              Browse MCP Registry ↗
+            </a>
+          </div>
 
-      {error && (
-        <Banner variant="error">Failed to load plugins: {error instanceof Error ? error.message : 'Error'}</Banner>
+          {error && (
+            <Banner variant="error">Failed to load plugins: {error instanceof Error ? error.message : 'Error'}</Banner>
+          )}
+
+          {isLoading ? (
+            <div className={styles.grid}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} width="100%" height={200} borderRadius="12px" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              title="No plugins installed"
+              description="MCP plugins extend the agent with tools, resources, and prompts. Browse the Marketplace tab to discover and install them."
+              icon="🧩"
+            />
+          ) : (
+            <div className={styles.grid}>
+              {filtered.map((plugin) => (
+                <PluginCard key={plugin.id} plugin={plugin} />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {isLoading ? (
-        <div className={styles.grid}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} width="100%" height={200} borderRadius="12px" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          title="No plugins installed"
-          description="MCP plugins extend the agent with tools, resources, and prompts."
-          icon="🧩"
-        />
-      ) : (
-        <div className={styles.grid}>
-          {filtered.map((plugin) => (
-            <PluginCard key={plugin.id} plugin={plugin} />
-          ))}
-        </div>
-      )}
+      {activeTab === 'marketplace' && <PluginMarketplaceGrid />}
     </div>
   );
 }
