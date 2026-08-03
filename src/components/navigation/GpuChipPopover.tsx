@@ -270,7 +270,10 @@ export const GpuChipPopover: React.FC<Props> = ({
                   padding: '4px 8px',
                 }}
                 labelFormatter={(t) => `${Math.abs(Number(t)).toFixed(0)} s ago`}
-                formatter={(v: number) => [`${v.toFixed(0)}${unit}`, label]}
+                formatter={(v) => {
+                  const n = typeof v === 'number' ? v : Number(v);
+                  return [Number.isFinite(n) ? `${n.toFixed(0)}${unit}` : '—', label];
+                }}
               />
               <Line
                 type="monotone"
