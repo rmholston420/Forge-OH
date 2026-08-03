@@ -28,16 +28,45 @@ export type { FeatureFlag } from './flags';
 
 /**
  * Read the env var for a feature flag.
- * Works in both server (process.env) and client (NEXT_PUBLIC_FEATURE_*) contexts.
+ *
+ * IMPORTANT: Next.js inlines NEXT_PUBLIC_* env vars into client bundles only
+ * when accessed as a *literal* property (e.g. `process.env.NEXT_PUBLIC_FOO`).
+ * A computed access like `process.env[key]` where `key` is a template string
+ * stays `undefined` in the browser after tree-shaking. That's why we build a
+ * static map here with one literal read per flag. Adding a new flag requires
+ * a new line below.
  */
+const STATIC_FLAG_VALUES: Record<FeatureFlag, string | undefined> = {
+  // Phase 0
+  LIVE_STREAM: process.env.NEXT_PUBLIC_FEATURE_LIVE_STREAM,
+  // Phase 1 — Run Command Centre
+  RUN_LIST: process.env.NEXT_PUBLIC_FEATURE_RUN_LIST,
+  RUN_DETAIL_SHELL: process.env.NEXT_PUBLIC_FEATURE_RUN_DETAIL_SHELL,
+  PLAN_RAIL: process.env.NEXT_PUBLIC_FEATURE_PLAN_RAIL,
+  EVENT_TIMELINE: process.env.NEXT_PUBLIC_FEATURE_EVENT_TIMELINE,
+  APPROVAL_GATE: process.env.NEXT_PUBLIC_FEATURE_APPROVAL_GATE,
+  // Phase 2 — Artifact & Code Intelligence
+  ARTIFACT_VIEWER: process.env.NEXT_PUBLIC_FEATURE_ARTIFACT_VIEWER,
+  TERMINAL_PANE: process.env.NEXT_PUBLIC_FEATURE_TERMINAL_PANE,
+  BROWSER_PANE: process.env.NEXT_PUBLIC_FEATURE_BROWSER_PANE,
+  METRICS_PANE: process.env.NEXT_PUBLIC_FEATURE_METRICS_PANE,
+  // Phase 3 — Configuration Hub
+  WORKSPACE_MANAGER: process.env.NEXT_PUBLIC_FEATURE_WORKSPACE_MANAGER,
+  AGENT_PRESETS: process.env.NEXT_PUBLIC_FEATURE_AGENT_PRESETS,
+  MCP_PANEL: process.env.NEXT_PUBLIC_FEATURE_MCP_PANEL,
+  SECRETS_VAULT: process.env.NEXT_PUBLIC_FEATURE_SECRETS_VAULT,
+  // Phase 4 — Observability Suite
+  OBSERVABILITY_OVERVIEW: process.env.NEXT_PUBLIC_FEATURE_OBSERVABILITY_OVERVIEW,
+  LOOP_GUARD_MONITOR: process.env.NEXT_PUBLIC_FEATURE_LOOP_GUARD_MONITOR,
+  TRACE_VIEWER: process.env.NEXT_PUBLIC_FEATURE_TRACE_VIEWER,
+  // Phase 5 — Plugin & Extension Layer
+  PLUGIN_MARKETPLACE: process.env.NEXT_PUBLIC_FEATURE_PLUGIN_MARKETPLACE,
+  RUN_REPLAY: process.env.NEXT_PUBLIC_FEATURE_RUN_REPLAY,
+  RIGPA_LMS: process.env.NEXT_PUBLIC_FEATURE_RIGPA_LMS,
+};
+
 function readEnvFlag(flag: FeatureFlag): string | undefined {
-  const key = `NEXT_PUBLIC_FEATURE_${flag}`;
-  // Next.js replaces NEXT_PUBLIC_ vars at build time for client bundles.
-  // On the server, process.env is always available.
-  if (typeof process !== 'undefined' && process.env) {
-    return process.env[key];
-  }
-  return undefined;
+  return STATIC_FLAG_VALUES[flag];
 }
 
 // ---------------------------------------------------------------------------

@@ -341,3 +341,9 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - src/app/(dashboard)/runs/[runId]/page.tsx: Awaiting Approval banner now auto-shows when run.status === 'awaiting_approval' (previously only shown via manual store toggle). Copy updated to point at the header buttons.
 - Env: .env.local.example now suggests NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
 - Verification pending: needs an e2e run created with requireApproval=true. Expect conversation to enter waiting_for_confirmation at first tool call, then approve/reject buttons to close the loop.
+
+## 2026-08-03 00:07 EDT \u2014 Stage 1E hotfix: static feature-flag map for client bundles
+- Stage: 1E (debug during verify) \u2014 see DEBUG_LOG.md entry for the same timestamp.
+- Change: src/lib/feature-flags/index.ts now uses a static Record<FeatureFlag, string|undefined> populated with one literal process.env.NEXT_PUBLIC_FEATURE_<NAME> read per flag. This is the only pattern Next.js will inline into client bundles.
+- Effect: All flags now respond to NEXT_PUBLIC_FEATURE_* in .env.local from Client Components (previously only Server Components saw them via runtime process.env).
+- Verification: pending Playwright re-run after Next restart.
