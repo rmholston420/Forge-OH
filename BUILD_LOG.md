@@ -2487,3 +2487,12 @@ Verified via the paste sample captured this session (`/home/user/workspace/uploa
 
 - Stage: F.15 fixup.
 - File: `src/tests/e2e/f15-fixups.spec.ts` — happy-path now writes `hello_${Date.now()}.py` to avoid "already exists" failure on repeat runs.
+
+## 2026-08-03 11:52 EDT — G.1 self-testing spec
+
+- Stage/plugin: G.1 (Playwright e2e; "does the app actually work" bar).
+- New: `src/tests/e2e/g1-self-testing.spec.ts`.
+- Flow: baseline pytest `--collect-only` count on `TestSymptomProducer` → fire run whose task appends one fully-specified test case (`test_g1_marker_terminal_exit_2_becomes_symptom`) → drain trajectories → assert file on disk contains marker, collection = baseline+1, new case passes in isolation.
+- Skip-guards: BFF unreachable, target test file missing, pytest binary missing.
+- Env knobs: `FORGE_TEST_WORKSPACE_PATH` (default `$HOME/forge-oh`), `FORGE_TEST_PYTEST` (default `.oh-venv/bin/pytest`), plus the same `PLAYWRIGHT_BFF_URL` / `FORGE_TEST_WORKSPACE_ID` / `FORGE_TEST_PRESET_ID` used by other online specs.
+- Requires manual cleanup between runs (remove the marker method) — spec fails-fast if the marker already exists so the +1 math stays honest.
