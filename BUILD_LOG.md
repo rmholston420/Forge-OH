@@ -782,3 +782,8 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   - `/runs/*/overview` still had blank MessageEvent rows — old BFF `_message_summary` still returned "".
 - Fix: rewrite scripts/forge-up.sh BFF stanza to (1) always kill previous pid-managed BFF, (2) restart with `--reload --reload-dir bff` so future edits hot-reload without a full restart; scripts/forge-screenshots.sh now calls forge-up.sh before Playwright so screenshots are always against current code.
 - Files touched: scripts/forge-up.sh, scripts/forge-screenshots.sh.
+
+## 2026-08-03 05:47 EDT — forge-up BFF port-fallback kill
+- Symptom: 068daf7 forge-up.sh only killed the previous BFF when a pid-file existed. Colossus had a pre-existing uvicorn on :8081 with no pid file, so forge-up emitted `BFF port 8081 held by unknown process; leaving it alone` and screenshots still ran against stale code.
+- Fix: after the pid-file path, look up PIDs on port 8081 via `ss -ltnp`, keep only ones whose cmdline matches `uvicorn.*bff\.main`, kill those. Non-BFF processes on the port are still left alone.
+- File touched: scripts/forge-up.sh.

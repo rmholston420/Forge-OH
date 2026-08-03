@@ -65,18 +65,47 @@ fi
 # in-flight edits; the explicit kill covers the case where the previous run
 # had `--reload` disabled or the process is wedged.
 BFF_PID_FILE="$LOG_DIR/bff.pid"
+# Kill by pid-file first (clean path), then fall back to killing whoever is on
+# the port (covers the case where a previous run launched uvicorn without a
+# pid file, or the pid file was lost). Only kill if the process on the port
+# looks like our uvicorn BFF, to avoid nuking an unrelated dev process.
 if [ -f "$BFF_PID_FILE" ] && kill -0 "$(cat "$BFF_PID_FILE" 2>/dev/null)" 2>/dev/null; then
   log "stopping previous BFF (pid $(cat "$BFF_PID_FILE"))"
   kill "$(cat "$BFF_PID_FILE")" 2>/dev/null || true
-  # wait up to 5s for graceful exit
   for _ in 1 2 3 4 5; do
     kill -0 "$(cat "$BFF_PID_FILE" 2>/dev/null)" 2>/dev/null || break
     sleep 1
   done
   kill -9 "$(cat "$BFF_PID_FILE" 2>/dev/null)" 2>/dev/null || true
   rm -f "$BFF_PID_FILE"
-elif port_in_use "$BFF_PORT"; then
-  warn "BFF port $BFF_PORT held by unknown process; leaving it alone"
+fi
+if port_in_use "$BFF_PORT"; then
+  # Discover PIDs on the port; check if any looks like our BFF (uvicorn + bff.main).
+  BFF_PORT_PIDS="$(ss -ltnp "sport = :$BFF_PORT" 2>/dev/null \
+    | awk 'NR>1 {print $NF}' \
+    | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
+  if [ -n "$BFF_PORT_PIDS" ]; then
+    KILLED=0
+    for _pid in $BFF_PORT_PIDS; do
+      if ps -p "$_pid" -o args= 2>/dev/null | grep -qE 'uvicorn.*bff\.main'; then
+        log "stopping stale BFF on :$BFF_PORT (pid $_pid)"
+        kill "$_pid" 2>/dev/null || true
+        for _ in 1 2 3 4 5; do
+          kill -0 "$_pid" 2>/dev/null || break
+          sleep 1
+        done
+        kill -9 "$_pid" 2>/dev/null || true
+        KILLED=1
+      fi
+    done
+    if [ "$KILLED" -eq 0 ]; then
+      warn "BFF port $BFF_PORT held by non-BFF process; leaving it alone"
+    fi
+  else
+    warn "BFF port $BFF_PORT in use but PID unknown; leaving it alone"
+  fi
+  # give the socket a moment to free
+  sleep 1
 fi
 if ! port_in_use "$BFF_PORT"; then
   log "starting BFF on :${BFF_PORT} (with --reload)"

@@ -133,3 +133,10 @@
 - Root cause: forge-up.sh treats "port in use" as "service already up" and leaves the old uvicorn process running. Because uvicorn was launched WITHOUT `--reload`, none of the newly-pulled BFF source is imported. Frontend changes appear because `pnpm dev` HMR reloads TS on save.
 - Fix: forge-up.sh now kills the previous BFF pid and relaunches with `--reload --reload-dir bff`. forge-screenshots.sh calls forge-up.sh before Playwright so a fresh BFF is guaranteed for every visual-tour run.
 - Reuse rule: any process that loads Python source at startup MUST be relaunched — not just port-checked — when the repo changes. Prefer `--reload` for local single-user dev.
+
+## 2026-08-03 05:47 EDT — Stale BFF survives pid-file-based restart
+- Symptom: forge-up.sh in 068daf7 logged `BFF port 8081 held by unknown process; leaving it alone`; screenshot audit confirmed BFF was still pre-pass-2.
+- Affected: scripts/forge-up.sh.
+- Root cause: previous BFF was launched by an older forge-up (or by hand) that did not write a pid file. My kill-by-pid-file guard therefore didn't trip, and the fallback branch bailed instead of killing.
+- Fix: enumerate PIDs on the BFF port via `ss -ltnp`, filter to those whose cmdline matches `uvicorn.*bff\.main`, then kill them. Leaves unrelated processes alone.
+- Reuse rule: any port-managed dev service kill logic MUST have a secondary "kill by port + cmdline signature" path — pid files are lost across reboots and manual launches.
