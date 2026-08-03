@@ -816,3 +816,26 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
 - Stop condition: Files + Terminal tabs no longer show "available in Phase 1"
   placeholders and render the same real components as their subroutes.
 - Verified after: pending visual QA
+
+## 2026-08-03 06:20 EDT — Step 7 Slice B: Global Metrics dashboard wired to real aggregation
+- Stage: Step 7 (remaining OpenHands surfaces)
+- Ports touched:
+  - Upstream `GET /api/conversations/search` (ConversationInfo + MetricsSnapshot) now consumed by BFF
+- Files:
+  - `bff/services/metrics_aggregation.py` (new) — fetches all conversations paginated (cap 2000),
+    computes summary/daily/models/workspaces aggregates
+  - `bff/routers/metrics.py` — replaced hardcoded zero stubs with real aggregation calls; legacy
+    per-entity endpoints kept for compat, `/cost` and `/workspaces/{id}` also now use real aggregates
+  - `bff/tests/test_metrics_router.py` — mock `_fetch_all_conversations`, verify math + shape
+  - `src/components/navigation/Sidebar.tsx` — added Metrics nav entry (📈 icon)
+  - `src/app/(dashboard)/metrics/page.tsx` (new) — renders the existing MetricsDashboardPage
+  - `src/tests/e2e/visual-tour.spec.ts` — added `/metrics` to routes list
+- Rationale: Frontend `MetricsDashboardPage.tsx` and hooks were fully built; BFF endpoints returned
+  zeros. Upstream `/api/conversations/search` exposes MetricsSnapshot per conversation → sufficient
+  for real totals, cost, tokens, model breakdown, workspace breakdown. Local-first cap 2000 keeps
+  aggregation under a second on Colossus.
+- Success/failure denominators: `finished` vs `error` only. In-flight statuses excluded so the rate
+  isn't biased by runs still running.
+- Stop condition: /metrics route renders with real KPI cards, model breakdown, and workspace
+  breakdown reflecting actual agent-server data (pending visual QA).
+- Verified after: 10/10 metrics router unit tests pass locally

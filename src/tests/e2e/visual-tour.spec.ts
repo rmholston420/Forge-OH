@@ -65,6 +65,7 @@ const ROUTES: Array<{ path: string; slug: string }> = [
   { path: '/secrets',      slug: '08-secrets' },
   { path: '/settings',     slug: '09-settings' },
   { path: '/settings/secrets', slug: '10-settings-secrets' },
+  { path: '/metrics',      slug: '20-metrics-dashboard' },
 ];
 
 for (const r of ROUTES) {
