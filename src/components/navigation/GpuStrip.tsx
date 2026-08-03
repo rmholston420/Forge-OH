@@ -95,15 +95,7 @@ export const GpuStrip: React.FC = () => {
 
     const tick = async () => {
       try {
-        // eslint-disable-next-line no-console
-        if (typeof window !== 'undefined' && !(window as unknown as { __GPU_STRIP_LOGGED?: boolean }).__GPU_STRIP_LOGGED) {
-          (window as unknown as { __GPU_STRIP_LOGGED?: boolean }).__GPU_STRIP_LOGGED = true;
-          // eslint-disable-next-line no-console
-          console.log('[GpuStrip] first tick, BFF=', process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081');
-        }
         const res = await bffFetch('/api/gpu');
-        // eslint-disable-next-line no-console
-        console.log('[GpuStrip] response', res.status);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as GpuSnapshot;
         if (!cancelled) {
@@ -111,8 +103,6 @@ export const GpuStrip: React.FC = () => {
           setError(null);
         }
       } catch (e) {
-        // eslint-disable-next-line no-console
-        console.log('[GpuStrip] error', e instanceof Error ? e.message : String(e));
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'error');
         }
