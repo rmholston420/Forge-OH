@@ -283,3 +283,12 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - Fix: renamed the hidden field, defaultValue key, useEffect setValue target, and mutation payload override from contextPrompt → taskPrompt. Zero schema changes.
 - Files touched: src/components/domain/NewRunComposer.tsx (3 edits)
 - Verification pending: Playwright e2e must (a) produce ActionEvent + FileEditorObservation in the event stream, (b) return non-empty /api/runs/{id}/files, (c) render the file in the Files tab screenshot.
+
+## 2026-08-02 23:31 EDT — Stage 3.5 hotfix VERIFIED + Stage 4 visual DoD MET
+- Stage: 3.5 (verify) + Stage 4 (visual closure)
+- Playwright e2e run 4857ec0d-cdc1-45d7-ab99-e9338dfa2d74:
+  - 14 events, terminal status = finished, 12.4s wall time
+  - 0 console errors / 0 page errors / 0 request failures
+  - /files returned 1 entry: /workspace/stage4-1785727853548.txt (added, +1/-0)
+  - Screenshot: scripts/debug-out/e2e-06-files-tab.png shows the file rendered in the Files tab
+- Stage 4 is fully CLOSED (backend + frontend end-to-end).
