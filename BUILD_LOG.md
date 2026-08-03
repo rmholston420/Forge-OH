@@ -1477,3 +1477,34 @@ diagnosis.
 - [ ] E.5 Frontend Trace-tab renderer + Metrics-tab "verify iterations per task".
 
 **Next:** E.2 — implement the test-runner selector and the actual runner-invocation code (subprocess wrapper that populates a `VerificationStep`).
+
+## 2026-08-03 08:12 EDT — Step 8 Slice E.2: test-runner auto-detect + subprocess wrapper
+
+**Slice E.2 of 5 — Recommendation #2, deterministic core of the verify loop.**
+
+**Files new:**
+- `openhands_tools_ext/verify/selector.py` — `detect_runner()` (pyproject.toml → pytest, vitest.config → vitest, jest.config → jest, package.json+test script → npm_test), `select_targets()` (file-is-test → sibling-test → dir-with-tests → skip), `build_command()`, `RunnerConfig` dataclass.
+- `openhands_tools_ext/verify/runner.py` — `run_verification(workspace, edited_files, iteration, max_iterations, timeout_seconds=120, runner_override=None) -> VerificationStep`. Pure function of inputs + filesystem. Handles subprocess.TimeoutExpired (verdict=error) and FileNotFoundError (verdict=error). Never emits events.
+- `openhands_tools_ext/tests/verify/test_selector.py` — 22 tests across `TestDetectRunner`, `TestSelectTargetsPython`, `TestSelectTargetsJS`, `TestBuildCommand`.
+- `openhands_tools_ext/tests/verify/test_runner.py` — 9 tests using `sys.executable` as a synthetic runner: pass/fail/error/skipped, missing-binary, timeout, edited-files-absolute, duration_ms sanity.
+
+**Design decisions:**
+- Runner precedence: Python (pyproject) → JS/TS (vitest > jest > npm test). Rationale: polyglot repos (like Forge-OH) benefit from running the backend suite first because it's faster and catches wider regressions.
+- Runner command prefix baked into `RunnerConfig` (not derived at invocation time) so callers can override for tests without patching argv builders. This is what made subprocess tests trivial.
+- Selection is filesystem-based, not import-graph-based. RepoGraph from Slice D could later feed richer targets ("edited files import X, so run X's tests too") but E.2 stays deterministic and cheap.
+- Timeout default 120s. Prevents runaway pytest loops on a flaky project without being so short it kills legitimate integration tests.
+
+**Skipped-vs-error distinction:** SKIPPED means "no runner or no target found, agent should continue"; ERROR means "runner crashed or timed out, treat like a failure and consume a retry attempt". Verdict PASS/FAIL is reserved for actual runner-observed outcomes.
+
+**Checks:**
+- ruff check + format: clean after autofix.
+- pytest openhands_tools_ext/tests/verify/: 48/48 pass (17 schema + 22 selector + 9 runner).
+
+**DoD status for Slice E overall:**
+- [x] E.1 VerificationStep schema wired end-to-end.
+- [x] E.2 Test-runner auto-detect + subprocess wrapper.
+- [ ] E.3 LDB port for runtime-inspection tool.
+- [ ] E.4 STOP hook + bounded retry policy + event emission.
+- [ ] E.5 Frontend Trace-tab renderer + Metrics-tab "verify iterations per task".
+
+**Next:** E.3 — port `FloridSleeves/LLMDebugger` (Apache-2.0) breakpoint helper into `openhands_tools_ext/verify/breakpoint/` and register a PORTING_LEDGER entry.
