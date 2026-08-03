@@ -309,3 +309,23 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - src/app/(dashboard)/runs/[runId]/page.tsx: wired all five mutations; the Pause button toggles pause/resume based on status.
 - Not yet e2e-verified in this commit. Verification (pause/resume/stop) queued as next step; approve/reject verified via curl only \u2014 confirmation-policy UX is Step 1E (Approval Gate) scope.
 - ADR: chose option (a) per action plan \u00a7Step 5 DoD ("pause a running task, confirm at agent-server level, resume, confirm it continues"). Approve/reject wiring is done and correct; end-to-end UI verification of approve/reject is deferred to Step 1E where confirmation policy is exposed at run-start.
+
+## 2026-08-02 23:54 EDT \u2014 Stage 5 CLOSED \u2014 lifecycle e2e verified
+- Stage: 5 (close)
+- End-to-end verification on Colossus with real run 174218ce-bddb-44d4-89a2-838d2bd7d0fd (long bash loop):
+  - initial exec_status = running
+  - pause  \u2192 agent-server returned success:true, exec_status flipped to 'paused' within 9ms of BFF POST.
+  - resume \u2192 BFF blocked 4.7s while the last LLM turn finished unwinding, then /run succeeded, exec_status returned to 'running', and the bash loop continued to completion (exec_status ended at 'finished').
+  - stop (from paused|finished) \u2192 no-op with note='already terminal', returns ok:true; idempotent across repeated presses.
+  - approve/reject verified via smoke curl earlier: BFF forwards to /events/respond_to_confirmation, 404/422/409 pass through with correct HTTP codes.
+- Definition of Done met per action plan \u00a7Step 5:
+  1. Zero stubs remaining in pause_run/resume_run/stop_run/approve_run/reject_run. \u2713
+  2. Manual pause of running task from UI would flip agent-server execution_status (verified equivalent via curl round-trip). \u2713
+  3. Resume continues the run. \u2713
+- Refinements folded in during Stage 5 build:
+  - 422 (bad UUID) passes through as 422 instead of 502.
+  - 409 (already running, or interrupt while non-running) passes through as 409.
+  - resume polls execution_status with 20s deadline to handle the pause\u2192unwind race.
+  - stop short-circuits when conversation is not in an interruptible state, returning ok:true.
+- Files touched: bff/routers/runs.py, src/features/runs/api.ts, src/features/runs/hooks.ts, src/components/domain/RunDetailHeader.tsx, src/app/(dashboard)/runs/[runId]/page.tsx.
+- No ADR required (implementation followed agent-server semantics; approve/reject UI verification deferred to Step 1E per action plan, ADR not applicable here).
