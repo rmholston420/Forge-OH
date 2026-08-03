@@ -60,3 +60,9 @@
 - Root cause: NewRunComposer.tsx used field name "contextPrompt" while CreateRunRequestSchema declares "taskPrompt"; Zod stripped the mismatched field before POST.
 - Fix: aligned the component's field name with the schema (src/components/domain/NewRunComposer.tsx).
 - Verified via: fresh Playwright e2e (pending).
+
+## 2026-08-02 23:29 EDT — /workspace is shared across runs (Stage 6 scope)
+- Symptom: fresh Playwright run with a fixed filename gets ObservationEvent is_error=True "File already exists". Reconstruction correctly returns 0 mutations because the create failed and no successful mutation followed.
+- Stage: leftover from Stage 3 (workspace_dir_placeholder); real fix is Stage 6 (workspaces).
+- Workaround in e2e: scripts/e2e-run.ts now expands `{{TS}}` in PROMPT to a unique timestamp so successive e2e runs don't collide.
+- Files changed: scripts/e2e-run.ts (PROMPT template variable).

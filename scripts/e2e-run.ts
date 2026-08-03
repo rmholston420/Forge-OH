@@ -30,7 +30,12 @@ const OUT = path.resolve(__dirname, 'debug-out');
 fs.mkdirSync(OUT, { recursive: true });
 
 const BASE = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
-const PROMPT = process.env.PROMPT ?? 'Say hi in one short sentence and stop.';
+// PROMPT supports `{{TS}}` as a placeholder that expands to a unique timestamp
+// suffix. Use it in filenames when the prompt asks the agent to create files —
+// /workspace is shared across runs on the agent-server, so a fixed filename
+// collides on the second run with "File already exists".
+const RUN_TS = String(Date.now());
+const PROMPT = (process.env.PROMPT ?? 'Say hi in one short sentence and stop.').replace(/\{\{TS\}\}/g, RUN_TS);
 const TERMINAL = new Set(['finished', 'error', 'stuck', 'deleting', 'succeeded', 'failed']);
 const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS ?? 180_000);
 
