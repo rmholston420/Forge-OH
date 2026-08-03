@@ -1,35 +1,64 @@
-# Session Handoff — 2026-08-03 13:50 EDT
+# Forge-OH — Session Handoff
 
-## Current State
-- **F.16 (GPU monitor + sparkline popover)**: COMPLETE + Colossus-verified.
-- **G.1 (self-testing)**: COMPLETE + Colossus-verified.
-- **F.18 (vLLM standalone, OFF-PLAN)**: vLLM 0.10.2 serving `qwen3-coder-30b` GGUF on `127.0.0.1:8500`. First chat completion successful. VRAM 28.8 GB / 32 GB at `--gpu-memory-utilization 0.85`. Cannot coexist with Ollama on same GPU.
+Overwrite this file at the end of every session. Reflects current state only.
 
-## In Progress
-- **Head-to-head bench: Ollama vs vLLM** on qwen3-coder-30b, num_ctx=32768, 4 prompts × 3 concurrency levels (1, 4, 8).
-  - Script: `~/dev/forge-oh/scripts/bench_ollama_vs_vllm.sh` (not committed — lives on Colossus only).
-  - Runner: `~/dev/forge-oh/scripts/bench_runner.py`.
-  - Output: `~/.forge-oh/bench/YYYYMMDD_HHMM/{ollama,vllm}.csv` + `summary.md`.
-  - Sequential (single GPU): Ollama phase → shut down → vLLM phase → summary.
-- Decides which backend is primary vs fallback in the BFF router.
+---
 
-## Remaining Before Current DoD
-- [ ] Bench completes and yields a decision.
-- [ ] Wire winning backend into BFF router env vars (`VLLM_URL`, `VLLM_FALLBACK_MODEL` or the reverse).
-- [ ] Restart BFF, curl through router, confirm fallback path.
-- [ ] Fix `vllm_start.sh` watchdog false-negative in ad-hoc launch loops (loop checks `vllm serve` but child is named `VLLM::EngineCore`, so healthy child looked dead).
+## Current stage
+**OFF-PLAN F.18b** — router made backend-configurable + vLLM lifecycle scripts.
+Head-to-head Ollama vs vLLM bench is mid-flight; awaiting Phase 2 rerun after
+first vLLM Phase 2 attempt failed 52/52 because vLLM had been killed and
+never restarted.
 
-## Open Questions Awaiting User Answer
-- None right now.
+## What was completed this session
+- F.18 vLLM 0.10.2 standalone confirmed serving qwen3-coder-30b at :8500
+  (see BUILD_LOG 2026-08-03 13:45 EDT for the full failure archaeology).
+- 4 DEBUG_LOG entries added: venv orphaned by OS upgrade, GGUF bf16 rejection,
+  triton Python.h prereq, FlashInfer SM_120 whitelist gap.
+- Head-to-head bench script + runner authored in `~/dev/forge-oh/scripts/`
+  (NOT yet committed; `.gitignore` excludes `scripts/` — future scripts need
+  `git add -f`).
+- Ollama Phase 1 baseline captured:
+  `~/.forge-oh/bench/20260803_1343/ollama.csv` — 52/52 OK.
+  - short_code (c=1): TTFT 1.5s / total 7.0s / 10.9 tok/s
+  - code_review     : 1.0s / 12.7s / 12.5 tok/s
+  - refactor        : 1.6s / 38.4s / 12.1 tok/s
+  - long_context 8K : 10.6s / 16.8s / 3.9 tok/s
+- vLLM Phase 2 first attempt: 52/52 CONNECTION FAILURES (vLLM was down).
+- Router refactored: `LLM_PRIMARY_BACKEND` env knob (ollama|vllm), corrected
+  `VLLM_URL` and `VLLM_FALLBACK_MODEL` defaults, `/api/settings/model-routing`
+  exposes new fields, unit tests added, `.env.example` updated.
+- vLLM lifecycle scripts (`vllm_start.sh` rewritten, new `vllm_stop.sh`,
+  `vllm_status.sh`) — atomic cleanup so no ghost EngineCore workers.
 
-## Exact Next Action
-1. Wait for bench to finish (~10-15 min from 2026-08-03 13:44 start).
-2. Read `summary.md`, decide primary/fallback.
-3. Set BFF env vars accordingly, restart BFF, smoke-test router.
-4. Then return to plan Step 1 (real OpenHands agent-server on Colossus).
+## What remains before the current DoD
+1. Confirm vLLM is up on Colossus (relaunch in progress — awaiting READY).
+2. Rerun Phase 2 bench cleanly, decide winner.
+3. Set `LLM_PRIMARY_BACKEND` in `.env.local` accordingly, restart BFF, smoke
+   test routing. No code change needed to swap.
+4. Return to plan Step 1 (real OpenHands agent-server on Colossus).
 
-## Ambient
-- Ollama: currently stopped for bench.
-- BFF: currently stopped for clean bench isolation.
-- Frontend dev server: not running.
-- vLLM: managed by the bench script (started/stopped between phases).
+## Open questions / ambiguity
+- Bench decision (Ollama vs vLLM primary) pending Phase 2 data.
+- Bench scripts (`bench_ollama_vs_vllm.sh`, `bench_runner.py`) still
+  uncommitted — commit after they've been shaken out by the rerun.
+
+## Exact next action
+On Colossus, once vLLM shows READY (or after checking with
+`./scripts/vllm_status.sh`):
+
+```bash
+# Fresh bench dir to avoid mixing old failures
+BENCH_DIR=~/.forge-oh/bench/$(date +%Y%m%d_%H%M)
+mkdir -p "$BENCH_DIR"
+BENCH_DIR="$BENCH_DIR" bash ~/dev/forge-oh/scripts/bench_ollama_vs_vllm.sh
+
+# Then summarize
+python3 ~/dev/forge-oh/scripts/bench_summarize.py "$BENCH_DIR"
+```
+
+## Ambient at session end
+- vLLM: relaunching at :8500 (via updated `vllm_start.sh`).
+- Ollama: stopped (killed for clean Phase 2 rerun).
+- BFF: stopped.
+- Colossus VRAM prior to relaunch: 722 MiB used / 31 GB free.

@@ -16,8 +16,10 @@ from pydantic import BaseModel
 
 from bff.services.model_router import (
     FAST_MODEL,
+    LLM_PRIMARY_BACKEND,
     OLLAMA_URL,
     PRIMARY_MODEL,
+    VLLM_FALLBACK_MODEL,
     VLLM_URL,
     ModelUnavailableError,
     ollama_health_check,
@@ -70,8 +72,10 @@ class RoutingProbe(BaseModel):
 class ModelRoutingStatus(BaseModel):
     ollamaUrl: str
     vllmUrl: str
+    primaryBackend: str
     primaryModel: str
     fastModel: str
+    vllmModel: str
     ollamaPrimaryHealthy: bool
     ollamaFastHealthy: bool
     vllmHealthy: bool
@@ -139,8 +143,10 @@ async def get_model_routing_handler():
     return ModelRoutingStatus(
         ollamaUrl=OLLAMA_URL,
         vllmUrl=VLLM_URL,
+        primaryBackend=LLM_PRIMARY_BACKEND,
         primaryModel=PRIMARY_MODEL,
         fastModel=FAST_MODEL,
+        vllmModel=VLLM_FALLBACK_MODEL,
         ollamaPrimaryHealthy=await ollama_health_check(PRIMARY_MODEL),
         ollamaFastHealthy=await ollama_health_check(FAST_MODEL),
         vllmHealthy=await vllm_health_check(),

@@ -36,8 +36,11 @@ def test_model_routing_endpoint():
     body = resp.json()
     assert "ollamaUrl" in body
     assert "vllmUrl" in body
+    assert "primaryBackend" in body
+    assert body["primaryBackend"] in {"ollama", "vllm"}
     assert "primaryModel" in body
     assert "fastModel" in body
+    assert "vllmModel" in body
     assert "ollamaPrimaryHealthy" in body
     assert "ollamaFastHealthy" in body
     assert "vllmHealthy" in body

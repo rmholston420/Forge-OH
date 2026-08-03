@@ -2576,3 +2576,84 @@ FlashInfer's `check_cuda_arch()` refuses SM_120 despite its "requires sm75 or hi
 **Stop condition:** vLLM serving `qwen3-coder-30b` at :8500, first chat completion successful. Reached 2026-08-03 13:39 EDT.
 
 **Next:** Head-to-head bench Ollama vs vLLM (in progress). Decision on primary/fallback pending bench results.
+
+---
+
+## 2026-08-03 14:20 EDT — F.18b OFF-PLAN: router env knob + vLLM lifecycle scripts
+
+**Stage / plugin / port:** OFF-PLAN F.18 continuation — makes F.18's vLLM
+integration operable regardless of bench outcome.
+
+**Why now:** Bench Phase 2 first attempt returned 52/52 vLLM failures because
+vLLM was killed and never restarted after Phase 1 cleanup. Root cause:
+(a) no shared start/stop/status helpers meant the launcher was fragile and
+    the watchdog checked the wrong process name, and
+(b) router had hardcoded "Ollama first" logic and stale default endpoints,
+    so even with a healthy vLLM, we could not make it primary.
+
+**What was built or changed:**
+- `bff/services/model_router.py`
+  - Added `LLM_PRIMARY_BACKEND` env knob ("ollama" | "vllm", default
+    "ollama"), case-insensitive.
+  - `try_model()` now respects the knob: probes the configured primary side
+    first, falls back to the other only if primary is unhealthy.
+  - Fixed `VLLM_URL` default `http://localhost:8001` → `http://localhost:8500`
+    to match the F.18 launcher.
+  - Fixed `VLLM_FALLBACK_MODEL` default `mistral:7b` → `qwen3-coder-30b` to
+    match the served-model-name in `vllm_start.sh`.
+  - `vllm_health_check()` now probes `/v1/models` and requires `data[]` to
+    be non-empty. vLLM's `/health` returns 200 as soon as the FastAPI app is
+    up but before weights are loaded, so it could falsely mark a still-
+    loading engine as ready.
+  - Rewrote module docstring; describes both modes.
+- `bff/routers/settings.py`
+  - `/api/settings/model-routing` response gains `primaryBackend` and
+    `vllmModel` fields so the UI can display current routing policy.
+- `bff/tests/test_model_router.py` — NEW.
+  - Unit tests for both primary modes, fallback, both-down error, explicit
+    fallback override, case-insensitive env normalization. Health checks
+    monkeypatched; no network I/O.
+- `bff/tests/test_settings_router.py` — updated assertion set for new fields.
+- `.env.example` — documents `LLM_PRIMARY_BACKEND`, corrected `VLLM_URL` and
+  `VLLM_FALLBACK_MODEL` defaults.
+- `scripts/vllm_stop.sh` — NEW. Atomically kills APIServer + EngineCore +
+  `vllm serve` + multiprocessing resource_tracker; reports residuals with
+  non-zero exit if anything survives.
+- `scripts/vllm_status.sh` — NEW. Reports true state (EngineCore count,
+  `vllm serve` count, port listening, `/v1/models` OK); exit codes
+  0=healthy, 1=broken, 2=loading, 3=absent.
+- `scripts/vllm_start.sh` — now calls `vllm_stop.sh` first so no ghost
+  EngineCore worker holds VRAM across relaunches. Env-configurable via
+  `VLLM_VENV_BIN`, `VLLM_PORT`, `VLLM_GGUF_PATH`, `VLLM_SERVED_MODEL_NAME`,
+  `VLLM_LOG`. Added sanity check that venv binary exists.
+
+**Files touched:**
+- `bff/services/model_router.py` (rewritten)
+- `bff/routers/settings.py` (2 additions)
+- `bff/tests/test_model_router.py` (new)
+- `bff/tests/test_settings_router.py` (assertion update)
+- `.env.example` (vLLM section rewritten)
+- `scripts/vllm_start.sh` (rewritten to chain vllm_stop.sh)
+- `scripts/vllm_stop.sh` (new)
+- `scripts/vllm_status.sh` (new)
+- `BUILD_LOG.md`, `SESSION_HANDOFF.md`
+
+**How to switch primary backend at runtime:**
+```
+# Ollama primary (default)
+export LLM_PRIMARY_BACKEND=ollama
+
+# vLLM primary
+export LLM_PRIMARY_BACKEND=vllm
+export VLLM_URL=http://localhost:8500
+export VLLM_FALLBACK_MODEL=qwen3-coder-30b
+```
+Then restart the BFF. No code change needed to swap.
+
+**Stop condition:** router respects env knob, both modes tested, vLLM
+lifecycle scripts atomic; verified in unit tests. Bench decision still
+pending (Phase 2 rerun in progress).
+
+**Next:** Rerun Phase 2 bench cleanly (vLLM just relaunched), pick winner,
+export `LLM_PRIMARY_BACKEND` in `.env.local` accordingly, then resume Step 1
+of the plan.
