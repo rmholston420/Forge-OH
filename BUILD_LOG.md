@@ -479,3 +479,24 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - ping: {ok:true, latencyMs:2}
   - DELETE returns HTTP 204; list empty again
 - No stub markers remain in plugins router.
+
+## 2026-08-03 01:12 EDT — Slice 7C CLOSED (MCP router = full passthrough)
+- Stage: 7C — MCP router.
+- Changed: bff/routers/mcp.py rewritten (in-memory _SERVERS + fake Filesystem → real settings passthrough).
+- Endpoints wired:
+  - GET  /api/mcp                 walks agent_settings.mcp_config → McpServer[]
+  - POST /api/mcp                 POST /api/settings/mcp/{name}; auto-probe /api/mcp/test
+  - POST /api/mcp/{id}/toggle     PATCH enabled flip; refetch; reshape
+  - POST /api/mcp/{id}/ping       real /api/mcp/test → {ok, latencyMs, toolCount, tools}
+  - DELETE /api/mcp/{id}          → 204
+- Reshape: id=name, transport inferred (stdio if command/http/sse if url), status:
+  'disabled' when !enabled, else last-probe status ('connected'/'disconnected'/'error').
+  toolCount + tools filled from in-process _PING_CACHE (last /api/mcp/test result).
+- Verified on Colossus (full lifecycle w/ non-MCP echo binary so probe errors on purpose):
+  - Empty list at start (no fake Filesystem entry)
+  - Register test-echo: auto-probed, status='error', lastPingMs=659ms
+  - Ping: {ok:false, latencyMs:385, toolCount:0, tools:[]}
+  - Toggle enabled→disabled: status='disabled'
+  - Toggle back: status returns to 'error' (last real probe state)
+  - Delete → HTTP 204; list empty again
+- All contracts match src/lib/schemas/mcp.ts and src/features/mcp/api.ts consumers.
