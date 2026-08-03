@@ -12,8 +12,13 @@ Wired endpoints (real):
   POST /runs/{id}/approve   → agent-server POST /conversations/{cid}/events/respond_to_confirmation {accept:true}
   POST /runs/{id}/reject    → agent-server POST /conversations/{cid}/events/respond_to_confirmation {accept:false}
 
-Still stub (deferred to later stages per Forge-OH-Action-Plan-v4.md):
-  /runs/compare, /runs/{id}/plan, /artifacts, /commands, /traces, /fork
+Slice 7A (derived from event stream):
+  GET  /runs/{id}/plan       → task_tracker ActionEvent + ObservationEvent
+  GET  /runs/{id}/commands   → bash ActionEvent + ObservationEvent pairs
+  GET  /runs/{id}/artifacts  → file_editor mutating ActionEvents
+
+Still stub (later Stage 7 slices):
+  /runs/compare, /runs/{id}/traces, /runs/{id}/fork
 
 Contract:
   run_id == conversation_id (agent-server UUID). No SQLite mapping layer.
@@ -33,6 +38,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from bff.openhands_client import get_client
+from bff.services.action_reconstruction import (
+    build_artifacts,
+    build_commands,
+    build_plan,
+)
 from bff.services.event_relay import start_relay
 from bff.services.file_diff_reconstruction import build_file_diff, build_summaries
 from bff.services.model_router import route_request, ModelUnavailableError
@@ -346,7 +356,8 @@ async def compare_runs(
 
 @router.get("/runs/{run_id}/plan")
 async def get_run_plan(run_id: str) -> dict:
-    return {"data": [], "stub": True}
+    events = await _fetch_all_events(run_id)
+    return {"data": build_plan(events, run_id)}
 
 
 async def _fetch_all_events(run_id: str) -> list[dict[str, Any]]:
@@ -404,12 +415,14 @@ async def get_run_file_diff(run_id: str, file_path: str) -> dict:
 
 @router.get("/runs/{run_id}/artifacts")
 async def get_run_artifacts(run_id: str) -> dict:
-    return {"data": [], "stub": True}
+    events = await _fetch_all_events(run_id)
+    return {"data": build_artifacts(events, run_id)}
 
 
 @router.get("/runs/{run_id}/commands")
 async def get_run_commands(run_id: str) -> dict:
-    return {"data": [], "stub": True}
+    events = await _fetch_all_events(run_id)
+    return {"data": build_commands(events)}
 
 
 @router.get("/runs/{run_id}/traces")
