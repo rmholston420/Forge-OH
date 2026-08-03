@@ -193,6 +193,34 @@ class TestBuildSummaryFromSources:
         )
         assert summary.final_status == TrajectoryStatus.SUCCESS
 
+    def test_skipped_past_tense_verdict_defaults_to_success(
+        self, workspace: Path
+    ) -> None:
+        """Live verify drivers emit ``"skipped"``, not ``"skip"``."""
+        _write_verify_state(workspace, "sess_1", {"last_verdict": "skipped"})
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.SUCCESS
+
+    def test_passed_past_tense_verdict_maps_to_success(
+        self, workspace: Path
+    ) -> None:
+        _write_verify_state(workspace, "sess_1", {"last_verdict": "passed"})
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.SUCCESS
+
+    def test_failed_past_tense_verdict_maps_to_failed(
+        self, workspace: Path
+    ) -> None:
+        _write_verify_state(workspace, "sess_1", {"last_verdict": "failed"})
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.FAILED
+
     def test_error_verdict_still_maps_to_failed(self, workspace: Path) -> None:
         """An explicit ``error`` verdict must remain a hard failure."""
         _write_verify_state(workspace, "sess_1", {"last_verdict": "error"})

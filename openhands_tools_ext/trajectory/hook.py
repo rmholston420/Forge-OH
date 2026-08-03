@@ -107,16 +107,23 @@ _SIDECAR_FINAL_STATUS_KEY = "final_status"
 
 _VERDICT_MAP: dict[str, TrajectoryStatus] = {
     # ``verify-state.json`` stores the raw verdict string
-    # (VerificationStep.use_enum_values=True).
+    # (VerificationStep.use_enum_values=True). Live systems have
+    # historically written both bare (``pass``) and past-tense
+    # (``passed``) forms depending on the verify driver — accept
+    # both so a driver rename doesn't corrupt the DB.
     "pass": TrajectoryStatus.SUCCESS,
+    "passed": TrajectoryStatus.SUCCESS,
     "fail": TrajectoryStatus.FAILED,
+    "failed": TrajectoryStatus.FAILED,
     "error": TrajectoryStatus.FAILED,
-    # A ``no-step`` / ``skip`` verdict means verify chose not to
-    # examine this run — not that the run itself was unknown. See
-    # ``_infer_final_status`` for how we combine this with the STOP
-    # hook's FINISHED precondition.
+    "errored": TrajectoryStatus.FAILED,
+    # A ``no-step`` / ``skip`` / ``skipped`` verdict means verify
+    # chose not to examine this run — not that the run itself was
+    # unknown. See ``_infer_final_status`` for how we combine this
+    # with the STOP hook's FINISHED precondition.
     "no-step": TrajectoryStatus.SUCCESS,
     "skip": TrajectoryStatus.SUCCESS,
+    "skipped": TrajectoryStatus.SUCCESS,
 }
 
 
