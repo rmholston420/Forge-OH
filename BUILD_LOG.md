@@ -3236,3 +3236,33 @@ swallowed since we still surface it in the probe error field.
 - `bff/routers/settings.py` (2 except clauses widened)
 
 **Tests:** 14/14 model_router still pass in sandbox.
+
+## 2026-08-03 19:55 EDT — F.19.4 supervisor timeout mismatch fixed
+
+**Stage:** F.19.4 Phase 2 diagnostic + fix.
+
+**Symptom:** All 3 /api/runs smoke prompts elapsed=~301s.
+P1/P2 (coder) fell back to Ollama; P3 (planner) returned
+`status="blocked"` with `error="supervisor could not recover"`.
+
+**Root cause:** VLLM_SUPERVISOR_TIMEOUT (300s in the router) is
+STRICTLY LESS than the supervisor's own VLLM_READY_TIMEOUT (420s
+in ops/vllm_supervisor.sh, raised in F.19.1b). Router killed the
+supervisor process at 300s while it was still legitimately
+waiting for vLLM readiness — coder cold-start observed at 240s
+in Phase 1 was borderline; a slightly slower Blackwell warm
+(fresh CUDA graph compile after the earlier planner cleanup)
+exceeded 300s and the router bailed early. Supervisor logs
+never got a chance to write the TIMEOUT line because the router
+killed the process first.
+
+**Fix:** Bump VLLM_SUPERVISOR_TIMEOUT default 300s -> 480s
+(420 + 60s slop for docker start/stop). Explicitly ties the
+comment to the supervisor's READY_TIMEOUT so future changes
+keep them in sync.
+
+**Files changed:**
+- `bff/services/model_router.py` (default constant + comment)
+
+**Tests:** 14/14 model_router still pass in sandbox. Colossus
+re-smoke pending.

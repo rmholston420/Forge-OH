@@ -122,7 +122,10 @@ VLLM_SUPERVISOR_PATH = os.getenv(
 )
 # Timeout for the supervisor's `ensure` command. Must be >= the launcher's
 # weight-load time (typically 30-60s for 30B AWQ/NVFP4 on Blackwell).
-VLLM_SUPERVISOR_TIMEOUT = float(os.getenv("VLLM_SUPERVISOR_TIMEOUT", "300"))
+# F.19.4 fix: must be strictly greater than the supervisor's own
+# VLLM_READY_TIMEOUT (default 420s in ops/vllm_supervisor.sh) so we don't
+# kill supervisor mid-wait. 480s = 420 + 60s slop for docker start/stop.
+VLLM_SUPERVISOR_TIMEOUT = float(os.getenv("VLLM_SUPERVISOR_TIMEOUT", "480"))
 # Set to "0" to disable the supervisor call entirely (unit tests, or when
 # operating both roles manually). Router then behaves as "probe-only".
 VLLM_SUPERVISOR_ENABLED = os.getenv("VLLM_SUPERVISOR_ENABLED", "1") == "1"
