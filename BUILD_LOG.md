@@ -1508,3 +1508,42 @@ diagnosis.
 - [ ] E.5 Frontend Trace-tab renderer + Metrics-tab "verify iterations per task".
 
 **Next:** E.3 — port `FloridSleeves/LLMDebugger` (Apache-2.0) breakpoint helper into `openhands_tools_ext/verify/breakpoint/` and register a PORTING_LEDGER entry.
+
+## 2026-08-03 08:16 EDT — Step 8 Slice E.3: LDB-inspired runtime inspector
+
+**Slice E.3 of 5 — Recommendation #2, runtime state inspection tool.**
+
+**Vendor decision (reference-only):** cloned `FloridSleeves/LLMDebugger` @ `49ac191f` (Apache-2.0) to `/home/user/workspace/ldb-upstream/`, reviewed the tracer / staticfg / prompt-template modules, and determined that no upstream code fits our sandbox model. Reasons in PORTING_LEDGER entry #2:
+1. Upstream is a CLI benchmark harness (`.tmp.py` hardcoded path).
+2. Upstream depends on `astroid` and vendors a 700-LOC `staticfg` control-flow-graph builder that we don't need — we let the agent choose breakpoints, we don't auto-select them.
+3. Upstream uses `pdb.Pdb`-derived interactive-loop tracers; `sys.settrace` gives us the same per-line callback without stdin coupling.
+4. Half the upstream tree is HumanEval / MBPP / TransCoder benchmark plumbing, irrelevant to Forge-OH's live-run use.
+
+**Files new:**
+- `openhands_tools_ext/verify/breakpoint/__init__.py`
+- `openhands_tools_ext/verify/breakpoint/inspector.py` — `inspect_script(script_path, breakpoints)` runs a script via `runpy.run_path` under `sys.settrace`, snapshotting `frame.f_locals` at each hit. `Breakpoint`, `BreakpointHit`, `InspectionResult` dataclasses. `_safe_repr` never raises, bounded to `MAX_REPR_LEN=200`. `summarize_for_llm(result, max_hits=20)` renders LDB-style transcript.
+- `openhands_tools_ext/tests/verify/breakpoint/__init__.py`
+- `openhands_tools_ext/tests/verify/breakpoint/test_inspector.py` — 11 tests: basic hit, execution-ordered hits, no-breakpoint runs, unused-line breakpoint never fires, exception captured with hit still recorded, `MAX_HITS` truncation, repr size bound, unrepr-able local (`__repr__` that raises) doesn't crash, and 3 tests for `summarize_for_llm`.
+
+**Files edited:**
+- `PORTING_LEDGER.md` — new entry #2 for LDB documenting the reference-only decision with source URL, commit hash, SPDX, and the five design points adapted vs. discarded.
+
+**Key design choices:**
+- **User-supplied breakpoints, not auto-selected.** In our loop the agent already reads a failing traceback; it can name the exact lines to inspect. Auto-CFG-block breakpoints (LDB's approach) require heavy static analysis for weak marginal value.
+- **`sys.settrace` over `pdb.Pdb`.** No interactive coupling, no `SIGINT` risk, and Python's built-in trace hook gives us the same per-line callback with 0 dependencies.
+- **`runpy.run_path(run_name="__main__")`** so scripts that check `if __name__ == "__main__":` behave the same under inspection as under normal invocation.
+- **`SystemExit` is not treated as an error** — scripts commonly call `sys.exit(0)` on success.
+- **Basename-only filename matching** (`Path(...).name`) so the caller doesn't have to worry about absolute-vs-relative path fidelity in the `Breakpoint` list.
+
+**Checks:**
+- ruff check + format: clean after autofix.
+- pytest openhands_tools_ext/tests/verify/: 59/59 pass (17 schema + 22 selector + 9 runner + 11 breakpoint).
+
+**DoD status for Slice E overall:**
+- [x] E.1 VerificationStep schema.
+- [x] E.2 Test-runner auto-detect + subprocess wrapper.
+- [x] E.3 LDB-inspired runtime inspector + PORTING_LEDGER entry #2.
+- [ ] E.4 STOP hook + bounded retry policy + event emission + BFF wiring.
+- [ ] E.5 Frontend Trace-tab renderer + Metrics-tab "verify iterations per task" + ADR-0007.
+
+**Next:** E.4 — wire the retry policy through OpenHands SDK's `HookEventType.STOP` and emit VerificationStep events through the run event stream so the frontend can render them.

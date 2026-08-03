@@ -67,3 +67,31 @@ Format per entry:
     Cypher query).
 
 - **Related ADR:** [docs/adr/006-repograph.md](docs/adr/006-repograph.md)
+
+
+---
+
+## 2. LDB (`FloridSleeves/LLMDebugger`)
+
+- **Slice:** E.3 (Recommendation #2, Execution-Verified Self-Debugging Loop)
+- **Upstream:** [FloridSleeves/LLMDebugger](https://github.com/FloridSleeves/LLMDebugger)
+- **Commit hash at time of reference:** `49ac191f181d47911cf38e5b9944fbbe6d4a6e60`
+- **SPDX license:** `Apache-2.0`
+- **Paper:** Zhong, Wang, Shang, *Debug like a Human: A Large Language Model Debugger via Verifying Runtime Execution Step-by-step*, ACL 2024, [arXiv:2402.16906](https://arxiv.org/pdf/2402.16906.pdf).
+- **Port type:** **reference-only** — no upstream code was copied. Our `openhands_tools_ext/verify/breakpoint/inspector.py` is a fresh implementation of the same idea.
+- **What we adapted (design points, not code):**
+  1. The core LDB insight: an LLM debugging by inspecting **runtime state per block** beats reasoning over static code alone (paper §3, §5). Our inspector records `frame.f_locals` at each hit so the agent gets that runtime state.
+  2. The "one block per hit with an inline `k=v; k=v; …` local-variable line" transcript shape (`programming/tracing/tracer.py::get_trace_line` + prompt templates in `programming/generators/prompt.py`). Our `summarize_for_llm` mirrors that.
+  3. Bounded output size to keep the transcript LLM-context-safe (LDB does this inside their prompt template; we make it an explicit `MAX_HITS`/`MAX_REPR_LEN` constant).
+- **Why we did not vendor upstream code:**
+  1. **Interactive-loop shape.** LDB is built as a CLI/benchmark harness that runs one program per invocation via a hard-coded `.tmp.py` path in `programming/tracing/tracer.py::run_gt_traced` and `programming/ldb.py`. Not usable inside the OpenHands sandbox, which needs to inspect arbitrary user scripts.
+  2. **Heavy dependencies.** Upstream requires `astroid` (Python static-analysis lib, ~3 MB) and vendors `staticfg` (a 700-LOC control-flow-graph builder) purely to auto-select breakpoints at basic-block boundaries. For our use case the *agent* decides which lines to inspect (informed by a failing traceback), so we do not need automatic CFG-block segmentation.
+  3. **`pdb.Pdb` vs. `sys.settrace`.** LDB uses `pdb.Pdb`-derived subclasses via their `staticfg` helpers, which are interactive-loop shaped and block on stdin. `sys.settrace` gives us the same per-line callback with no interactive coupling and no dependency footprint.
+  4. **Benchmark-specific code.** Roughly half of the upstream Python tree (`programming/generators/`, `programming/executors/`, `programming/main.py`, `programming/simple.py`, `programming/repeat_simple.py`) is dedicated to running HumanEval / MBPP / TransCoder benchmarks and is completely irrelevant to Forge-OH's live-run use.
+  5. **Apache-2.0 attribution obligation without upside.** Because none of the upstream code fits our sandbox model, vendoring would add a compliance obligation (headers, NOTICE, LICENSE copy) with zero code reuse — pure overhead.
+- **Files reviewed (reference-only) locally at `/home/user/workspace/ldb-upstream/`:**
+  - `programming/tracing/tracer.py` (447 LOC — trace format inspiration).
+  - `programming/tracing/staticfg/{builder,model}.py` (~700 LOC — not needed).
+  - `programming/generators/prompt.py` (transcript template shape).
+- **Our implementation:** [`openhands_tools_ext/verify/breakpoint/inspector.py`](openhands_tools_ext/verify/breakpoint/inspector.py) + 11 tests in [`openhands_tools_ext/tests/verify/breakpoint/test_inspector.py`](openhands_tools_ext/tests/verify/breakpoint/test_inspector.py).
+- **Related ADR:** planned in E.5 (`docs/adr/007-verify-loop.md`).
