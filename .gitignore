@@ -64,3 +64,4 @@ workspace/
 
 # vitest coverage output
 coverage/
+screenshots/
