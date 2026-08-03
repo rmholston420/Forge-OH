@@ -8,6 +8,8 @@ export const ArtifactTypeSchema = z.enum([
   'log',
   'archive',
   'download',
+  'image',
+  'video',
   'other',
 ]);
 export type ArtifactType = z.infer<typeof ArtifactTypeSchema>;

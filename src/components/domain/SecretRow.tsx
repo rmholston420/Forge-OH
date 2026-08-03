@@ -3,12 +3,10 @@ import React, { useState } from 'react';
 import type { Secret } from '@/lib/schemas/secret';
 import styles from './SecretRow.module.css';
 
-const scopeLabels: Record<'global' | 'workspace' | 'run' | 'user' | 'deployment', string> = {
+const scopeLabels: Record<'global' | 'workspace' | 'run', string> = {
   global: 'Global',
   workspace: 'Workspace',
   run: 'Run',
-  user: 'User',
-  deployment: 'Deployment',
 };
 
 export interface SecretRowProps {

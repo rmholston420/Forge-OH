@@ -5,10 +5,10 @@ const HEALTH_CONFIG: Record<
   WorkspaceHealth,
   { label: string; icon: string; colorVar: string }
 > = {
-  healthy: { label: 'Healthy', icon: '✓', colorVar: 'var(--color-state-success)' },
-  warning: { label: 'Warning', icon: '⚠', colorVar: 'var(--color-state-warning)' },
-  error: { label: 'Error', icon: '✕', colorVar: 'var(--color-state-error)' },
-  disconnected: { label: 'Disconnected', icon: '○', colorVar: 'var(--color-text-muted)' },
+  healthy:  { label: 'Healthy',  icon: '✓', colorVar: 'var(--color-state-success)' },
+  degraded: { label: 'Degraded', icon: '⚠', colorVar: 'var(--color-state-warning)' },
+  offline:  { label: 'Offline',  icon: '✕', colorVar: 'var(--color-state-error)' },
+  unknown:  { label: 'Unknown',  icon: '○', colorVar: 'var(--color-text-muted)' },
 };
 
 interface WorkspaceHealthBadgeProps {

@@ -4,13 +4,16 @@ import type { Artifact } from '@/lib/schemas/artifact';
 import styles from './ArtifactCard.module.css';
 
 const TYPE_ICON: Record<Artifact['type'], string> = {
+  file_change: '📄',
   patch: '📤',
   screenshot: '🖼️',
   report: '📈',
+  log: '📝',
+  archive: '📦',
   download: '⬇️',
   image: '🖼️',
   video: '🎥',
-  log: '📝',
+  other: '📎',
 };
 
 function formatSize(bytes: number): string {

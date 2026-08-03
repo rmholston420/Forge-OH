@@ -5,8 +5,7 @@ import { useTraceStore } from '@/features/trace/store';
 import styles from './SpanRow.module.css';
 
 const STATUS_CLASS: Record<Span['status'], string> = {
-  ok: 'ok', error: 'error', warning: 'var(--color-warning)',
-  unset: 'unset',
+  ok: 'ok', error: 'error', unset: 'unset',
 };
 
 function flattenSpans(span: Span, depth = 0): { span: Span; depth: number }[] {

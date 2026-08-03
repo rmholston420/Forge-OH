@@ -33,8 +33,8 @@ export const ToolEventSchema = z.object({
   runId: z.string().optional(),
   source: z.string().optional(),
   summary: z.string().optional(),
-  payload: z.record(z.unknown()).optional(),
-  rawPayload: z.record(z.unknown()).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+  rawPayload: z.record(z.string(), z.unknown()).optional(),
   raw: z.unknown().optional(),
 });
 
@@ -47,3 +47,7 @@ export const EventListResponseSchema = z.object({
 });
 
 export type EventListResponse = z.infer<typeof EventListResponseSchema>;
+
+// Convenience alias — tests reference this generic name.
+export const EventSchema = ToolEventSchema;
+export type Event = ToolEvent;

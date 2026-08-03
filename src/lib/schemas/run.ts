@@ -31,12 +31,17 @@ export const RunSummarySchema = z.object({
   status: RunStatusSchema,
   agentPresetName: z.string(),
   workspaceId: z.string(),
-  workspaceType: z.enum(['local', 'docker', 'remote-api']),
+  workspaceType: z.enum(['local', 'docker', 'remote-api', 'remote_api']),
   activeTool: z.string().nullable(),
   updatedAt: isoDatetime,
   createdAt: isoDatetime,
   elapsedMs: z.number().nullable(),
   estimatedCostUsd: z.number().nullable(),
+  selectedModel: z.string().nullable().optional(),
+  routing: z.object({
+    selected: z.string().nullable().optional(),
+    reason: z.string().optional(),
+  }).optional(),
 });
 
 export type RunSummary = z.infer<typeof RunSummarySchema>;

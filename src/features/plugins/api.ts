@@ -32,7 +32,9 @@ export async function uninstallPlugin(id: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to uninstall plugin: ${res.status}`);
 }
 
-export async function pingPlugin(id: string): Promise<{ ok: boolean; latencyMs: number | null }> {
+export async function pingPlugin(
+  id: string,
+): Promise<{ ok: boolean; latencyMs: number | null; toolCount?: number; error?: string }> {
   const res = await fetch(`${BFF}/api/plugins/${id}/ping`, { method: 'POST' });
   if (!res.ok) throw new Error(`Plugin ping failed: ${res.status}`);
   return res.json();

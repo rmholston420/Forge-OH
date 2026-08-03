@@ -44,3 +44,25 @@ export const BrowserSessionListResponseSchema = z.object({
 });
 
 export type BrowserSessionListResponse = z.infer<typeof BrowserSessionListResponseSchema>;
+
+// Individual frame/screenshot captured during a browser step.
+export const BrowserFrameSchema = z.object({
+  id: z.string(),
+  runId: z.string().optional(),
+  timestamp: z.string(),
+  seq: z.number().default(0),
+  url: z.string().optional(),
+  screenshotUrl: z.string().optional(),
+  domSnapshotUrl: z.string().optional(),
+  action: z.string().default('navigate'),
+  selector: z.string().optional(),
+  error: z.string().optional(),
+  boundingBox: z.object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  }).optional(),
+});
+
+export type BrowserFrame = z.infer<typeof BrowserFrameSchema>;
