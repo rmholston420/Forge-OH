@@ -1937,3 +1937,82 @@ Excludes the current run id from results.
 routes to the F.6 search endpoint end-to-end. Next: **F.8** — ADR-008,
 Playwright E2E test with fixture-served trajectories + screenshots, and
 tag `v1.0-alpha3` once E2E is green on Colossus.
+
+## 2026-08-03 10:35 EDT — Slice F.8: ADR-008 + Playwright E2E + tag v1.0-alpha3
+
+**Stage:** Step 8, Slice F.8 — Rec #3 Definition of Done.
+
+**Files created:**
+- `docs/adr/008-trajectory-memory.md` — ADR covering:
+  - Local-first SQLite storage (`~/.forge-oh/trajectories.db`) —
+    intentionally separate from the BFF DB.
+  - Embedder choice: `BAAI/bge-code-v1` 1536-dim, Apache-2.0, code-aware.
+    Rejected OpenAI/nomic/e5/gte for the specific reasons listed.
+  - Co-ranked retrieval `0.7·semantic + 0.3·jaccard(symbols)` — why
+    convex combination beats pure semantic or pure structural.
+  - Writer trigger: **separate STOP subprocess**, alongside the verify
+    hook (not inside it). Never blocks the agent. Idempotent.
+  - Sidecar contract: `.forge-oh/trajectory-sidecar.json` keyed by
+    session id.
+  - Widget placement: Overview tab, top, proactive — rejected Trace
+    tab, run-creation modal, and a dedicated Memory tab with reasons.
+  - Three plain BFF endpoints, no envelope. Zod parity guarded by
+    `TestFrontendParity`.
+  - Consequences called out honestly: unbounded growth (deferred to a
+    future ADR), no cross-machine sync (deliberate), embedder cold-load
+    cost (~500MB weights, amortized via singleton).
+- `src/tests/e2e/trajectory-memory-panel.spec.ts` — Playwright E2E:
+  - Seeds two deterministic records via `python -c` against
+    `TrajectoryStore(SCRATCH_DB)` (isolated tmp DB — never touches
+    the user's real memory).
+  - Test 1 (smoke): panel mounts on Overview tab and shows *some*
+    state (idle / empty / error / hits).
+  - Test 2 (populated): seeds a record matching the current run's
+    title, reloads, asserts at least one `trajectory-memory-hit`
+    row is visible with `success` pill and the three score labels
+    (score / sem / sym).
+  - Skips gracefully when: no runs on BFF, feature flag off, or BFF
+    isn't pointing at the scratch DB (`FORGE_OH_TRAJECTORY_DB`).
+  - Screenshots to `screenshots/trajectory-{01,02}-*.png` (gitignored).
+
+**How to run the E2E on Colossus:**
+```
+FORGE_OH_TRAJECTORY_DB=/tmp/forge-oh-e2e-traj.db \
+NEXT_PUBLIC_FEATURE_TRAJECTORY_MEMORY=true \
+  npm run bff &         # start BFF pointed at scratch DB
+NEXT_PUBLIC_FEATURE_TRAJECTORY_MEMORY=true \
+  npm run dev &         # start Next dev server
+npx playwright test src/tests/e2e/trajectory-memory-panel.spec.ts
+```
+
+**Tag: `v1.0-alpha3`** applied to this commit — Slice F complete
+end-to-end (backend + frontend + hook + widget + docs + E2E).
+
+**Slice F final commit graph:**
+- F.1 schema `556917f`  → +14 tests
+- F.2 store `bdbca9d`  → +25 tests
+- F.3 embedder `66d5dcd`  → +18 tests
+- F.4 retriever `c5aff52`  → +29 tests
+- F.5 writer + indexer `535f03f`  → +10 tests
+- F.6 BFF endpoints `3b4d39c`  → +18 tests
+- F.5b run-completion hook `e507c87`  → +19 tests
+- F.7 Overview widget `4968d17`  → +14 frontend tests
+- F.8 ADR + E2E + tag (this commit)
+
+**Test totals at F.8:**
+- Backend + BFF: 260 passed (`bff/tests/test_trajectories_router.py`
+  + `openhands_tools_ext/`).
+- Frontend unit: 838 passed / 1 pre-existing `bffDownload` jsdom flake.
+- E2E: 2 new specs (skip-guarded, run when Colossus has the scratch
+  DB env set).
+
+**Stop-condition status:** Rec #3 Definition of Done met.
+- Trajectories persist locally with real embeddings.
+- Search endpoint returns co-ranked hits with the documented weights.
+- Widget renders proactively above the timeline.
+- ADR captures the design decisions and their alternatives.
+- E2E gates any UI regression against a fixture-seeded DB.
+
+**Recommendations completed:** Rec #1 (RepoGraph, Slice D) + Rec #2
+(VerifyLoop, Slice E) + Rec #3 (Trajectory Memory, Slice F) all
+shipped and tagged.
