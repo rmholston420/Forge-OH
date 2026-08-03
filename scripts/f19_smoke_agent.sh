@@ -17,7 +17,7 @@ PROMPTS_DIR="$REPO_ROOT/bench/prompts"
 
 # Assume a workspace exists on the agent-server. Fallback: fetch first
 # available.
-WS_ID="$(curl -s "$BFF_URL/api/workspaces" | python3 -c '
+WS_ID="$(curl -sS --max-time 10 "$BFF_URL/api/workspaces" | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -54,9 +54,14 @@ print(json.dumps({
 ' <<< "$prompt")"
 
     local resp
-    resp="$(curl -s -X POST "$BFF_URL/api/runs" \
+    local t0=$(date +%s)
+    # 15-minute timeout: allows one supervisor swap (~4 min) + generation.
+    resp="$(curl -sS --max-time 900 -X POST "$BFF_URL/api/runs" \
         -H 'Content-Type: application/json' \
         --data "$payload")"
+    local rc=$?
+    local elapsed=$(( $(date +%s) - t0 ))
+    echo "[smoke] $name curl rc=$rc elapsed=${elapsed}s"
     echo "response:"
     echo "$resp" | python3 -m json.tool 2>/dev/null | head -30 || echo "$resp"
 
