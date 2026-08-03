@@ -180,12 +180,12 @@ async def get_model_routing_handler():
                     selected=route.tagged,
                 )
             )
-        except ModelUnavailableError as exc:
+        except Exception as exc:  # F.19.3: catch any role-resolution failure
             probes.append(
                 RoutingProbe(
                     taskComplexity=task_complexity,
                     contextLength=context_length,
-                    error=str(exc),
+                    error=f"{type(exc).__name__}: {exc}",
                 )
             )
 
@@ -204,8 +204,10 @@ async def get_model_routing_handler():
                     selected=route.tagged,
                 )
             )
-        except ModelUnavailableError as exc:
-            role_probes.append(RoleProbe(role=role, error=str(exc)))
+        except Exception as exc:  # F.19.3: catch any role-resolution failure
+            role_probes.append(
+                RoleProbe(role=role, error=f"{type(exc).__name__}: {exc}")
+            )
 
     return ModelRoutingStatus(
         ollamaUrl=OLLAMA_URL,

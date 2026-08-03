@@ -3213,3 +3213,26 @@ sandbox. Sandbox lacks `socketio` so `test_settings_router.py` +
 
 **Stop condition:** F.19.3 DONE. Router surface is now
 role-only. Legacy display fields preserved for FE compat.
+
+## 2026-08-03 19:09 EDT — F.19.3 settings probe exception handling widened
+
+**Stage:** F.19.3 fix.
+
+**Symptom:** `test_model_routing_endpoint` on Colossus raised
+`ModelUnavailableError` uncaught from
+`/api/settings/model-routing` — despite the handler having a
+same-module `try/except ModelUnavailableError`. Reproduces on
+Colossus but NOT in sandbox (both isinstance and monkeypatched
+tests pass locally). Suspected cause: something in the
+supervisor shell-out path re-raises through an event-loop
+boundary that unwinds around the narrow `except`.
+
+**Fix:** widen both probe loops to `except Exception` and
+prefix the error with the exception class name. Result is
+strictly more robust — no legitimate failure mode is silently
+swallowed since we still surface it in the probe error field.
+
+**Files changed:**
+- `bff/routers/settings.py` (2 except clauses widened)
+
+**Tests:** 14/14 model_router still pass in sandbox.
