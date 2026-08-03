@@ -34,7 +34,7 @@ export type Artifact = z.infer<typeof ArtifactSchema>;
 export const ArtifactListResponseSchema = z.object({
   artifacts: z.array(ArtifactSchema),
   total: z.number(),
-  groupedByType: z.record(z.array(ArtifactSchema)).optional(),
+  groupedByType: z.record(z.string(), z.array(ArtifactSchema)).optional(),
 });
 
 export type ArtifactListResponse = z.infer<typeof ArtifactListResponseSchema>;

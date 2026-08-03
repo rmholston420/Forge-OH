@@ -17,19 +17,18 @@ export function SecretRow({ secret }: { secret: Secret }) {
   return (
     <tr className="secret-row">
       <td className="secret-key" data-testid="secret-key">
-        <code>{secret.key}</code>
+        <code>{secret.name}</code>
       </td>
       <td className="secret-value" aria-label="Masked value">
-        <span className="masked-value" aria-hidden="true">{'\u2022'.repeat(8)}{secret.maskedValue.slice(-4)}</span>
+        <span className="masked-value" aria-hidden="true">{'\u2022'.repeat(12)}</span>
         <span className="sr-only">Value hidden</span>
       </td>
       <td>
         <span className={SCOPE_CLASSES[secret.scope]}>{secret.scope}</span>
       </td>
       <td className="secret-meta text-muted">
-        <span>{secret.createdBy}</span>
-        <span className="separator">·</span>
-        <time dateTime={secret.updatedAt}>{formatDate(secret.updatedAt)}</time>
+        {secret.description && <><span>{secret.description}</span><span className="separator">·</span></>}
+        <time dateTime={secret.updatedAt ?? secret.createdAt}>{formatDate(secret.updatedAt ?? secret.createdAt)}</time>
       </td>
       <td className="secret-actions">
         <button

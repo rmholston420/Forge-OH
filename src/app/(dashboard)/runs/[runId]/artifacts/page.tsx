@@ -14,13 +14,16 @@ const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_ARTIFACTS_ENABLED !== 'f
 
 const TYPE_LABELS: Record<ArtifactType | 'all', string> = {
   all: 'All',
+  file_change: 'File changes',
   patch: 'Patches',
   screenshot: 'Screenshots',
   report: 'Reports',
+  log: 'Logs',
+  archive: 'Archives',
   download: 'Downloads',
   image: 'Images',
   video: 'Videos',
-  log: 'Logs',
+  other: 'Other',
 };
 
 export default function RunArtifactsPage({ params }: { params: { runId: string } }) {
