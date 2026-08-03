@@ -651,3 +651,34 @@ Product code changes (real behavior improvements, not just test fixes):
 Files: 30+ test files, 6 product-code files, 1 new helper.
 Ports/adapters affected: Plugin Bridge (X-Forge-Signature contract), Run Detail Store (stream cursor), Socket lifecycle events.
 Stop-condition: Task 3.6 DoD = all vitest suites green; backend pytest untouched (62/62 still green); tsc/eslint/mypy/ruff untouched.
+
+## 2026-08-03 03:29 EDT — Frontend coverage backfill + Playwright e2e sweep
+
+- Stage: FOH Phase 3 · Task 3.7 (frontend coverage + e2e route coverage)
+- **Vitest coverage:** 40.44% stmt / 32.82% fn / 41.61% ln → **46.7% stmt / 44.57% fn / 48.00% ln** (+6.3/+11.8/+6.4)
+  - 754 tests pass / 6 skipped / 0 fail
+- **Playwright e2e:** 34 pass / 1 skipped / 0 fail (real BFF on 127.0.0.1:8081, 20.8s runtime)
+
+Commits landed this window:
+- 12c0863 — vitest @vitest/coverage-v8 setup + test:coverage script + config
+- 7c6e01a — bff cleanup (datetime.UTC, noqa strip, mcp router test with lifespan fixture, react 19 pins)
+- 208aa8d — Batch 1 coverage: 6 lib/* unit tests (format, ui-store, query-keys, api client+errors, socket)
+- acf148a — Fix batch 1 flakes (vi.hoisted for socket, jsdom Blob shim, formatCost IEEE-754)
+- 8672ba5 — bffDownload assertion narrowed (jsdom Blob has no arrayBuffer)
+- 2a0a1e8 — Batch 2 coverage: full sweep of 14 feature-slice zustand stores (runs, workspaces, secrets, plugins, mcp, settings, trace, notifications, artifacts, browser, file-diff, terminal, metrics, agent-presets)
+- 04abed8 — e2e route coverage sweep against real BFF; drop RBAC spec (single-user local-first)
+  - Added: nav-routes.spec.ts, workspaces.spec.ts, plugins.spec.ts, settings.spec.ts
+  - Rewrote: runs.spec.ts, run-detail.spec.ts, secrets.spec.ts (real BFF, real page state)
+  - Deleted: rbac.spec.ts, fixtures/auth.ts
+- a7af9e8 — unwrap BFF `{data:[...]}` envelope in run-detail helper
+- ecaf9a6 — replace regex-anchored heading match with per-route innerText patterns
+- a83027a — dynamic run id in browser-triage (no more hard-coded /runs/run-new-001)
+- d90ffa1 — fix nav-routes patterns to match visible text (aria-labels are not in innerText)
+- 99819f0 — command palette e2e via Topbar button (Playwright Cmd/Ctrl+K unreliable on Linux)
+
+Real product improvements made along the way (not just test churn):
+- BFF CORS middleware confirmed working (stale process restart fixed browser-side CORS blocks)
+- `bff/main.py` CORS middleware validated end-to-end via Playwright real-browser calls
+
+Ports/adapters affected: none (this slice was pure test coverage).
+Stop-condition: Task 3.7 DoD = vitest ≥45% line, playwright suite green against real BFF — **BOTH MET**.
