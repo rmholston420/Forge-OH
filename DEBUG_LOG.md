@@ -105,3 +105,24 @@
   3. FURB162: `.replace("Z", "+00:00")` before `datetime.fromisoformat` is redundant on Python 3.11+.
 - Fix: remove aligned-column spacing; wrap comprehension with explicit `str(...)` and annotate `list[str]`; drop `.replace("Z", "+00:00")`.
 - Reuse rule: NEVER align dict values by column padding — ruff format will fail. Always single-space after colon.
+
+## 2026-08-03 05:34 EDT — Plugin Marketplace crash: React child object
+- Symptom: `/plugins?tab=marketplace` renders Next.js runtime error overlay: "Objects are not valid as a React child (found: object with keys {name, description}). If you meant to render a collection of children, use an array instead." at `src/app/(dashboard)/plugins/page.tsx:102 @ PluginsPage` — `<PluginMarketplaceGrid />`.
+- Affected: bff/routers/plugins.py (marketplace shape), src/components/domain/PluginMarketplaceGrid.tsx.
+- Root cause: upstream agent-server returns `MarketplacePluginInfo.skills` as `list[{name, description, ...}]` in some environments but the BFF passes it through unchanged (`u.get("skills") or []`), and the frontend maps each entry directly into a `<span>{s}</span>` which errors on non-string items.
+- Fix: normalize `skills` to `list[str]` in BFF `_to_marketplace`; add defensive coerce in the React component (fallback name/id/title).
+- Reuse rule: any BFF response field that is later rendered as text MUST be a string primitive at the BFF boundary — never trust upstream dict shapes to survive JSX.
+
+## 2026-08-03 05:34 EDT — /secrets page stuck on Skeleton
+- Symptom: `/secrets` page renders the toolbar + notice but the table area is a wide dark rectangle (Skeleton) that never resolves. No error banner shown despite the fetch failing.
+- Affected: src/features/secrets/api.ts.
+- Root cause: `fetchSecrets` builds URL as `${BFF}/secrets` (no `/api` prefix). BFF mounts the secrets router at `/api/secrets`. Request 404s. React Query default retry (3× w/ exponential backoff) keeps `isLoading` true well past the Playwright snapshot; even after retries exhaust, the error IS set, but the retries alone are enough for a stale-skeleton capture.
+- Fix: prefix `BASE` with `/api` in `src/features/secrets/api.ts` (all four functions).
+- Reuse rule: NEVER hardcode BFF paths inside a feature `api.ts` — reuse `ENDPOINTS.SECRETS.list()` from `src/lib/api/endpoints.ts` (single source of truth). Follow-up: refactor secrets feature to route through `bffGet/bffPost/bffDelete` like the rest of the app.
+
+## 2026-08-03 05:34 EDT — Metrics/Browser skeleton captured mid-flight
+- Symptom: Metrics tab shows 5 shimmering skeletons; Browser tab shows a large empty rounded rectangle. Both should be "0 tokens / 0 cost / …" or "No browser activity" empty states.
+- Affected: src/app/(dashboard)/runs/[runId]/tabs/MetricsTab.tsx, src/tests/e2e/visual-tour.spec.ts.
+- Root cause: Playwright's `shot()` waited only 400ms after `networkidle`, so React Query's very first resolve after clicking a tab wasn't captured. `MetricsTab` was also unconditionally rendering skeletons while `isLoading===true`, hiding the actual zeros the endpoint returns.
+- Fix: `MetricsTab` uses `showSkeleton = isLoading && !metrics` so first success wipes the skeleton immediately; `visual-tour.spec.ts` uses 1200ms + a secondary short `networkidle` wait.
+- Reuse rule: any tab-scoped React Query view MUST render placeholder content (zeros / dashes) once data is available, not gate whole layout behind `isLoading`.

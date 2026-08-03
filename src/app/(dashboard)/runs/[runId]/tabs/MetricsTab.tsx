@@ -19,36 +19,43 @@ function formatDurationMs(ms: number | null) {
 }
 
 export function MetricsTab({ runId, isActive }: { runId: string; isActive: boolean }) {
-  const { data: metrics, isLoading, error } = useRunMetrics(runId, isActive);
+  const { data: metrics, isLoading, isFetching, error } = useRunMetrics(runId, isActive);
 
   if (!FEATURE_ENABLED) {
     return <Banner variant="info">Metrics tab is feature-flagged. Set NEXT_PUBLIC_FEATURE_METRICS_ENABLED=true.</Banner>;
   }
 
-  if (error) return <Banner variant="error">Failed to load metrics.</Banner>;
+  if (error) {
+    const msg = error instanceof Error ? error.message : String(error ?? 'unknown');
+    return <Banner variant="error">Failed to load metrics: {msg}</Banner>;
+  }
+
+  // Show skeleton only on the *first* load; once we have any data (even zeros),
+  // render values so a slow background refetch doesn't wipe the whole grid.
+  const showSkeleton = isLoading && !metrics;
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} aria-busy={isFetching || undefined}>
       <div className={styles.kpiGrid}>
         <MetricKPI
           label="Tokens" value={metrics?.tokenCount ?? 0}
-          icon="🔤" loading={isLoading}
+          icon="🔤" loading={showSkeleton}
         />
         <MetricKPI
           label="Tool Calls" value={metrics?.toolCallCount ?? 0}
-          icon="🔧" loading={isLoading}
+          icon="🔧" loading={showSkeleton}
         />
         <MetricKPI
           label="Files Touched" value={metrics?.filesTouchedCount ?? 0}
-          icon="📁" loading={isLoading}
+          icon="📁" loading={showSkeleton}
         />
         <MetricKPI
           label="Cost" value={metrics ? formatCost(metrics.costUsd) : '—'}
-          icon="💰" loading={isLoading}
+          icon="💰" loading={showSkeleton}
         />
         <MetricKPI
           label="Duration" value={metrics ? formatDurationMs(metrics.durationMs) : '—'}
-          icon="⏱" loading={isLoading}
+          icon="⏱" loading={showSkeleton}
         />
       </div>
 

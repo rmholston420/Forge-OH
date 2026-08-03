@@ -100,20 +100,30 @@ export function PluginMarketplaceGrid() {
             )}
             {p.skills.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {p.skills.slice(0, 4).map((s) => (
-                  <span
-                    key={s}
-                    style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      border: '1px solid var(--color-border, #334155)',
-                      color: 'var(--color-text-muted, #94a3b8)',
-                    }}
-                  >
-                    {s}
-                  </span>
-                ))}
+                {p.skills.slice(0, 4).map((s, i) => {
+                  const label =
+                    typeof s === 'string'
+                      ? s
+                      : ((s as { name?: string; id?: string; title?: string })?.name ??
+                         (s as { name?: string; id?: string; title?: string })?.id ??
+                         (s as { name?: string; id?: string; title?: string })?.title ??
+                         '');
+                  if (!label) return null;
+                  return (
+                    <span
+                      key={`${label}-${i}`}
+                      style={{
+                        fontSize: 10,
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        border: '1px solid var(--color-border, #334155)',
+                        color: 'var(--color-text-muted, #94a3b8)',
+                      }}
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
               </div>
             )}
             {p.source && (

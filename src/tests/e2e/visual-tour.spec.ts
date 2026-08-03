@@ -20,7 +20,10 @@ test.describe.configure({ mode: 'serial' });
 async function shot(page: Page, name: string) {
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
   // Give any late-mounting components (charts, react-query results) a beat.
-  await page.waitForTimeout(400);
+  // Larger delay = tolerates one full react-query settle after a tab switch;
+  // the previous 400ms often captured a Skeleton mid-flight (Metrics, Browser).
+  await page.waitForTimeout(1200);
+  await page.waitForLoadState('networkidle', { timeout: 2_000 }).catch(() => {});
   await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
 }
 

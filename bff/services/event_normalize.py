@@ -31,31 +31,93 @@ _KIND_TO_TYPE: dict[str, str] = {
 }
 
 
-def _message_summary(ev: dict[str, Any]) -> str:
-    """Extract user-visible text from a MessageEvent."""
-    llm_message = ev.get("llm_message") or {}
-    content = llm_message.get("content") or []
+def _extract_text_from_content(content: Any) -> list[str]:
+    """Best-effort extraction of user-visible text from a `content` field.
+
+    Handles all shapes we've seen from the agent-server:
+      - str                             → [str]
+      - list[str]                       → the list
+      - list[TextContent-dict]          → texts
+      - list[dict with 'content' key]   → recurse
+      - None / anything else            → []
+    """
+    if content is None:
+        return []
+    if isinstance(content, str):
+        s = content.strip()
+        return [s] if s else []
+    if not isinstance(content, list):
+        return []
     parts: list[str] = []
     for item in content:
-        if not isinstance(item, dict):
-            continue
-        # TextContent → {"type": "text", "text": "..."}
-        if item.get("type") == "text" and item.get("text"):
-            parts.append(str(item["text"]))
-        # ImageContent → hint at attachment
-        elif item.get("type") in {"image", "image_url"}:
-            parts.append("[image]")
+        if isinstance(item, str):
+            s = item.strip()
+            if s:
+                parts.append(s)
+        elif isinstance(item, dict):
+            typ = item.get("type")
+            # TextContent → {"type": "text", "text": "..."}
+            if typ == "text":
+                t = item.get("text")
+                if isinstance(t, str) and t.strip():
+                    parts.append(t.strip())
+            elif typ in {"image", "image_url"}:
+                parts.append("[image]")
+            else:
+                # Some serializations put the text under "content" or "value"
+                for key in ("text", "content", "value", "body"):
+                    v = item.get(key)
+                    if isinstance(v, str) and v.strip():
+                        parts.append(v.strip())
+                        break
+    return parts
+
+
+def _message_summary(ev: dict[str, Any]) -> str:
+    """Extract user-visible text from a MessageEvent.
+
+    Tries multiple field paths because the agent-server persists MessageEvents
+    in slightly different shapes depending on source (user vs assistant vs
+    replayed history).
+    """
+    # 1. Standard SDK shape: ev.llm_message.content
+    llm_message = ev.get("llm_message") or ev.get("message") or {}
+    if not isinstance(llm_message, dict):
+        llm_message = {}
+
+    parts = _extract_text_from_content(llm_message.get("content"))
     if parts:
         return "\n".join(parts).strip()
-    # Fallback to tool_call summary
-    tool_calls = llm_message.get("tool_calls") or []
-    if tool_calls:
+
+    # 2. Some older shapes place content at ev.content directly
+    parts = _extract_text_from_content(ev.get("content"))
+    if parts:
+        return "\n".join(parts).strip()
+
+    # 3. Tool-call fallback (agent turned in tools without free text)
+    tool_calls = llm_message.get("tool_calls") or ev.get("tool_calls") or []
+    if isinstance(tool_calls, list) and tool_calls:
         names: list[str] = [
             str(tc.get("name")) for tc in tool_calls if isinstance(tc, dict) and tc.get("name")
         ]
         if names:
             return "→ " + ", ".join(names)
-    return llm_message.get("role") or ""
+
+    # 4. Reasoning-only assistant turn — surface a hint from reasoning_content
+    rc = llm_message.get("reasoning_content")
+    if isinstance(rc, str) and rc.strip():
+        return rc.strip()[:200]
+
+    # 5. Activated skills (agent context turn)
+    skills = ev.get("activated_skills") or []
+    if isinstance(skills, list) and skills:
+        return "activated: " + ", ".join(str(s) for s in skills[:3])
+
+    # 6. Final fallback — role label so the row is never fully blank
+    role = llm_message.get("role") or ev.get("source")
+    if role:
+        return f"({role} message)"
+    return "(message)"
 
 
 def _action_summary(ev: dict[str, Any]) -> str:

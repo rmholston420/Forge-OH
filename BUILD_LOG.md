@@ -753,3 +753,21 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   - `bff/services/run_metrics.py`: dropped unnecessary `.replace("Z","+00:00")` (Python 3.11 `fromisoformat` handles Z natively); removed aligned-column spacing in return dict.
 - Verified locally: `ruff check bff/`, `ruff format --check bff/`, `mypy bff/services/event_normalize.py bff/services/run_metrics.py` all green.
 - Files touched: bff/services/event_normalize.py, bff/services/run_metrics.py
+
+## 2026-08-03 05:34 EDT — visual QA pass 2 (post-screenshot audit)
+- Stage: visual QA pass 2 addressing regressions/misses uncovered by second screenshot run.
+- Findings from `agent/screenshots-20260803-052724`:
+  - PASS: /settings, /workspaces, /run overview (styling), Security, Terminal placeholder, Observability, Settings/Secrets sub-page. Pass 1 fixes stuck.
+  - REGRESSION (critical): Plugin Marketplace crashes with `Objects are not valid as a React child (found: object with keys {name, description})` in `<PluginMarketplaceGrid />`. Upstream `MarketplacePluginInfo.skills` is dict[], frontend maps as string[].
+  - MISS: Run Overview MessageEvent rows still blank (`_message_summary` returned "" for many events).
+  - MISS: Metrics tab still stuck on skeleton (Playwright snapshotting during first React Query resolve).
+  - MISS: Browser tab empty (same timing).
+  - MISS: /secrets skeleton (client fetched `/secrets` not `/api/secrets` → 404 → React Query retries → snapshot captured mid-retry).
+- Fixes applied:
+  - `bff/routers/plugins.py::_to_marketplace`: normalize `skills` to list[str] (handles both list[str] and list[dict[name,...]] shapes).
+  - `src/components/domain/PluginMarketplaceGrid.tsx`: defensive coerce on skill items (skip empties).
+  - `bff/services/event_normalize.py::_message_summary`: rewritten with `_extract_text_from_content` helper — tries `llm_message.content` list-of-dict, plain string, direct `ev.content`, tool_calls, reasoning_content, activated_skills, then role fallback. Never returns "".
+  - `src/features/secrets/api.ts`: prepend `/api` prefix (all four functions).
+  - `src/app/(dashboard)/runs/[runId]/tabs/MetricsTab.tsx`: skeleton only on first load; render zeros as soon as data returns.
+  - `src/tests/e2e/visual-tour.spec.ts`: bumped post-networkidle wait 400ms → 1200ms + secondary networkidle for late react-query settles.
+- Files touched: bff/routers/plugins.py, bff/services/event_normalize.py, src/components/domain/PluginMarketplaceGrid.tsx, src/features/secrets/api.ts, src/app/(dashboard)/runs/[runId]/tabs/MetricsTab.tsx, src/tests/e2e/visual-tour.spec.ts.

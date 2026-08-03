@@ -1,16 +1,16 @@
 # SESSION HANDOFF — 2026-08-03
 
 ## Current stage
-Post-slice-I visual QA pass 1 — lint/format/type cleanup committed. Screenshots re-verification pending.
+Visual QA pass 2 committed. Re-verification pending.
 
 ## Completed this session
-- Commit 8f264cf: legacy-globals.css + event normalizer + run metrics endpoint (addresses 26 visual issues from screenshot audit).
-- Commit (next): lint/format/type cleanup for `bff/services/event_normalize.py` and `bff/services/run_metrics.py` so `forge-test.sh` goes green.
+- Commit 8f264cf: visual QA pass 1 (legacy-globals + normalize + metrics endpoint).
+- Commit c3541cb: pass 1 lint/format cleanup.
+- Commit (this push): visual QA pass 2 — fixes plugin marketplace crash, blank event summaries, /secrets 404, metrics-tab stuck skeleton, browser-tab stuck skeleton; bumped Playwright wait so future runs capture post-query state.
 
 ## Remaining before Definition of Done
 - Re-run `bash scripts/forge-test.sh && bash scripts/forge-screenshots.sh` on Colossus.
-- Visually re-audit new PNGs vs the 26 previously-flagged issues.
-- Any residual: address in pass 2.
+- Verify Marketplace no longer errors, Overview rows show summaries, Metrics/Browser show real data (or clean empty state), /secrets renders empty state.
 
 ## Open questions
 None.

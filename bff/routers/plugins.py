@@ -58,14 +58,29 @@ def _to_plugin(u: dict[str, Any]) -> dict[str, Any]:
 
 
 def _to_marketplace(u: dict[str, Any]) -> dict[str, Any]:
-    """Reshape MarketplacePluginInfo for the marketplace view."""
+    """Reshape MarketplacePluginInfo for the marketplace view.
+
+    Upstream `skills` may be either a list[str] or a list of dicts with
+    at least a `name` key. Normalize to list[str] so the React view can
+    render each entry as a text badge without an "Objects are not valid
+    as a React child" crash.
+    """
+    raw_skills = u.get("skills") or []
+    skills: list[str] = []
+    for s in raw_skills:
+        if isinstance(s, str):
+            skills.append(s)
+        elif isinstance(s, dict):
+            name = s.get("name") or s.get("id") or s.get("title")
+            if isinstance(name, str) and name:
+                skills.append(name)
     return {
         "id": u.get("name"),
         "name": u.get("name"),
         "description": u.get("description"),
         "source": u.get("source"),
         "installed": bool(u.get("installed")),
-        "skills": u.get("skills") or [],
+        "skills": skills,
     }
 
 
