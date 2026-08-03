@@ -51,37 +51,51 @@ const PYTEST_BIN =
   process.env.FORGE_TEST_PYTEST || join(WORKSPACE_PATH, '.oh-venv', 'bin', 'pytest');
 const TEST_FILE_REL = 'bff/tests/test_sidecar_producers.py';
 const TEST_CLASS = 'TestSymptomProducer';
-const NEW_TEST_NAME = 'test_g1_marker_terminal_exit_2_becomes_symptom';
+const NEW_TEST_NAME = 'test_g1_marker_terminal_exit_127_becomes_symptom';
 const NODE_ID = `${TEST_FILE_REL}::${TEST_CLASS}::${NEW_TEST_NAME}`;
 const PRESET_ID = process.env.FORGE_TEST_PRESET_ID || 'ap-1';
 const RUN_POLL_INTERVAL_MS = 3_000;
 const RUN_TIMEOUT_MS = 300_000;
 
-/** Fully-specified new test case body — deterministic assertions. */
+/** Fully-specified new test case body — deterministic assertions.
+ *
+ * Event shape mirrors the existing passing sibling
+ * `test_terminal_observation_with_nonzero_exit_becomes_symptom`
+ * (top-level `kind: "ObservationEvent"`, `content` as a list of typed
+ * parts) so the producer's real code path is exercised. Uses
+ * `exit_code=127` as an unambiguous marker (distinct from the 2 that
+ * the sibling case uses) so a `grep 'exit=127'` audit finds only this
+ * self-test.
+ */
 const NEW_TEST_BODY = `    def ${NEW_TEST_NAME}(
         self, workspace: Path, cid: str
     ) -> None:
-        """G.1 marker: TerminalObservation exit=2 becomes structured symptom.
+        """G.1 marker: TerminalObservation exit=127 becomes structured symptom.
 
-        Added by Forge-OH self-testing spec (src/tests/e2e/g1-self-testing.spec.ts).
-        Mirrors test_terminal_observation_with_nonzero_exit_becomes_symptom
-        but uses exit_code=2 to make the marker unambiguous when auditing.
+        Added by Forge-OH self-testing spec
+        (src/tests/e2e/g1-self-testing.spec.ts). Mirrors
+        test_terminal_observation_with_nonzero_exit_becomes_symptom
+        but uses exit_code=127 as an unambiguous G.1 marker.
         """
         _feed(
             workspace,
             cid,
             {
-                "kind": "observation",
-                "action": "run",
+                "kind": "ObservationEvent",
                 "observation": {
                     "kind": "TerminalObservation",
-                    "exit_code": 2,
-                    "content": "bash: command not found",
+                    "is_error": False,
+                    "exit_code": 127,
+                    "content": [
+                        {"type": "text", "text": "bash: command not found"}
+                    ],
                 },
             },
         )
-        slot = _read_slot(workspace, cid)
-        assert "TerminalObservation exit=2" in slot.get("symptom", "")
+        sym = _read_slot(workspace, cid).get("symptom", "")
+        assert "TerminalObservation" in sym
+        assert "exit=127" in sym
+        assert "bash: command not found" in sym
 `;
 
 async function createRun(

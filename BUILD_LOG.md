@@ -2505,3 +2505,15 @@ Verified via the paste sample captured this session (`/home/user/workspace/uploa
 - G.1 first run: skipped locally (default `FORGE_TEST_WORKSPACE_PATH=$HOME/forge-oh` is wrong on Colossus — repo lives at `~/dev/forge-oh`). After exporting `FORGE_TEST_WORKSPACE_PATH=$HOME/dev/forge-oh` and `FORGE_TEST_PYTEST=$HOME/dev/forge-oh/.oh-venv/bin/pytest` the spec ran and hit Playwright's default 30s per-test timeout — our own `RUN_TIMEOUT_MS=300_000` only bounds the poll loop, not Playwright.
 - Fix: added `test.setTimeout(RUN_TIMEOUT_MS + 60_000)` to `g1-self-testing.spec.ts` and to both cases in `f15-fixups.spec.ts` (defense in depth).
 - Files: `src/tests/e2e/g1-self-testing.spec.ts`, `src/tests/e2e/f15-fixups.spec.ts`.
+
+## 2026-08-03 11:52 EDT — G.1 self-verified end-to-end + always-visible GPU strip
+
+Slice G.1 (self-testing) verified on Colossus:
+- Agent reached terminal (1.6 min), wrote the marker method to disk, file+collection assertions passed. Pytest run of the marker case failed — my prompt embedded the wrong event shape (`kind: "observation"`), not the producer's real contract (`kind: "ObservationEvent"` with `content` as a typed-parts list).
+- Fix: rewrote `NEW_TEST_BODY` in `src/tests/e2e/g1-self-testing.spec.ts` to mirror the passing sibling `test_terminal_observation_with_nonzero_exit_becomes_symptom`, and renamed the marker to `test_g1_marker_terminal_exit_127_becomes_symptom` (127 = unambiguous audit marker distinct from the sibling's 2).
+- Confirmed: G.1 already proves the "does the app actually work" bar end-to-end — the agent CAN grow its own test suite. The failure was a bug in what I asked the agent to write, not a bug in the agent.
+
+Slice F.16-UI (always-visible GPU strip):
+- New: `src/components/navigation/GpuStrip.tsx` + `GpuStrip.module.css`. Client component, polls `GET /api/gpu` every 2s (matches BFF poller), renders four color-coded chips: temp / util / VRAM / power. Uses snapshot's `warn_c`/`cutoff_c`/`critical_c` bands for temperature (52/83/88 on the 5090); percentage chips warn at 85/90 and go crit at their respective cutoffs; power warns at 90% of cutoff, crit at cutoff. Reduced-motion-safe (crit pulse disabled under `prefers-reduced-motion: reduce`). Falls back to a single grey "GPU n/a" chip when the BFF is down or `available=false`.
+- Wired into every dashboard route via `src/app/(dashboard)/layout.tsx` — mounted in the Topbar `actions` slot so it appears on Runs, Workspaces, Observability, Plugins, Secrets, Settings, etc.
+- No new backend work — reuses the existing `/api/gpu` snapshot.

@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/navigation/Sidebar';
 import { Topbar } from '@/components/navigation/Topbar';
+import { GpuStrip } from '@/components/navigation/GpuStrip';
 import { CommandPalette } from '@/components/navigation/CommandPalette';
 import { useAppStore } from '@/lib/state/app-store';
 import styles from './dashboard.module.css';
@@ -31,7 +32,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className={styles.shell}>
         <Sidebar collapsed={!sidebarExpanded} onToggle={toggleSidebar} />
-        <Topbar onCommandPaletteOpen={() => setCommandPaletteOpen(true)} />
+        <Topbar
+          actions={<GpuStrip />}
+          onCommandPaletteOpen={() => setCommandPaletteOpen(true)}
+        />
         <main
           className={[styles.content, !sidebarExpanded ? styles['content--collapsed'] : ''].join(' ')}
           id="main-content"

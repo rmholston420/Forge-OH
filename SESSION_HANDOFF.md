@@ -1,7 +1,7 @@
 # Forge-OH — Session Handoff
 
 ## Current stage
-F.16 shipped. G.1 spec landed — both awaiting Colossus verification.
+F.16 verified on Colossus. G.1 verified end-to-end (agent successfully grew its own test suite). Always-visible GPU strip landed for the frontend.
 
 ## Completed this session
 - F.16 GPU monitor: BFF poller + `/api/gpu`, `/api/gpu/history`; PRE-tool hook.
@@ -13,8 +13,8 @@ F.16 shipped. G.1 spec landed — both awaiting Colossus verification.
 - G.1 self-testing spec landed (`src/tests/e2e/g1-self-testing.spec.ts`): agent appends a fully-specified marker test to `TestSymptomProducer`, asserts +1 collected case and the new case passes in isolation.
 
 ## Remaining before DoD
-- **F.16**: Colossus verification — pull, restart BFF, `curl 127.0.0.1:8081/api/gpu`, set `FORGE_GPU_POWER_CUTOFF_W=435` in `~/.forge-oh/bff.env`, rerun `f15-fixups.spec.ts`.
-- **G.1**: first Colossus run — remove any pre-existing marker method (spec fails-fast if it's already there), then `npx playwright test tests/e2e/g1-self-testing.spec.ts`. If it fails, capture the trajectory row and iterate.
+- Frontend: pull + restart Next dev server, load any dashboard route, confirm GPU strip renders in top-right with real telemetry. Expected: `T 34C U 0% V 76% 44W` (green) on idle 5090.
+- G.1 rerun with fixed marker body (event shape now matches the producer).
 
 ## Open questions / ambiguity
 - vLLM vs Ollama routing — deferred to F.18 (separate slice; F.16 unaffected).
