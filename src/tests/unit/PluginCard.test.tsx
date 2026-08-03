@@ -1,6 +1,10 @@
 import { render, screen, fireEvent } from '@/tests/helpers/render';
 import { PluginCard } from '@/components/domain/plugin-card';
-import type { Plugin } from '@/features/mcp/schemas';
+// Use the canonical Plugin schema (with transport + capabilities) that
+// PluginCard actually consumes. The @/features/mcp/schemas.Plugin type is
+// a legacy shape without those fields — fine for McpServerCard, not for
+// the modern PluginCard.
+import type { Plugin } from '@/lib/schemas/plugin';
 import { describe, it, expect, vi } from 'vitest';
 
 const BASE: Plugin = {
@@ -11,7 +15,9 @@ const BASE: Plugin = {
   description: 'A test plugin',
   author: 'Rigpa',
   installedAt: new Date().toISOString(),
-};
+  transport: 'stdio',
+  capabilities: ['run.started'],
+} as unknown as Plugin;
 
 describe('PluginCard', () => {
   it('renders name, version badge, and status text', () => {
@@ -27,10 +33,10 @@ describe('PluginCard', () => {
   });
 
   it('shows Configure button when configSchema present', () => {
-    const withConfig: Plugin = {
+    const withConfig = {
       ...BASE,
       configSchema: { key: { type: 'string', label: 'Key', required: true, default: '' } },
-    };
+    } as unknown as Plugin;
     render(<PluginCard plugin={withConfig} onToggle={vi.fn()} onConfigure={vi.fn()} />);
     expect(screen.getByText('Configure')).toBeTruthy();
   });

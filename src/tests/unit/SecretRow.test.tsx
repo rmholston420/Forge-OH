@@ -12,10 +12,10 @@ vi.mock('@/lib/utils/format', () => ({ formatDate: () => '2 hours ago' }));
 import { SecretRow } from '@/features/secrets/SecretRow';
 
 const MOCK: import('@/features/secrets/schemas').Secret = {
-  id: 'sec-1', key: 'OPENAI_API_KEY', scope: 'global',
+  id: 'sec-1', name: 'OPENAI_API_KEY', scope: 'global',
   maskedValue: '****1234', createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(), createdBy: 'admin', tags: [],
-};
+} as unknown as import('@/features/secrets/schemas').Secret;
 
 describe('SecretRow', () => {
   it('renders key in monospace code element', () => {

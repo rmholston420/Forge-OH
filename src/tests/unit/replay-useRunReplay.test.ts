@@ -9,7 +9,7 @@ import { server } from '../mocks/server';
 import { http, HttpResponse } from 'msw';
 import { useRunReplay } from '@/features/run-replay/useRunReplay';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 const mockEvents = Array.from({ length: 10 }, (_, i) => ({
   id: String(i + 1),
@@ -35,7 +35,8 @@ describe('useRunReplay', () => {
   beforeEach(() => {
     server.resetHandlers();
     server.use(
-      http.get('http://localhost:8000/runs/:runId/events', () => HttpResponse.json(mockEvents))
+      http.get(`${BFF}/runs/:runId/events`, () => HttpResponse.json(mockEvents)),
+      http.get(`${BFF}/api/runs/:runId/events`, () => HttpResponse.json(mockEvents))
     );
   });
   it('scrub clamps to [0, totalEvents-1]', async () => {

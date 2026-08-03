@@ -9,7 +9,10 @@
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
+// Use the global MSW server from setup.ts — running a second setupServer
+// in the same process double-intercepts each request, which consumes the
+// body twice and throws "Body has already been read".
+import { server } from '../mocks/server';
 
 const BASE = 'http://localhost:3000';
 
@@ -69,10 +72,12 @@ const handlers = [
   ),
 ];
 
-const server = setupServer(...handlers);
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+// Register per-suite handlers on top of the global server. resetHandlers()
+// in setup.ts wipes these between tests — re-apply in beforeEach.
+import { beforeEach } from 'vitest';
+beforeEach(() => {
+  server.use(...handlers);
+});
 
 // ---------------------------------------------------------------------------
 // Tests

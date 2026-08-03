@@ -42,7 +42,17 @@ export const handlers = [
     HttpResponse.json({ ok: true })
   ),
   http.post(`${BFF}/api/runs/:runId/fork`, ({ params }) =>
-    HttpResponse.json({ data: { ...mockRuns[0], id: `run_fork_${params.runId}`, title: `Fork of ${mockRuns[0].title}` } }, { status: 201 })
+    HttpResponse.json(
+      {
+        // Backwards-compat with tests that assert top-level ids alongside
+        // the canonical `data` envelope.
+        ok: true,
+        run_id: params.runId,
+        forked_id: `run_fork_${params.runId}`,
+        data: { ...mockRuns[0], id: `run_fork_${params.runId}`, title: `Fork of ${mockRuns[0].title}` },
+      },
+      { status: 201 },
+    )
   ),
   http.post(`${BFF}/api/runs/:runId/approve`, () =>
     HttpResponse.json({ ok: true })
