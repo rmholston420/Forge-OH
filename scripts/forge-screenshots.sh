@@ -17,6 +17,9 @@ cd "$REPO_ROOT"
 
 BRANCH="agent/screenshots-$(date +%Y%m%d-%H%M%S)"
 
+echo "── Ensuring services are current (forge-up will restart BFF) ──"
+bash "$REPO_ROOT/scripts/forge-up.sh"
+
 echo "── Cleaning old screenshots ──"
 rm -rf screenshots
 mkdir -p screenshots

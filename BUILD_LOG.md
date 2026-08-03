@@ -771,3 +771,14 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   - `src/app/(dashboard)/runs/[runId]/tabs/MetricsTab.tsx`: skeleton only on first load; render zeros as soon as data returns.
   - `src/tests/e2e/visual-tour.spec.ts`: bumped post-networkidle wait 400ms → 1200ms + secondary networkidle for late react-query settles.
 - Files touched: bff/routers/plugins.py, bff/services/event_normalize.py, src/components/domain/PluginMarketplaceGrid.tsx, src/features/secrets/api.ts, src/app/(dashboard)/runs/[runId]/tabs/MetricsTab.tsx, src/tests/e2e/visual-tour.spec.ts.
+
+## 2026-08-03 05:44 EDT — dev loop hardening: BFF hot-reload + auto-restart
+- Stage: post-pass-2 audit revealed pass-2 code fixes weren't running because forge-up.sh short-circuited when port 8081 was in use; the OLD BFF process persisted across `git pull`.
+- Symptom evidence in agent/screenshots-20260803-053915:
+  - `/plugins?tab=marketplace` rendered correctly — frontend fix (defensive coerce) sufficient without BFF restart.
+  - `/secrets` empty-state visible — frontend fix (URL prefix) sufficient.
+  - `/runs/*/metrics` showed "Failed to load metrics: [404] UNKNOWN_ERROR: Not Found" — old BFF did not have the /api/runs/{id}/metrics route from pass-1 commit 8f264cf.
+  - `/runs/*/browser` showed "Failed to load browser frames." — same class.
+  - `/runs/*/overview` still had blank MessageEvent rows — old BFF `_message_summary` still returned "".
+- Fix: rewrite scripts/forge-up.sh BFF stanza to (1) always kill previous pid-managed BFF, (2) restart with `--reload --reload-dir bff` so future edits hot-reload without a full restart; scripts/forge-screenshots.sh now calls forge-up.sh before Playwright so screenshots are always against current code.
+- Files touched: scripts/forge-up.sh, scripts/forge-screenshots.sh.

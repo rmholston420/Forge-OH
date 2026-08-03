@@ -60,11 +60,26 @@ else
 fi
 
 # ---- 2. BFF (uvicorn) ----------------------------------------------------
+# Local-first, single-user: we ALWAYS restart the BFF here so that any code
+# changes since the last `forge-up` are actually running. `--reload` handles
+# in-flight edits; the explicit kill covers the case where the previous run
+# had `--reload` disabled or the process is wedged.
 BFF_PID_FILE="$LOG_DIR/bff.pid"
-if port_in_use "$BFF_PORT"; then
-  log "BFF already listening on :$BFF_PORT"
-else
-  log "starting BFF on :${BFF_PORT}"
+if [ -f "$BFF_PID_FILE" ] && kill -0 "$(cat "$BFF_PID_FILE" 2>/dev/null)" 2>/dev/null; then
+  log "stopping previous BFF (pid $(cat "$BFF_PID_FILE"))"
+  kill "$(cat "$BFF_PID_FILE")" 2>/dev/null || true
+  # wait up to 5s for graceful exit
+  for _ in 1 2 3 4 5; do
+    kill -0 "$(cat "$BFF_PID_FILE" 2>/dev/null)" 2>/dev/null || break
+    sleep 1
+  done
+  kill -9 "$(cat "$BFF_PID_FILE" 2>/dev/null)" 2>/dev/null || true
+  rm -f "$BFF_PID_FILE"
+elif port_in_use "$BFF_PORT"; then
+  warn "BFF port $BFF_PORT held by unknown process; leaving it alone"
+fi
+if ! port_in_use "$BFF_PORT"; then
+  log "starting BFF on :${BFF_PORT} (with --reload)"
   # Prefer the project venv if it exists
   if [ -f ".oh-venv/bin/activate" ]; then
     # shellcheck disable=SC1091
@@ -72,6 +87,7 @@ else
   fi
   nohup uvicorn bff.main:app_with_sio \
     --host 127.0.0.1 --port "$BFF_PORT" \
+    --reload --reload-dir bff \
     >>"$LOG_DIR/bff.log" 2>&1 &
   echo $! > "$BFF_PID_FILE"
   wait_for_port "$BFF_PORT" "BFF" 20

@@ -126,3 +126,10 @@
 - Root cause: Playwright's `shot()` waited only 400ms after `networkidle`, so React Query's very first resolve after clicking a tab wasn't captured. `MetricsTab` was also unconditionally rendering skeletons while `isLoading===true`, hiding the actual zeros the endpoint returns.
 - Fix: `MetricsTab` uses `showSkeleton = isLoading && !metrics` so first success wipes the skeleton immediately; `visual-tour.spec.ts` uses 1200ms + a secondary short `networkidle` wait.
 - Reuse rule: any tab-scoped React Query view MUST render placeholder content (zeros / dashes) once data is available, not gate whole layout behind `isLoading`.
+
+## 2026-08-03 05:44 EDT — Stale BFF process masks code fixes across `git pull`
+- Symptom: after committing/pushing BFF Python fixes and running `git pull && bash scripts/forge-test.sh && bash scripts/forge-screenshots.sh`, screenshots still show pre-fix behavior. In this case Metrics/Browser 404, and MessageEvent rows blank.
+- Affected: scripts/forge-up.sh, scripts/forge-screenshots.sh.
+- Root cause: forge-up.sh treats "port in use" as "service already up" and leaves the old uvicorn process running. Because uvicorn was launched WITHOUT `--reload`, none of the newly-pulled BFF source is imported. Frontend changes appear because `pnpm dev` HMR reloads TS on save.
+- Fix: forge-up.sh now kills the previous BFF pid and relaunches with `--reload --reload-dir bff`. forge-screenshots.sh calls forge-up.sh before Playwright so a fresh BFF is guaranteed for every visual-tour run.
+- Reuse rule: any process that loads Python source at startup MUST be relaunched — not just port-checked — when the repo changes. Prefer `--reload` for local single-user dev.
