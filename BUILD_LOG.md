@@ -744,3 +744,12 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
 - Playwright forge-test.sh still green (42 e2e + unit + BFF).
 - forge-screenshots.sh re-run produces cleaner PNGs (verify visually before closing this slice).
 
+
+## 2026-08-03 05:32 EDT — visual QA pass 1 lint/format/type cleanup
+- Stage: post-slice-I visual QA pass 1 completion
+- Symptom: `forge-test.sh` failed on ruff check (I001), ruff format (aligned-column dicts), mypy (list[Any|None] on tool_calls comprehension) in new BFF files from commit 8f264cf.
+- Fix applied:
+  - `bff/services/event_normalize.py`: removed aligned-column spacing in `_KIND_TO_TYPE` and final return dict; retyped tool_calls comprehension as `list[str]` with explicit `str(...)`.
+  - `bff/services/run_metrics.py`: dropped unnecessary `.replace("Z","+00:00")` (Python 3.11 `fromisoformat` handles Z natively); removed aligned-column spacing in return dict.
+- Verified locally: `ruff check bff/`, `ruff format --check bff/`, `mypy bff/services/event_normalize.py bff/services/run_metrics.py` all green.
+- Files touched: bff/services/event_normalize.py, bff/services/run_metrics.py

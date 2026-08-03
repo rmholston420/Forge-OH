@@ -1,28 +1,22 @@
-# Session Handoff
+# SESSION HANDOFF — 2026-08-03
 
 ## Current stage
-UI Polish — Playwright visual audit follow-up (pass 1 shipped)
+Post-slice-I visual QA pass 1 — lint/format/type cleanup committed. Screenshots re-verification pending.
 
 ## Completed this session
-- Playwright visual-tour (26 shots) captured design regressions
-- Diagnosed root causes: no Tailwind installed, undefined global CSS class names, missing CSS variables, BFF events missing `.summary`, BFF missing `/runs/{id}/metrics` endpoint
-- Landed fixes on `main`:
-  - `src/styles/legacy-globals.css` (new global utility + component classes + Tailwind-atom shim)
-  - `src/styles/tokens.css` (compat aliases + extended spacing scale)
-  - `src/styles/globals.css` (imports legacy-globals)
-  - `bff/services/event_normalize.py` (new; normalizes raw agent-server events)
-  - `bff/services/run_metrics.py` (new; per-run KPI aggregation from event stream)
-  - `bff/routers/runs.py` (uses normalize_events on GET /events; new GET /runs/{id}/metrics)
-  - `src/components/domain/WorkspaceCard.tsx` (buttons use `.btn` classes instead of dead Tailwind utilities)
-- BUILD_LOG.md and DEBUG_LOG.md entries appended.
+- Commit 8f264cf: legacy-globals.css + event normalizer + run metrics endpoint (addresses 26 visual issues from screenshot audit).
+- Commit (next): lint/format/type cleanup for `bff/services/event_normalize.py` and `bff/services/run_metrics.py` so `forge-test.sh` goes green.
 
-## Remaining before DoD
-- Re-run `bash scripts/forge-screenshots.sh` on Colossus to verify visually.
-- Verify Metrics tab now populates (needs an actual run with LLMCompletionLogEvent for tokens, otherwise still 0/0).
-- Fold in low-severity items (trace zero-width OK bars, obs sidebar RUNS heading, terminal placeholder xterm dim theming) if user wants.
+## Remaining before Definition of Done
+- Re-run `bash scripts/forge-test.sh && bash scripts/forge-screenshots.sh` on Colossus.
+- Visually re-audit new PNGs vs the 26 previously-flagged issues.
+- Any residual: address in pass 2.
 
-## Open questions / ambiguities
-- None right now.
+## Open questions
+None.
 
 ## Next action
-Pull `main`, run `bash scripts/forge-screenshots.sh`, review the new PNGs, and post another round of fixes if any regressions remain.
+User runs on Colossus:
+```
+cd ~/dev/forge-oh && git pull && bash scripts/forge-test.sh && bash scripts/forge-screenshots.sh
+```

@@ -22,7 +22,7 @@ def _iso_to_ts(iso: str | None) -> float | None:
     if not iso:
         return None
     try:
-        return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+        return datetime.fromisoformat(iso).timestamp()
     except Exception:
         return None
 
@@ -82,12 +82,12 @@ def build_run_metrics(events: list[dict[str, Any]], run_id: str) -> dict[str, An
         duration_ms = int((last_ts - first_ts) * 1000)
 
     return {
-        "tokenCount":        token_count,
-        "toolCallCount":     tool_call_count,
+        "tokenCount": token_count,
+        "toolCallCount": tool_call_count,
         "filesTouchedCount": len(touched_paths),
-        "costUsd":           round(cost_usd, 6),
-        "durationMs":        duration_ms,
-        "series":            [],
+        "costUsd": round(cost_usd, 6),
+        "durationMs": duration_ms,
+        "series": [],
     }
 
 

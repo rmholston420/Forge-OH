@@ -16,19 +16,18 @@ from __future__ import annotations
 
 from typing import Any
 
-
 _KIND_TO_TYPE: dict[str, str] = {
-    "MessageEvent":                "message",
-    "ActionEvent":                 "action",
-    "ObservationEvent":            "observation",
-    "AgentErrorEvent":             "error",
-    "ConversationErrorEvent":      "error",
-    "ConversationStateUpdateEvent":"status",
-    "CondensationSummaryEvent":    "status",
-    "LLMCompletionLogEvent":       "status",
-    "PauseEvent":                  "run_paused",
-    "SystemPromptEvent":           "status",
-    "TokenEvent":                  "status",
+    "MessageEvent": "message",
+    "ActionEvent": "action",
+    "ObservationEvent": "observation",
+    "AgentErrorEvent": "error",
+    "ConversationErrorEvent": "error",
+    "ConversationStateUpdateEvent": "status",
+    "CondensationSummaryEvent": "status",
+    "LLMCompletionLogEvent": "status",
+    "PauseEvent": "run_paused",
+    "SystemPromptEvent": "status",
+    "TokenEvent": "status",
 }
 
 
@@ -51,7 +50,9 @@ def _message_summary(ev: dict[str, Any]) -> str:
     # Fallback to tool_call summary
     tool_calls = llm_message.get("tool_calls") or []
     if tool_calls:
-        names = [tc.get("name") for tc in tool_calls if isinstance(tc, dict) and tc.get("name")]
+        names: list[str] = [
+            str(tc.get("name")) for tc in tool_calls if isinstance(tc, dict) and tc.get("name")
+        ]
         if names:
             return "→ " + ", ".join(names)
     return llm_message.get("role") or ""
@@ -129,13 +130,13 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
         summary = _generic_summary(raw)
 
     return {
-        "id":         raw.get("id") or "",
-        "eventId":    raw.get("id") or "",
-        "type":       typ,
-        "timestamp":  raw.get("timestamp") or "",
-        "source":     raw.get("source"),
-        "summary":    summary,
-        "raw":        raw,
+        "id": raw.get("id") or "",
+        "eventId": raw.get("id") or "",
+        "type": typ,
+        "timestamp": raw.get("timestamp") or "",
+        "source": raw.get("source"),
+        "summary": summary,
+        "raw": raw,
     }
 
 

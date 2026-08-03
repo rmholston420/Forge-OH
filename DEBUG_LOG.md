@@ -95,3 +95,13 @@
 **Fix:** Wrote src/styles/legacy-globals.css to define every missing class name + a minimal Tailwind-atom shim, added compat aliases and missing spacing tokens to tokens.css, added `bff/services/event_normalize.py` (piped into GET /runs/{id}/events), added `bff/services/run_metrics.py` + GET /runs/{id}/metrics endpoint, and rewrote WorkspaceCard buttons to use the new `.btn` classes.
 
 **Files touched:** src/styles/{legacy-globals.css (new),globals.css,tokens.css}, bff/services/{event_normalize.py,run_metrics.py} (new), bff/routers/runs.py, src/components/domain/WorkspaceCard.tsx
+
+## 2026-08-03 05:32 EDT — ruff I001 / ruff format alignment / mypy list[Any|None]
+- Symptom: forge-test.sh failed with `ruff check` (I001 unsorted imports — false positive after adding blank line), `ruff format --check` (aligned-column dict literals), and `mypy` `Argument 1 to "join" of "str" has incompatible type "list[Any | None]"`.
+- Affected: bff/services/event_normalize.py, bff/services/run_metrics.py (from commit 8f264cf).
+- Root cause:
+  1. Ruff format enforces single-space after colon in dict literals — aligned-column style is rejected.
+  2. Mypy could not narrow `tc.get("name")` inside a list-comprehension; return type inferred as `Any | None`.
+  3. FURB162: `.replace("Z", "+00:00")` before `datetime.fromisoformat` is redundant on Python 3.11+.
+- Fix: remove aligned-column spacing; wrap comprehension with explicit `str(...)` and annotate `list[str]`; drop `.replace("Z", "+00:00")`.
+- Reuse rule: NEVER align dict values by column padding — ruff format will fail. Always single-space after colon.
