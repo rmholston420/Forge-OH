@@ -3067,3 +3067,30 @@ pulling.
 
 **Next:** F.19.2c (settings.py migration; probe UI for both roles).
 F.19.1b live smoke on Colossus still pending — required before F.19.4.
+
+## 2026-08-03 18:47 EDT — F.19.1b planner-port move :8502 → :8511
+
+**Stage:** F.19.1b live smoke (fix #2 after Docker adaptation).
+
+**Delivered:** planner-role default port moved from **8502 to 8511**.
+:8502 on Colossus is permanently owned by `open-notebook-local-*`
+(published container, up 2 days, unrelated app). Overriding via env
+is still possible via `FORGE_VLLM_PLANNER_PORT` / `VLLM_PLANNER_PORT`.
+
+**Files changed:**
+- `bff/services/model_router.py` (LLM_PLANNER_URL default)
+- `ops/vllm_launch_planner.sh` (FORGE_VLLM_PLANNER_PORT default,
+  docstring, docker `-p` mapping)
+- `ops/vllm_supervisor.sh` (VLLM_PLANNER_PORT default + all
+  narrative refs)
+- `docs/adr/009-local-llm-selection.md` (§3a topology note)
+- `SESSION_HANDOFF.md` (updated smoke commands + stop condition)
+
+**Verification:**
+- All 20 `test_model_router.py` tests pass in sandbox (tests use
+  `LLM_PLANNER_URL` from module import, so :8511 flows through).
+- Bash syntax check on both launcher + supervisor: OK.
+
+**Stop condition (F.19.1b):** planner container binds :8511
+successfully and `/v1/models` returns `qwen3-thinking-2507-awq`.
+Needs Colossus re-smoke.

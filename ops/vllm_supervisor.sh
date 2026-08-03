@@ -2,14 +2,14 @@
 # F.19.1a — vLLM swap-on-demand supervisor.
 #
 # Enforces the ADR-009 §3a topology: exactly one of the coder (:8501) or
-# planner (:8502) vLLM launcher is running at a time on Colossus. On the
+# planner (:8511) vLLM launcher is running at a time on Colossus. On the
 # single RTX 5090 (~30 GiB usable VRAM) both models cannot be co-resident.
 #
 # Behavior:
 #   * `up coder`    — stop planner if running, start coder, wait for
 #                     readiness on :8501/v1/models.
 #   * `up planner`  — stop coder if running, start planner, wait for
-#                     readiness on :8502/v1/models.
+#                     readiness on :8511/v1/models.
 #   * `down`        — stop whichever role (if any) is running.
 #   * `status`      — print which role (coder|planner|none) is live and
 #                     its /v1/models readiness. Exit 0=coder, 1=planner,
@@ -21,7 +21,7 @@
 # Runtime:
 #   * F.19 uses the pinned vLLM Docker image (matches the bench). Each
 #     role runs in a named container: `forge-vllm-coder` on :8501 and
-#     `forge-vllm-planner` on :8502. Stopping a role does `docker rm -f`
+#     `forge-vllm-planner` on :8511. Stopping a role does `docker rm -f`
 #     plus a `fuser -k` belt-and-braces to clear any stale native-venv
 #     process still holding the port.
 #   * Native venv (~/venv/vllm-new, vLLM 0.10.2) does NOT support the
@@ -29,7 +29,7 @@
 #     venv to vLLM ≥ 0.26.0 is deferred to F.19.5.
 #
 # Notes:
-#   * "Which role is live" is decided by which of :8501 / :8502 responds
+#   * "Which role is live" is decided by which of :8501 / :8511 responds
 #     to /v1/models with data. If both respond (should not happen on
 #     Colossus but is possible in a shared-lab scenario), status prints
 #     "both" and exits 3.
@@ -50,7 +50,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FORGE_OH_ROOT="${FORGE_OH_ROOT:-$(cd "$SCRIPT_DIR/.." && git rev-parse --show-toplevel 2>/dev/null || cd "$SCRIPT_DIR/.." && pwd)}"
 
 CODER_PORT="${VLLM_CODER_PORT:-8501}"
-PLANNER_PORT="${VLLM_PLANNER_PORT:-8502}"
+PLANNER_PORT="${VLLM_PLANNER_PORT:-8511}"
 CODER_LOG="${VLLM_CODER_LOG:-$HOME/.forge-oh/vllm-coder.log}"
 PLANNER_LOG="${VLLM_PLANNER_LOG:-$HOME/.forge-oh/vllm-planner.log}"
 READY_TIMEOUT="${VLLM_READY_TIMEOUT:-300}"
@@ -242,7 +242,7 @@ Usage:
   $0 status                  Print live role. Exit: 0=coder 1=planner
                              2=none 3=broken/both.
 
-Env: VLLM_CODER_PORT (default 8501), VLLM_PLANNER_PORT (8502),
+Env: VLLM_CODER_PORT (default 8501), VLLM_PLANNER_PORT (8511),
      VLLM_READY_TIMEOUT (300s), VLLM_CODER_LOG, VLLM_PLANNER_LOG.
 USAGE
         exit 2

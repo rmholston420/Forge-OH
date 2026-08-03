@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # F.19 planner-role vLLM launcher (Docker; matches bench/f19pre/vllm_launch.sh).
 #
-# Serves qwen3-thinking-2507-awq on :8502 as "qwen3-thinking-2507-awq".
+# Serves qwen3-thinking-2507-awq on :8511 as "qwen3-thinking-2507-awq".
 #
 # Native venv (~/venv/vllm-new, vLLM 0.10.2) does NOT support qwen3_5_moe.
 # ADR-009 §5 requires vLLM ≥ 0.26.0 → we run the pinned Docker image the
@@ -10,13 +10,13 @@
 # Env overrides:
 #   FORGE_COMPOSE_MODELS_DIR     host dir mounted as /models (default $HOME/models)
 #   FORGE_VLLM_IMAGE             docker image (default vllm/vllm-openai:latest)
-#   FORGE_VLLM_PLANNER_PORT      host port (default 8502)
+#   FORGE_VLLM_PLANNER_PORT      host port (default 8511)
 #   FORGE_VLLM_PLANNER_NAME      served-model-name / container tag
 #   FORGE_VLLM_PLANNER_MODEL_DIR model dir under /models
 
 MODELS_DIR="${FORGE_COMPOSE_MODELS_DIR:-$HOME/models}"
 IMAGE="${FORGE_VLLM_IMAGE:-vllm/vllm-openai:latest}"
-PORT="${FORGE_VLLM_PLANNER_PORT:-8502}"
+PORT="${FORGE_VLLM_PLANNER_PORT:-8511}"
 NAME="${FORGE_VLLM_PLANNER_NAME:-qwen3-thinking-2507-awq}"
 MODEL_DIR="${FORGE_VLLM_PLANNER_MODEL_DIR:-qwen3-thinking-2507-awq}"
 CONTAINER="forge-vllm-planner"

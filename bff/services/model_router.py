@@ -30,7 +30,7 @@ Endpoints (role-based, F.19)
 ----------------------------
 - ``LLM_CODER_URL`` (default ``http://localhost:8501``) — coder-role vLLM
   root. Health probe hits ``{LLM_CODER_URL}/v1/models``.
-- ``LLM_PLANNER_URL`` (default ``http://localhost:8502``) — planner-role
+- ``LLM_PLANNER_URL`` (default ``http://localhost:8511``) — planner-role
   vLLM root. Health probe hits ``{LLM_PLANNER_URL}/v1/models``.
 
 Primary backend (legacy)
@@ -95,7 +95,7 @@ PRIMARY_CTX_LIMIT = int(os.getenv("PRIMARY_CTX_LIMIT", "28000"))
 #
 # ADR-009 assignments (verified by bench/f19pre):
 #   Coder role   -> qwen3.6-35b-nvfp4 on vLLM :8501, max_tokens=2048
-#   Planner role -> qwen3-thinking-2507-awq on vLLM :8502, max_tokens=8192
+#   Planner role -> qwen3-thinking-2507-awq on vLLM :8511, max_tokens=8192
 #
 # Ollama fallback:
 #   Coder role   -> qwen3-coder:30b (bench cell c01 baseline, still installed).
@@ -111,7 +111,7 @@ LLM_CODER_OLLAMA_FALLBACK = os.getenv(
     "LLM_CODER_OLLAMA_FALLBACK", "qwen3-coder:30b"
 )
 
-LLM_PLANNER_URL = os.getenv("LLM_PLANNER_URL", "http://localhost:8502")
+LLM_PLANNER_URL = os.getenv("LLM_PLANNER_URL", "http://localhost:8511")
 LLM_PLANNER_MODEL = os.getenv("LLM_PLANNER_MODEL", "qwen3-thinking-2507-awq")
 LLM_PLANNER_MAX_TOKENS = int(os.getenv("LLM_PLANNER_MAX_TOKENS", "8192"))
 # Empty string = no Ollama fallback for planner (ADR-009 rationale above).

@@ -103,7 +103,7 @@ resident simultaneously. Two options were considered:
   every role switch pays a full weight-reload cost (~30-60s) and the
   BFF must serialize coder/planner traffic.
 - **Dual-port with swap-on-demand supervisor** — one vLLM launcher
-  per role, each on its own port (`:8501` coder, `:8502` planner);
+  per role, each on its own port (`:8501` coder, `:8511` planner);
   only one is running at a time; a small supervisor script under
   `ops/vllm_supervisor.sh` stops the idle role and starts the
   requested role on the first BFF request that misses.

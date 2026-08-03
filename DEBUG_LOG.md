@@ -345,3 +345,42 @@ curl -s http://127.0.0.1:8502/v1/models | python3 -m json.tool
 - `ops/vllm_launch_planner.sh`
 - `ops/vllm_supervisor.sh`
 - `docs/adr/009-local-llm-selection.md` (§5 correction, Follow-ups §4)
+
+## 2026-08-03 18:46 EDT — F.19.1b planner-port conflict: :8502 owned by open-notebook
+
+**Symptom:**
+```
+docker: Error response from daemon: failed to set up container networking:
+  driver failed programming external connectivity on endpoint
+  forge-vllm-planner: Bind for :::8502 failed: port is already allocated
+```
+`docker run` exit 125. `sudo fuser -k 8502/tcp` freed the socket
+briefly but the process re-bound within seconds.
+
+**Root cause:** `open-notebook-local-open_notebook-1` (published
+`0.0.0.0:8502->8502/tcp`, up 2 days, unrelated app) permanently owns
+:8502 on Colossus. Not a stale artifact; it's a live service with a
+restart-policy that re-binds on kill.
+
+**Fix:** planner moved to :8511 across all launch/router/doc sites.
+:8511 verified free on Colossus (`ss -ltn`, `docker ps` grep).
+
+Also: earlier attempt to `pkill -f 'docker-proxy.*-host-port'` without
+sudo silently failed because docker-proxy runs as root. Not a
+supervisor bug — the correct answer for :8502 was "pick another port,"
+not "kill the incumbent."
+
+**Files changed:**
+- `bff/services/model_router.py` (`LLM_PLANNER_URL` default)
+- `ops/vllm_launch_planner.sh` (`FORGE_VLLM_PLANNER_PORT` default)
+- `ops/vllm_supervisor.sh` (`VLLM_PLANNER_PORT` default + docstring)
+- `docs/adr/009-local-llm-selection.md` (§3a narrative)
+- `SESSION_HANDOFF.md`
+- `BUILD_LOG.md`
+
+**Retest (paste on Colossus after pull):**
+```bash
+./ops/vllm_supervisor.sh up planner
+curl -s http://127.0.0.1:8511/v1/models | python3 -m json.tool
+./ops/vllm_supervisor.sh down
+```

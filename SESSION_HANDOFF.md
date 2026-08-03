@@ -1,7 +1,7 @@
 # SESSION_HANDOFF
 
-**Last updated:** 2026-08-03 18:38 EDT
-**Current stage:** F.19 (Coder/Planner router rewire), sub-slice **1b in retry**.
+**Last updated:** 2026-08-03 18:47 EDT
+**Current stage:** F.19 (Coder/Planner router rewire), sub-slice **1b planner re-smoke pending**.
 
 ## Recently completed this session
 
@@ -17,18 +17,21 @@
 - Root cause 1: launchers targeted native venv `~/venv/vllm-new` (vLLM 0.10.2) which does not support `qwen3_5_moe`. Fix: switch to `vllm/vllm-openai:latest` Docker (matches bench).
 - Root cause 2: F.18 `vllm_stop.sh` didn't fully release :8502. Fix: `_stop_role` does `docker rm -f` + `fuser -k` + `ss -ltn` poll.
 
+**Coder smoke passed** 2026-08-03 18:39 EDT (READY on :8501 after 248s, `/v1/models` returned `qwen3.6-35b-nvfp4`). **Planner smoke failed** on port collision: :8502 permanently owned by `open-notebook-local-*`. Planner moved to :8511.
+
 **Next action for user (paste into Colossus):**
 ```bash
 cd ~/dev/forge-oh && git pull
+./ops/vllm_supervisor.sh up planner
+curl -s http://127.0.0.1:8511/v1/models | python3 -m json.tool
 ./ops/vllm_supervisor.sh up coder
 curl -s http://127.0.0.1:8501/v1/models | python3 -m json.tool
-./ops/vllm_supervisor.sh up planner
-curl -s http://127.0.0.1:8502/v1/models | python3 -m json.tool
 ./ops/vllm_supervisor.sh down
 ./ops/vllm_supervisor.sh status
+docker ps -a --filter name=forge-vllm
 ```
 
-Expected: coder container reports `qwen3.6-35b-nvfp4` in `/v1/models` data; `up planner` stops coder container, brings up planner container reporting `qwen3-thinking-2507-awq`; `down` removes both; `status` exits 2 with `live_role: none`.
+Expected: `up planner` on :8511 succeeds (~2-4 min cold-start), `/v1/models` returns `qwen3-thinking-2507-awq`; `up coder` swaps to :8501 with `qwen3.6-35b-nvfp4`; `down` removes both containers; `status` prints `live_role: none` (exit 2).
 
 If either role fails, the launch log at `~/.forge-oh/vllm-{coder,planner}.log` shows the `docker run` handshake; the container's runtime log is `docker logs -f forge-vllm-{coder,planner}`.
 
