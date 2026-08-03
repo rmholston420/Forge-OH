@@ -28,27 +28,38 @@ def _mk_conv(
     cost: float = 0.5,
     tokens: int = 1000,
     model: str = "openai/qwen3.6:35b-a3b",
-    workspace_id: str = "colossus-ollama",
-    workspace_name: str = "colossus-ollama",
+    working_dir: str = "ws-local",
     minutes_ago: int = 60,
     duration_minutes: int = 5,
+    include_metrics_model: bool = True,
 ) -> dict[str, Any]:
+    """Mimic the real ConversationInfo shape from /api/conversations/search.
+
+    - agent.llm.model is always populated (config-time).
+    - metrics.model_name only populates once the LLM has actually run;
+      use include_metrics_model=False to simulate a queued-but-never-run
+      conversation and verify the agent.llm.model fallback.
+    - workspace shape mirrors LocalWorkspace-Output (working_dir + kind).
+    """
     created = datetime.now(UTC) - timedelta(minutes=minutes_ago)
     updated = created + timedelta(minutes=duration_minutes)
+    metrics_block: dict[str, Any] = {
+        "accumulated_cost": cost,
+        "accumulated_token_usage": {
+            "prompt_tokens": tokens // 2,
+            "completion_tokens": tokens // 2,
+        },
+    }
+    if include_metrics_model:
+        metrics_block["model_name"] = model
     return {
         "id": conv_id,
         "execution_status": status,
         "created_at": created.isoformat(),
         "updated_at": updated.isoformat(),
-        "workspace": {"workspace_id": workspace_id, "name": workspace_name},
-        "metrics": {
-            "model_name": model,
-            "accumulated_cost": cost,
-            "accumulated_token_usage": {
-                "prompt_tokens": tokens // 2,
-                "completion_tokens": tokens // 2,
-            },
-        },
+        "agent": {"llm": {"model": model}, "kind": "Agent"},
+        "workspace": {"working_dir": working_dir, "kind": "LocalWorkspace"},
+        "metrics": metrics_block,
     }
 
 
@@ -152,8 +163,32 @@ class TestWorkspaces:
         rows = r.json()
         assert len(rows) == 1
         w = rows[0]
-        assert w["workspaceId"] == "colossus-ollama"
+        assert w["workspaceId"] == "ws-local"
         assert w["runs"] == 4
+
+
+class TestModelFallback:
+    def test_model_falls_back_to_agent_llm_when_metrics_missing(self) -> None:
+        """When a conversation is queued but has never run the LLM, the
+        MetricsSnapshot.model_name is empty. We should fall back to
+        agent.llm.model so the dashboard shows the configured model instead
+        of 'unknown'."""
+        conv = _mk_conv(
+            conv_id="queued",
+            status="idle",
+            cost=0.0,
+            tokens=0,
+            include_metrics_model=False,
+        )
+        with patch(
+            "bff.services.metrics_aggregation._fetch_all_conversations",
+            return_value=[conv],
+        ):
+            r = client.get("/api/metrics/models?period=all")
+        rows = r.json()
+        assert len(rows) == 1
+        assert rows[0]["model"] == "openai/qwen3.6:35b-a3b"
+        assert rows[0]["model"] != "unknown"
 
 
 class TestLegacyEndpoints:
@@ -175,7 +210,7 @@ class TestLegacyEndpoints:
             "bff.services.metrics_aggregation._fetch_all_conversations",
             return_value=CONVS,
         ):
-            r = client.get("/api/metrics/workspaces/colossus-ollama")
+            r = client.get("/api/metrics/workspaces/ws-local")
         assert r.status_code == 200
         body = r.json()
         assert body["runs"] == 4

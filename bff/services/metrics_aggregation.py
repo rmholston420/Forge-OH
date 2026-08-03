@@ -132,7 +132,19 @@ def _percentile(values: list[float], q: float) -> float:
 
 
 def _extract_row(conv: dict[str, Any]) -> dict[str, Any]:
-    """Normalise a raw ConversationInfo into the fields we aggregate on."""
+    """Normalise a raw ConversationInfo into the fields we aggregate on.
+
+    Model resolution order (most reliable first):
+      1. `metrics.model_name`  — populated after the LLM has actually run
+      2. `agent.llm.model`     — populated at conversation creation time
+      3. fallback: "unknown"
+
+    Workspace resolution:
+      LocalWorkspace exposes `working_dir` + `kind`. Older/other workspace
+      variants may expose `workspace_id`, `path`, or `name` — we accept any
+      of those, but prefer `working_dir` because that's what the current
+      upstream schema documents.
+    """
     metrics = conv.get("metrics") or {}
     token_usage = metrics.get("accumulated_token_usage") or {}
 
@@ -149,19 +161,39 @@ def _extract_row(conv: dict[str, Any]) -> dict[str, Any]:
     if created and updated and updated >= created:
         duration_ms = (updated - created).total_seconds() * 1000.0
 
+    # --- Model ---
+    model_name = metrics.get("model_name") or ""
+    if not model_name:
+        agent = conv.get("agent") or {}
+        llm = agent.get("llm") or {}
+        model_name = llm.get("model") or ""
+    if not model_name:
+        model_name = "unknown"
+
+    # --- Workspace ---
     workspace = conv.get("workspace") or {}
+    workspace_id = (
+        workspace.get("working_dir")
+        or workspace.get("workspace_id")
+        or workspace.get("id")
+        or workspace.get("path")
+        or "unknown"
+    )
+    workspace_name = (
+        workspace.get("name")
+        or workspace.get("working_dir")
+        or workspace.get("path")
+        or workspace_id
+    )
 
     return {
         "id": conv.get("id") or "",
         "status": conv.get("execution_status") or "",
         "cost_usd": float(metrics.get("accumulated_cost", 0.0) or 0.0),
         "tokens": tokens,
-        "model": metrics.get("model_name") or "unknown",
-        "workspace_id": workspace.get("workspace_id")
-        or workspace.get("id")
-        or workspace.get("path")
-        or "unknown",
-        "workspace_name": workspace.get("name") or workspace.get("path") or "unknown",
+        "model": model_name,
+        "workspace_id": workspace_id,
+        "workspace_name": workspace_name,
         "created_at": created,
         "duration_ms": duration_ms,
     }

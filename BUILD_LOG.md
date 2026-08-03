@@ -839,3 +839,22 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
 - Stop condition: /metrics route renders with real KPI cards, model breakdown, and workspace
   breakdown reflecting actual agent-server data (pending visual QA).
 - Verified after: 10/10 metrics router unit tests pass locally
+
+## 2026-08-03 06:15 EDT — Step 7 Slice B fix: model + workspace resolution
+- Stage: Step 7 (post-visual-QA fix for Slice B)
+- Files:
+  - `bff/services/metrics_aggregation.py::_extract_row` — model resolution
+    now falls back from `metrics.model_name` to `agent.llm.model` (which is
+    always populated at conversation creation, unlike model_name which
+    only populates after the LLM has run). Workspace resolution now looks
+    for `working_dir` first (LocalWorkspace-Output schema), then legacy
+    fields for compatibility.
+  - `bff/tests/test_metrics_router.py` — fixture mirrors the real
+    ConversationInfo shape (agent.llm.model + workspace.working_dir).
+    Added TestModelFallback verifying agent.llm.model kicks in when
+    metrics.model_name is empty (queued-but-never-run case).
+- Root cause: 20-metrics-dashboard.png showed "unknown" for both Model
+  and Workspace despite 24 real runs. The visual-QA runs are all
+  queued/never-executed, so MetricsSnapshot.model_name was empty for
+  every row. The extractor also looked at nonexistent workspace fields.
+- Verified after: 11/11 metrics tests pass locally
