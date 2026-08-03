@@ -66,6 +66,16 @@ const STATIC_FLAG_VALUES: Record<FeatureFlag, string | undefined> = {
 };
 
 function readEnvFlag(flag: FeatureFlag): string | undefined {
+  // In Node/test environments, prefer a live read from process.env so that
+  // tests which mutate process.env at runtime see the change. In the
+  // browser bundle, `process.env[key]` with a template key returns
+  // undefined (Next.js inlines only literal accesses), so we fall back to
+  // the static map compiled at build time.
+  const key = `NEXT_PUBLIC_FEATURE_${flag}`;
+  if (typeof process !== 'undefined' && process.env && key in process.env) {
+    const live = process.env[key];
+    if (live !== undefined) return live;
+  }
   return STATIC_FLAG_VALUES[flag];
 }
 

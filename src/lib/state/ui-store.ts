@@ -98,7 +98,8 @@ export const useRunDetailUIStore = create<RunDetailUIState & RunDetailUIActions>
 // Selectors — memoised slices for performance
 // ---------------------------------------------------------------------------
 
-export const selectSelectedTab = (s: RunDetailUIState) => s.selectedTab;
+export const selectSelectedTab = (s: Partial<RunDetailUIState>): RunDetailUIState['selectedTab'] =>
+  s.selectedTab ?? 'overview';
 export const selectInspectorOpen = (s: RunDetailUIState) => s.inspectorOpen;
 export const selectPendingApprovalBanner = (s: RunDetailUIState) =>
   s.pendingApprovalBanner;

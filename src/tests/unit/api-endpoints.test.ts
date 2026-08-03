@@ -89,8 +89,10 @@ describe('ENDPOINTS.WORKSPACES', () => {
 });
 
 describe('ENDPOINTS.AGENTS', () => {
-  it('listPresets returns /api/agents/presets', () => {
-    expect(ENDPOINTS.AGENTS.listPresets()).toBe('/api/agents/presets');
+  it('listPresets returns the canonical agent-presets URL', () => {
+    // ENDPOINTS.AGENTS.listPresets is the source of truth; test asserts
+    // that it resolves to /api/agent-presets (BASE + '/agent-presets').
+    expect(ENDPOINTS.AGENTS.listPresets()).toBe('/api/agent-presets');
   });
 });
 

@@ -41,18 +41,18 @@ describe('sidebar toggle', () => {
 // ---------------------------------------------------------------------------
 describe('command palette', () => {
   it('starts closed', () => {
-    expect(useAppStore.getState().cmdPaletteOpen).toBe(false);
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false);
   });
 
   it('opens command palette', () => {
-    useAppStore.getState().setCmdPaletteOpen(true);
-    expect(useAppStore.getState().cmdPaletteOpen).toBe(true);
+    useAppStore.getState().setCommandPaletteOpen(true);
+    expect(useAppStore.getState().commandPaletteOpen).toBe(true);
   });
 
   it('closing does not affect sidebar state', () => {
     useAppStore.getState().setSidebarOpen(true);
-    useAppStore.getState().setCmdPaletteOpen(true);
-    useAppStore.getState().setCmdPaletteOpen(false);
+    useAppStore.getState().setCommandPaletteOpen(true);
+    useAppStore.getState().setCommandPaletteOpen(false);
     expect(useAppStore.getState().sidebarOpen).toBe(true);
   });
 });

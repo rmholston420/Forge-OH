@@ -30,4 +30,7 @@ export const SOCKET_EVENTS = {
   EVENT: 'oh_event',
   APPROVAL: 'run:approval',
   ERROR: 'run:error',
+  // Run lifecycle events (namespaced with colon)
+  RUN_START: 'run:start',
+  RUN_END: 'run:end',
 } as const;

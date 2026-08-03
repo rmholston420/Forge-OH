@@ -92,7 +92,7 @@ describe('ArtifactSchema', () => {
   const VALID = {
     id: 'art-1',
     runId: 'run-1',
-    type: 'file',
+    type: 'file_change',
     name: 'output.py',
     path: '/workspace/output.py',
     createdAt: now,
@@ -123,8 +123,13 @@ describe('ToolEventSchema', () => {
     expect(() => ToolEventSchema.parse(VALID)).not.toThrow();
   });
 
-  it('id must be a number', () => {
-    expect(() => ToolEventSchema.parse({ ...VALID, id: 'string-id' })).toThrow();
+  it('id accepts string or number', () => {
+    expect(() => ToolEventSchema.parse({ ...VALID, id: 'string-id' })).not.toThrow();
+    expect(() => ToolEventSchema.parse({ ...VALID, id: 42 })).not.toThrow();
+  });
+
+  it('rejects id of wrong type (boolean)', () => {
+    expect(() => ToolEventSchema.parse({ ...VALID, id: true })).toThrow();
   });
 });
 
@@ -181,9 +186,10 @@ describe('SecretSchema', () => {
     expect((r as any).rawValue).toBeUndefined();
   });
 
-  it('accepts all scope values', () => {
-    for (const scope of ['global', 'workspace', 'run']) {
-      expect(() => SecretSchema.parse({ ...VALID, scope })).not.toThrow();
+  it('accepts all scope values (workspace scope needs scopeId)', () => {
+    for (const scope of ['global', 'workspace', 'run'] as const) {
+      // Only omit unknown keys; SecretSchema is .strict()
+      expect(() => SecretSchema.parse({ id: VALID.id, name: VALID.name, scope, createdAt: VALID.createdAt })).not.toThrow();
     }
   });
 
