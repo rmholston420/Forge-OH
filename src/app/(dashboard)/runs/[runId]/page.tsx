@@ -26,6 +26,8 @@ import PlanTab from './tabs/PlanTab';
 import MetricsTab from './tabs/MetricsTab';
 import SecurityTab from './tabs/SecurityTab';
 import TraceTab from './tabs/TraceTab';
+import FilesTab from './tabs/FilesTab';
+import TerminalTab from './tabs/TerminalTab';
 import styles from './run-detail.module.css';
 
 // Tab definitions must stay in sync with:
@@ -279,23 +281,9 @@ export default function RunDetailPage({
         </div>
       )}
 
-      {/* Files — Phase 1 (Slice 1B) */}
-      {selectedTab === 'files' && (
-        <EmptyState
-          title="Files"
-          description="File diff view will be available in Phase 1."
-          icon="📁"
-        />
-      )}
+      {selectedTab === 'files' && <FilesTab runId={runId} />}
 
-      {/* Terminal — Phase 1 (Slice 1C) */}
-      {selectedTab === 'terminal' && (
-        <EmptyState
-          title="Terminal"
-          description="Terminal output will be available in Phase 1."
-          icon="⌨️"
-        />
-      )}
+      {selectedTab === 'terminal' && <TerminalTab runId={runId} />}
 
       {/* Browser — Phase 1 (Slice 2A) */}
       {selectedTab === 'browser' && (

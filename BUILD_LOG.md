@@ -799,3 +799,20 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   - /runs/*/browser: globe icon + "No browser activity recorded yet." empty state.
   - /runs/*/trace: 3 spans, file_editor ERROR (1ms), file_editor OK (1ms), finish OK (1ms), waterfall visible.
 - Definition of Done met for visual QA pass. No follow-up changes required.
+
+## 2026-08-03 06:00 EDT — Step 7 Slice A: Files + Terminal tabs wired
+- Stage: Step 7 (remaining OpenHands surfaces)
+- Ports touched: none new; UI wiring only
+- Files:
+  - `src/app/(dashboard)/runs/[runId]/tabs/FilesTab.tsx` (new)
+  - `src/app/(dashboard)/runs/[runId]/tabs/TerminalTab.tsx` (new)
+  - `src/app/(dashboard)/runs/[runId]/files/page.tsx` (now renders FilesTab)
+  - `src/app/(dashboard)/runs/[runId]/terminal/page.tsx` (now renders TerminalTab)
+  - `src/app/(dashboard)/runs/[runId]/page.tsx` (Files + Terminal tabs render real components)
+- Rationale: `files/` and `terminal/` subroute pages already had full functional
+  components (real hooks, real UI). Only the tabs in the main run detail were
+  hardcoded placeholders. Extracting the body into shared tab components
+  eliminates duplication and completes the run detail's Files + Terminal tabs.
+- Stop condition: Files + Terminal tabs no longer show "available in Phase 1"
+  placeholders and render the same real components as their subroutes.
+- Verified after: pending visual QA
