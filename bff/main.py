@@ -16,7 +16,7 @@ CRITICAL — two constraints that must never be changed without a migration plan
 import os
 from contextlib import asynccontextmanager
 
-import socketio
+import socketio  # type: ignore[import-untyped]
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

@@ -2,10 +2,18 @@
 // eslint-config-next@16 ships flat configs at the paths below.
 import nextCoreWebVitals from 'eslint-config-next/core-web-vitals';
 import nextTypeScript from 'eslint-config-next/typescript';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
   ...nextCoreWebVitals,
   ...nextTypeScript,
+  {
+    // Register the react-hooks plugin so our rule overrides below resolve.
+    // (eslint-config-next re-exports the rules but flat config requires the
+    // plugin object to be registered in the same config that references its
+    // rule names.)
+    plugins: { 'react-hooks': reactHooks },
+  },
   {
     // Rule tuning. We keep genuine bug-catching rules as errors but
     // downgrade style/strictness rules that don't correlate with defects
