@@ -433,3 +433,17 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - Known unrelated debt surfaced during Stage 6 verify (NOT in Stage 6 scope):
   - `pnpm type-check` reports ~50 pre-existing errors across secrets, plugins, trace, RunCard, StatusBadge, artifact/browser/event schemas. All predate Stage 6 (schema drift from earlier work). Track separately.
   - `next.config.ts` warnings: `experimental.typedRoutes` should move to `typedRoutes`; `middleware` convention deprecated in favor of `proxy`. Cosmetic; leave for a housekeeping pass.
+
+## 2026-08-03 01:00 EDT — Slice 7A CLOSED (plan / commands / artifacts derived)
+- Stage: 7A — first slice of broader Stage 7 (wrap every OpenHands surface).
+- Changed:
+  - NEW bff/services/action_reconstruction.py (build_plan, build_commands, build_artifacts)
+  - bff/routers/runs.py: replaced 3 `"stub": True` returns with real derivations from _fetch_all_events
+  - NEW bff/tests/test_action_reconstruction.py (9 tests, all passing)
+- Verified on Colossus against run b983c992-86f4-47b1-a773-2cb5020ca713:
+  - /runs/{id}/artifacts returns 2 real file_change entries for /workspace/stage4-final.txt (create + str_replace)
+  - /runs/{id}/commands returns [] correctly (this run used only file_editor, no bash)
+  - /runs/{id}/plan returns [] correctly (no task_tracker events in this run)
+  - `grep -c '"stub"'` = 0 across all three endpoints
+- Contract match: PlanNode[]/TerminalCommand[]/Artifact[] per src/lib/schemas/{plan,terminal,artifact}.ts
+- Remaining Stage 7 slices: 7B fork, 7C MCP, 7D plugins, 7E secrets, 7F traces (BFF-owned SQLite).
