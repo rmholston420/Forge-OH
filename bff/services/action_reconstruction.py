@@ -238,7 +238,7 @@ def _extract_plan_steps(observation_content: Any) -> list[dict[str, Any]]:
                 "title": str(title),
                 "label": str(title),
                 "status": _normalize_plan_status(t.get("status")),
-                "order": int(t.get("order")) if isinstance(t.get("order"), int) else idx,
+                "order": _order if isinstance((_order := t.get("order")), int) else idx,
             }
         )
     return steps

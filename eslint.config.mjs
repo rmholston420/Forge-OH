@@ -1,10 +1,7 @@
 // ESLint flat config for Next 16 + TypeScript.
-// eslint-config-next@16 ships its own flat configs at
-// `eslint-config-next/flat/core-web-vitals` and `eslint-config-next/flat/typescript`.
-// Use these directly instead of FlatCompat (which breaks on next 16's
-// circular plugin refs).
-import nextCoreWebVitals from 'eslint-config-next/flat/core-web-vitals';
-import nextTypeScript from 'eslint-config-next/flat/typescript';
+// eslint-config-next@16 ships flat configs at the paths below.
+import nextCoreWebVitals from 'eslint-config-next/core-web-vitals';
+import nextTypeScript from 'eslint-config-next/typescript';
 
 export default [
   ...nextCoreWebVitals,
@@ -17,6 +14,7 @@ export default [
       'out/**',
       'bff/**',
       'scripts/**',
+      'workspace/**',
       'src/tests/**',
       '**/*.test.ts',
       '**/*.test.tsx',
