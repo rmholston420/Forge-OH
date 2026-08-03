@@ -2522,3 +2522,9 @@ Slice F.16-UI (always-visible GPU strip):
 
 - G.1 fully green on Colossus (31.0s). Forge-OH end-to-end proof: agent read the task, wrote a new pytest case with the correct producer event shape, saved it, and the new case passes in isolation. Slice complete.
 - New: `src/tests/e2e/gpu-strip.spec.ts`. Loads `/runs`, waits for `/api/gpu` response, screenshots the strip element and the full header to `screenshots/gpu-strip-{chip,header}.png`. When run with `PLAYWRIGHT_GPU_STRIP_PUSH=1`, the spec auto-commits and pushes the screenshots to origin/main (no manual step required per user's instruction).
+
+## 2026-08-03 12:15 EDT — F.16 fully verified end-to-end + G.1 verified + screenshot pipeline
+
+- Playwright screenshot spec passes on `next start`-served build (Turbopack HMR socket blocks hydration in fresh headless Chromium; production build has no HMR). Chip + header PNGs auto-committed to `screenshots/`.
+- GpuStrip unit-label contrast bumped (var(--color-text-secondary) + opacity 0.85) so °C/%/W remain visible against dark topbar without dominating the value.
+- F.16 slice CLOSED. G.1 slice CLOSED. F.17 CUT.

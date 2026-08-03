@@ -36,7 +36,8 @@
 }
 
 .unit {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary, var(--color-text-muted));
+  opacity: 0.85;
   font-size: 0.85em;
   margin-left: 1px;
 }
