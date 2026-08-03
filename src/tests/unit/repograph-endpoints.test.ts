@@ -1,7 +1,7 @@
 /**
  * src/tests/unit/repograph-endpoints.test.ts
  *
- * Covers: src/lib/api/endpoints.ts \u2014 REPOGRAPH namespace.
+ * Covers: src/lib/api/endpoints.ts — REPOGRAPH namespace.
  * Every route mirrors one in bff/routers/repograph.py (Slice D.4).
  */
 import { describe, it, expect } from 'vitest';

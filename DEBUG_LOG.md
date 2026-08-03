@@ -67,18 +67,18 @@
 - Workaround in e2e: scripts/e2e-run.ts now expands `{{TS}}` in PROMPT to a unique timestamp so successive e2e runs don't collide.
 - Files changed: scripts/e2e-run.ts (PROMPT template variable).
 
-## 2026-08-03 00:07 EDT \u2014 Client feature flags always false in browser bundles
+## 2026-08-03 00:07 EDT — Client feature flags always false in browser bundles
 - Symptom: With NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true in .env.local and Next confirming the file at startup ("Environments: .env.local"), the NewRunComposer.tsx did not render the {approvalGateOn && ...} block. Playwright dump of the modal DOM showed no requireApproval checkbox and no hidden input for it. Purging .next/ and restarting did not fix it.
 - Affected stage/plugin/port: Stage 1E (Approval Gate), src/lib/feature-flags/index.ts, all consumers of useFeatureFlag/isFeatureEnabled inside Client Components.
 - Root cause: readEnvFlag() used a computed lookup: process.env[`NEXT_PUBLIC_FEATURE_${flag}`]. Next.js only inlines *literal* process.env.NEXT_PUBLIC_* reads into client bundles. Any computed key access returns undefined in the browser. Server components worked; client components silently disabled every flag.
 - Fix: Replace the computed lookup with a static Record<FeatureFlag, string|undefined> in src/lib/feature-flags/index.ts, one literal process.env.NEXT_PUBLIC_FEATURE_<NAME> per flag, so Next inlines them all at compile time. readEnvFlag() now just returns STATIC_FLAG_VALUES[flag].
 - Files changed: src/lib/feature-flags/index.ts.
 
-## 2026-08-03 00:09 EDT \u2014 Reject doesn't reach a terminal state on its own
-- Symptom: Stage 1E e2e leg 2 verified respond_to_confirmation {accept:false} returned 200 but the run then sat in agent-server 'idle' \u2192 BFF 'queued' indefinitely.
+## 2026-08-03 00:09 EDT — Reject doesn't reach a terminal state on its own
+- Symptom: Stage 1E e2e leg 2 verified respond_to_confirmation {accept:false} returned 200 but the run then sat in agent-server 'idle' → BFF 'queued' indefinitely.
 - Affected stage/plugin/port: Stage 1E (Approval Gate), bff/routers/runs.py reject_run().
 - Root cause: agent-server's response to a rejected confirmation is to abort the tool call and return the conversation loop to idle. There is no terminal-on-reject transition. From the user's POV the run is still open.
-- Fix: reject_run() now POSTs to /interrupt after respond_to_confirmation. /interrupt yields 400 when the conversation is already idle/finished; that branch is tolerated. Successful interrupt drives execution_status to 'paused' (agent-server's version of a hard-cancel state). BFF status map already routes paused\u2192paused, so the UI shows a paused run that can be resumed or fully stopped. This matches how OpenHands models cancellation.
+- Fix: reject_run() now POSTs to /interrupt after respond_to_confirmation. /interrupt yields 400 when the conversation is already idle/finished; that branch is tolerated. Successful interrupt drives execution_status to 'paused' (agent-server's version of a hard-cancel state). BFF status map already routes paused→paused, so the UI shows a paused run that can be resumed or fully stopped. This matches how OpenHands models cancellation.
 - Files changed: bff/routers/runs.py.
 
 ## 2026-08-03 05:19 EDT — Multiple pages rendering as unstyled browser defaults
@@ -189,7 +189,7 @@ dep-adding slices).
 
 **Affected stage/plugin/port:** D.4 endpoint `GET /api/repograph/search`, backed by `Neo4jStore.search_by_name` (openhands_tools_ext/repograph/store.py).
 
-**Root cause:** The search Cypher only matched `Symbol.name`, but users naturally search interchangeably by symbol name AND filename ("where is the run_metadata thing?"). `run_metadata` is not the name of any symbol \u2014 it's a segment of a *filename*. So the search legitimately returned nothing but the UX is wrong.
+**Root cause:** The search Cypher only matched `Symbol.name`, but users naturally search interchangeably by symbol name AND filename ("where is the run_metadata thing?"). `run_metadata` is not the name of any symbol — it's a segment of a *filename*. So the search legitimately returned nothing but the UX is wrong.
 
 **Fix applied:** Widened the search predicate to `WHERE toLower(s.name) CONTAINS toLower($q) OR toLower(s.rel_path) CONTAINS toLower($q)`. Now filename substring matches also surface. Also updated the unit test in `openhands_tools_ext/tests/test_store.py::TestReads::test_search_by_name_shape` to assert both branches of the OR are in the Cypher.
 
@@ -201,10 +201,31 @@ dep-adding slices).
 
 **Symptom:** `AssertionError: expected Blob { size: 12, type: 'text/plain;charset=utf-8' } to be an instance of Blob`. The received object IS a Blob (same class name, same shape), it just fails `expect(blob).toBeInstanceOf(Blob)` in vitest+jsdom.
 
-**Affected stage/plugin/port:** Not RepoGraph. Existed before Slice D. Verified by `git stash && npx vitest run src/tests/unit/lib-api-client.test.ts` on 2026-08-03 07:51 EDT \u2014 same 1 failure/9 pass regardless of D.5 changes.
+**Affected stage/plugin/port:** Not RepoGraph. Existed before Slice D. Verified by `git stash && npx vitest run src/tests/unit/lib-api-client.test.ts` on 2026-08-03 07:51 EDT — same 1 failure/9 pass regardless of D.5 changes.
 
 **Root cause (suspected):** jsdom's global `Blob` and the `Blob` returned by our `bffDownload` come from different realms (undici polyfill vs. jsdom's own `Blob`). `instanceof` fails across realms even when the shape is identical. This is a common vitest+jsdom+undici trap.
 
 **Fix (deferred):** Change the assertion to `expect(blob).toBeDefined()` and `expect(blob.size).toBe(...)` or set up `Blob` to point at a single realm in `vitest.setup.ts`. Not fixing right now because it's unrelated to RepoGraph and everything downstream still works at runtime.
 
 **Files potentially involved:** src/lib/api/client.ts (bffDownload impl), src/tests/unit/lib-api-client.test.ts.
+
+## 2026-08-03 08:04 EDT — JSX text nodes rendered literal `\u00b7` / `\u2026` instead of glyphs
+
+**Symptom:** Frontend RepoGraph panel showed literal `\u00b7` and `\u2026` strings in the UI where middle dots and ellipses were meant. Also affected `PORTING_LEDGER.md`, `BUILD_LOG.md`, `DEBUG_LOG.md`, and two unit test files where the escapes appeared inside markdown or JSX text nodes rather than JS/TS string literals.
+
+**Affected stage/plugin/port:** Slice D.5 frontend — `src/components/domain/RepoGraphPanel.tsx` and several unit-test/doc files.
+
+**Root cause:** `\uXXXX` escape sequences are a **JS string-literal syntax only**. Inside JSX text (children of a tag) and inside markdown, the backslash-u sequence is treated as literal ASCII text and never converted to the unicode codepoint. Sequences like `<p>foo \u00b7 bar</p>` render six characters, not `foo · bar`.
+
+**Fix:** Replaced every `\uXXXX` in JSX text nodes and markdown with the actual UTF-8 glyph (`·`, `—`, `…`). Sequences inside quoted JS/TS string literals (e.g. `'Press keys\u2026'`, `'\u2022'.repeat(12)`) are correct and were left alone.
+
+**Files changed:**
+- src/components/domain/RepoGraphPanel.tsx
+- src/features/repograph/api.ts (docstring text)
+- src/tests/unit/RepoGraphPanel.test.tsx (assertion strings against rendered text)
+- src/tests/unit/repograph-endpoints.test.ts (comments)
+- PORTING_LEDGER.md, BUILD_LOG.md, DEBUG_LOG.md
+
+**Verification:** `npx vitest run src/tests/unit/RepoGraphPanel.test.tsx src/tests/unit/repograph-endpoints.test.ts` → 14/14 pass after fix (assertions updated to match real glyphs).
+
+**Lesson for future slices:** whenever writing JSX text or markdown, use the literal glyph. Reserve `\uXXXX` for JS/TS string literals only.

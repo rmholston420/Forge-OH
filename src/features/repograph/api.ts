@@ -4,7 +4,7 @@
  * BFF calls for the RepoGraph feature (Slice D).
  *
  * NOTE: RepoGraph endpoints return unwrapped JSON (no {data: ...} envelope),
- * unlike observability/runs/etc. This is intentional \u2014 the router is
+ * unlike observability/runs/etc. This is intentional — the router is
  * plain-typed with Pydantic response models.
  */
 import { bffGet, bffPost } from '@/lib/api/client';

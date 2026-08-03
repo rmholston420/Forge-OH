@@ -293,30 +293,30 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - Screenshot: scripts/debug-out/e2e-06-files-tab.png shows the file rendered in the Files tab
 - Stage 4 is fully CLOSED (backend + frontend end-to-end).
 
-## 2026-08-02 23:38 EDT \u2014 Stage 5: Run lifecycle controls (backend wired, frontend wired)
+## 2026-08-02 23:38 EDT — Stage 5: Run lifecycle controls (backend wired, frontend wired)
 - Stage: 5 (build)
 - Backend (bff/routers/runs.py): replaced 5 stubs (pause/resume/stop/approve/reject) with real agent-server calls via new _call_lifecycle() helper.
-  - pause  \u2192 POST /api/conversations/{cid}/pause
-  - resume \u2192 POST /api/conversations/{cid}/run  (agent-server has no /resume; /run restarts from paused|idle)
-  - stop   \u2192 POST /api/conversations/{cid}/interrupt
-  - approve \u2192 POST /api/conversations/{cid}/events/respond_to_confirmation  {accept:true}
-  - reject  \u2192 POST /api/conversations/{cid}/events/respond_to_confirmation  {accept:false,reason?}
-  - 404 preserved; anything else \u2192 502.
+  - pause  → POST /api/conversations/{cid}/pause
+  - resume → POST /api/conversations/{cid}/run  (agent-server has no /resume; /run restarts from paused|idle)
+  - stop   → POST /api/conversations/{cid}/interrupt
+  - approve → POST /api/conversations/{cid}/events/respond_to_confirmation  {accept:true}
+  - reject  → POST /api/conversations/{cid}/events/respond_to_confirmation  {accept:false,reason?}
+  - 404 preserved; anything else → 502.
 - Frontend:
   - src/features/runs/api.ts: added pauseRun/resumeRun/stopRun/approveRun/rejectRun.
   - src/features/runs/hooks.ts: added usePauseRun/useResumeRun/useStopRun/useApproveRun/useRejectRun (each invalidates list + detail).
   - src/components/domain/RunDetailHeader.tsx: added onReject prop, added \u2717 Reject button in the awaiting-approval group, added busy=disabled for all controls.
   - src/app/(dashboard)/runs/[runId]/page.tsx: wired all five mutations; the Pause button toggles pause/resume based on status.
-- Not yet e2e-verified in this commit. Verification (pause/resume/stop) queued as next step; approve/reject verified via curl only \u2014 confirmation-policy UX is Step 1E (Approval Gate) scope.
+- Not yet e2e-verified in this commit. Verification (pause/resume/stop) queued as next step; approve/reject verified via curl only — confirmation-policy UX is Step 1E (Approval Gate) scope.
 - ADR: chose option (a) per action plan \u00a7Step 5 DoD ("pause a running task, confirm at agent-server level, resume, confirm it continues"). Approve/reject wiring is done and correct; end-to-end UI verification of approve/reject is deferred to Step 1E where confirmation policy is exposed at run-start.
 
-## 2026-08-02 23:54 EDT \u2014 Stage 5 CLOSED \u2014 lifecycle e2e verified
+## 2026-08-02 23:54 EDT — Stage 5 CLOSED — lifecycle e2e verified
 - Stage: 5 (close)
 - End-to-end verification on Colossus with real run 174218ce-bddb-44d4-89a2-838d2bd7d0fd (long bash loop):
   - initial exec_status = running
-  - pause  \u2192 agent-server returned success:true, exec_status flipped to 'paused' within 9ms of BFF POST.
-  - resume \u2192 BFF blocked 4.7s while the last LLM turn finished unwinding, then /run succeeded, exec_status returned to 'running', and the bash loop continued to completion (exec_status ended at 'finished').
-  - stop (from paused|finished) \u2192 no-op with note='already terminal', returns ok:true; idempotent across repeated presses.
+  - pause  → agent-server returned success:true, exec_status flipped to 'paused' within 9ms of BFF POST.
+  - resume → BFF blocked 4.7s while the last LLM turn finished unwinding, then /run succeeded, exec_status returned to 'running', and the bash loop continued to completion (exec_status ended at 'finished').
+  - stop (from paused|finished) → no-op with note='already terminal', returns ok:true; idempotent across repeated presses.
   - approve/reject verified via smoke curl earlier: BFF forwards to /events/respond_to_confirmation, 404/422/409 pass through with correct HTTP codes.
 - Definition of Done met per action plan \u00a7Step 5:
   1. Zero stubs remaining in pause_run/resume_run/stop_run/approve_run/reject_run. \u2713
@@ -325,13 +325,13 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - Refinements folded in during Stage 5 build:
   - 422 (bad UUID) passes through as 422 instead of 502.
   - 409 (already running, or interrupt while non-running) passes through as 409.
-  - resume polls execution_status with 20s deadline to handle the pause\u2192unwind race.
+  - resume polls execution_status with 20s deadline to handle the pause→unwind race.
   - stop short-circuits when conversation is not in an interruptible state, returning ok:true.
 - Files touched: bff/routers/runs.py, src/features/runs/api.ts, src/features/runs/hooks.ts, src/components/domain/RunDetailHeader.tsx, src/app/(dashboard)/runs/[runId]/page.tsx.
 - No ADR required (implementation followed agent-server semantics; approve/reject UI verification deferred to Step 1E per action plan, ADR not applicable here).
 
-## 2026-08-03 00:02 EDT \u2014 Stage 1E: APPROVAL_GATE feature flag \u2014 backend + frontend wired
-- Stage: 1E (build) \u2014 confirmation-policy UX for the pre-existing approve/reject endpoints (Stage 5).
+## 2026-08-03 00:02 EDT — Stage 1E: APPROVAL_GATE feature flag — backend + frontend wired
+- Stage: 1E (build) — confirmation-policy UX for the pre-existing approve/reject endpoints (Stage 5).
 - Backend (bff/routers/runs.py):
   - CreateRunRequest gained requireApproval: bool = False.
   - In create_run(): after the conversation is created and BEFORE POST /run, if requireApproval=true, POST /api/conversations/{cid}/confirmation_policy with {"policy":{"kind":"AlwaysConfirm"}}. Failure is logged as warning; run still starts (soft-fail, since the confirmation policy is best-effort UX not a security invariant).
@@ -342,46 +342,46 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
 - Env: .env.local.example now suggests NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
 - Verification pending: needs an e2e run created with requireApproval=true. Expect conversation to enter waiting_for_confirmation at first tool call, then approve/reject buttons to close the loop.
 
-## 2026-08-03 00:07 EDT \u2014 Stage 1E hotfix: static feature-flag map for client bundles
-- Stage: 1E (debug during verify) \u2014 see DEBUG_LOG.md entry for the same timestamp.
+## 2026-08-03 00:07 EDT — Stage 1E hotfix: static feature-flag map for client bundles
+- Stage: 1E (debug during verify) — see DEBUG_LOG.md entry for the same timestamp.
 - Change: src/lib/feature-flags/index.ts now uses a static Record<FeatureFlag, string|undefined> populated with one literal process.env.NEXT_PUBLIC_FEATURE_<NAME> read per flag. This is the only pattern Next.js will inline into client bundles.
 - Effect: All flags now respond to NEXT_PUBLIC_FEATURE_* in .env.local from Client Components (previously only Server Components saw them via runtime process.env).
 - Verification: pending Playwright re-run after Next restart.
 
-## 2026-08-03 00:09 EDT \u2014 Stage 1E hotfix: reject follows through with /interrupt
+## 2026-08-03 00:09 EDT — Stage 1E hotfix: reject follows through with /interrupt
 - Stage: 1E (bug found during verify).
 - Change: bff/routers/runs.py reject_run() now performs respond_to_confirmation + /interrupt unconditionally. /interrupt 400 (already idle) is tolerated; response now returns status:"rejected" with an agent_server object containing both sub-calls' outcomes.
 - Verification: pending re-run of scripts/e2e-approval.ts.
 
-## 2026-08-03 00:14 EDT \u2014 Stage 1E CLOSED: APPROVAL_GATE verified e2e on Colossus
-- Stage: 1E (Approval Gate) \u2014 Definition of Done met.
+## 2026-08-03 00:14 EDT — Stage 1E CLOSED: APPROVAL_GATE verified e2e on Colossus
+- Stage: 1E (Approval Gate) — Definition of Done met.
 - Verified via scripts/e2e-approval.ts:
   - Leg 1 (approve): run 0070c8a8-86fe-4887-86d3-8669432cb900 reached awaiting_approval in 7576ms, POST /approve returned 200, execution_status transitioned to 'running' in 5ms.
   - Leg 2 (reject): run e008be8d-7975-4fd0-889a-c029f0265653 reached awaiting_approval in 9092ms, POST /reject returned {status:"rejected", agent_server:{respond:{success:true}, interrupt:"interrupted"}}, execution_status transitioned to 'paused' in 4ms.
   - Leg 3 (UI): NewRunComposer modal renders "Require approval before each tool call (HITL)" checkbox when NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
 - Files changed this stage:
-  - bff/routers/runs.py \u2014 CreateRunRequest.requireApproval, confirmation_policy call in create_run, reject_run interrupts after decline.
-  - src/lib/schemas/run.ts \u2014 requireApproval added.
-  - src/components/domain/NewRunComposer.tsx \u2014 gated checkbox.
-  - src/app/(dashboard)/runs/[runId]/page.tsx \u2014 Awaiting Approval banner reacts to run.status.
-  - src/lib/feature-flags/index.ts \u2014 static literal map so NEXT_PUBLIC_* inline in client bundles.
-  - .env.local.example \u2014 sample NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
+  - bff/routers/runs.py — CreateRunRequest.requireApproval, confirmation_policy call in create_run, reject_run interrupts after decline.
+  - src/lib/schemas/run.ts — requireApproval added.
+  - src/components/domain/NewRunComposer.tsx — gated checkbox.
+  - src/app/(dashboard)/runs/[runId]/page.tsx — Awaiting Approval banner reacts to run.status.
+  - src/lib/feature-flags/index.ts — static literal map so NEXT_PUBLIC_* inline in client bundles.
+  - .env.local.example — sample NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
 - Stop condition honored: /runs POST with requireApproval:true drives conversation to waiting_for_confirmation; approve resumes; reject hard-cancels via /interrupt. No cloud/multi-user coupling introduced.
-- Next: Stage 6 (Workspaces \u2014 per-conversation working_dir isolation).
+- Next: Stage 6 (Workspaces — per-conversation working_dir isolation).
 
-## 2026-08-03 00:24 EDT \u2014 Stage 6 (Workspaces) backend: passthrough to agent-server
-- Stage: 6 (Workspaces \u2014 backend half).
-- Discovery: openhands 1.40.0 agent-server exposes GET/POST/DELETE /api/workspaces plus /api/workspaces/parents. WorkspaceItem schema is minimal: {id, name, path, parentPath?}. No status, envVars, or disk-usage \u2014 those were all made-up fields in the BFF stub.
+## 2026-08-03 00:24 EDT — Stage 6 (Workspaces) backend: passthrough to agent-server
+- Stage: 6 (Workspaces — backend half).
+- Discovery: openhands 1.40.0 agent-server exposes GET/POST/DELETE /api/workspaces plus /api/workspaces/parents. WorkspaceItem schema is minimal: {id, name, path, parentPath?}. No status, envVars, or disk-usage — those were all made-up fields in the BFF stub.
 - Changes to bff/routers/workspaces.py (full rewrite):
   - Dropped in-memory _WORKSPACES.
-  - Dropped docker/e2b/modal from type enum \u2014 now Literal["local"] only (kept the field so existing UI Zod schema doesn't 422 during transition; scheduled to drop in the frontend cleanup commit).
+  - Dropped docker/e2b/modal from type enum — now Literal["local"] only (kept the field so existing UI Zod schema doesn't 422 during transition; scheduled to drop in the frontend cleanup commit).
   - GET/GET-by-id/POST/PATCH/DELETE now proxy to agent-server. PATCH is emulated as delete+re-add since agent-server has no update endpoint.
   - New workspace paths default to $FORGE_WORKSPACES_ROOT (default ~/dev/forge-oh/workspaces/<slug>) when the caller omits path.
   - test_workspace_connection() is now a real check: path exists, is dir, is read+writable by BFF.
-  - reset_workspace endpoint removed \u2014 destructive, not in DoD.
+  - reset_workspace endpoint removed — destructive, not in DoD.
 - Changes to bff/routers/runs.py create_run():
   - Now looks up body.workspaceId via GET /api/workspaces on agent-server and uses that workspace's path as working_dir. Falls back to _WORKSPACE_ROOT/pending only if lookup fails.
-  - This makes the UI's workspace picker actually control where the agent operates \u2014 the point of the whole slice.
+  - This makes the UI's workspace picker actually control where the agent operates — the point of the whole slice.
 - Files changed: bff/routers/workspaces.py, bff/routers/runs.py.
 - Verification pending: BFF restart on Colossus, then curl smoke of /api/workspaces + POST/DELETE round-trip.
 
@@ -888,7 +888,7 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
 - Root cause (real this time, verified from Playwright's captured DOM):
   the /plugins Next.js dev overlay dialog showed
   `Runtime TypeError: Cannot read properties of undefined (reading 'map')`
-  at src/components/domain/PluginCard.tsx:71 \u2014
+  at src/components/domain/PluginCard.tsx:71 —
   `plugin.capabilities.map(...)`. The BFF's `_to_plugin` reshaper never
   populated `transport`, `capabilities`, `toolCount` (all required or
   read by the frontend Plugin schema/component). Fine when
@@ -900,21 +900,21 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
      forms), `toolCount` (from `tool_count` or `len(tools)`), plus
      `command/args/url/author` passthroughs.
   2. `PluginCard.tsx` treats every optional field as possibly missing
-     with `Array.isArray` guards and typed defaults \u2014 so even a
+     with `Array.isArray` guards and typed defaults — so even a
      malformed payload never crashes the page.
 - E2E: replaced my earlier "compile race" retry with a direct
   assertion that no `Runtime *Error` dialog is on screen. That would
   have caught this immediately.
-- Tests: added `TestToPluginReshaper` \u2014 4 pure-Python cases proving
+- Tests: added `TestToPluginReshaper` — 4 pure-Python cases proving
   defaults, dict/str normalisation, transport inference. All pass.
 - Files:
   - `bff/routers/plugins.py::_to_plugin`
-  - `bff/tests/test_plugins_router.py` \u2014 TestToPluginReshaper
+  - `bff/tests/test_plugins_router.py` — TestToPluginReshaper
   - `src/components/domain/PluginCard.tsx`
-  - `src/tests/e2e/nav-routes.spec.ts` \u2014 dev-overlay dialog assertion
-  - `src/tests/e2e/plugins.spec.ts` \u2014 removed placeholder-retry hack
+  - `src/tests/e2e/nav-routes.spec.ts` — dev-overlay dialog assertion
+  - `src/tests/e2e/plugins.spec.ts` — removed placeholder-retry hack
 
-## 2026-08-03 06:31 EDT \u2014 DEBUG_LOG entry (see DEBUG_LOG.md)
+## 2026-08-03 06:31 EDT — DEBUG_LOG entry (see DEBUG_LOG.md)
 
 2026-08-03 06:49 EDT — Slice C.1: live bash streaming (SSE relay)
 - Stage: Step 7 Slice C.1 (post-metrics live tooling)
@@ -1163,7 +1163,7 @@ Layer, tag extraction only.
 - `(:Symbol {repo, rel_path, name, category, start_line, end_line, parent,
              info, pagerank})`
 - `(:File)-[:CONTAINS]->(:Symbol)`
-- `(:Symbol)-[:METHOD_OF]->(:Symbol)` (method \u2192 its class)
+- `(:Symbol)-[:METHOD_OF]->(:Symbol)` (method → its class)
 - `(:File)-[:CALLS {name, line}]->(:Symbol)` (resolved refs)
 - `(:File)-[:UNRESOLVED_CALL {name, line}]->(:File)` (self-loop; useful
   later for cross-repo linking / import resolution)
@@ -1180,7 +1180,7 @@ Forge-OH-indexed repos + Kosmos data side by side without collision.
 **Reference resolution:**
 - Intra-file DEFs preferred (most likely intra-module call).
 - Otherwise all global matches for the name become CALLS edges.
-- No match \u2192 UNRESOLVED_CALL self-loop on the source file.
+- No match → UNRESOLVED_CALL self-loop on the source file.
 
 **PageRank:**
 - Pure-Python power iteration (no numpy/scipy). Dropped `networkx` from
@@ -1193,12 +1193,12 @@ Indexed Forge-OH itself in 0.64s. Results:
   123 method_of edges.
 - Repo key: 36eea8a99381.
 - Top PageRank result: `run_metadata_store.get` at 0.1375 (the SQLite
-  accessor every router touches). Sanity check passes \u2014 that IS the hub.
+  accessor every router touches). Sanity check passes — that IS the hub.
 - `parser._text` from the D.2 module appears in the top 10, proving
   cross-language (Python + TS) indexing works.
 
 **Deliberate deviations from ozyyshr/RepoGraph:**
-- No dependency on `networkx` (too heavy for one call) \u2014 pure-Python
+- No dependency on `networkx` (too heavy for one call) — pure-Python
   PageRank instead.
 - Reference resolution is symbolic-only (no exec of imports).
 - Multi-repo aware from day 1 (upstream indexes one repo per process).
@@ -1211,7 +1211,7 @@ Indexed Forge-OH itself in 0.64s. Results:
 - openhands_tools_ext/tests/test_store.py
 
 **Files modified:**
-- bff/requirements.txt (removed `networkx>=3.2,<4` \u2014 no longer needed).
+- bff/requirements.txt (removed `networkx>=3.2,<4` — no longer needed).
 
 **Checks:**
 - ruff check + ruff format on `openhands_tools_ext/`: PASS.
@@ -1230,7 +1230,7 @@ Indexed Forge-OH itself in 0.64s. Results:
 - [x] 24 new unit tests (13 index + 11 store), all green.
 - [x] End-to-end smoke on real repo.
 
-**Next:** D.4 \u2014 6 BFF endpoints wiring these queries into HTTP.
+**Next:** D.4 — 6 BFF endpoints wiring these queries into HTTP.
 
 ## 2026-08-03 07:33 EDT — Step 8 Slice D.4: six RepoGraph BFF endpoints
 
@@ -1238,21 +1238,21 @@ Indexed Forge-OH itself in 0.64s. Results:
 (Recommendation #1 sub-slice 4/5).
 
 **Endpoints added under `/api/repograph`:**
-- `POST /index` (IndexRequest) \u2014 build/refresh graph for a workspace path.
+- `POST /index` (IndexRequest) — build/refresh graph for a workspace path.
   Idempotent (uses D.3's replace_repo). Also registers the workspace so
   `co_changed` can find the on-disk repo later. Returns repo_key + stats.
-- `GET  /search?repo_key&q&limit=50` \u2014 case-insensitive substring match on
+- `GET  /search?repo_key&q&limit=50` — case-insensitive substring match on
   Symbol.name; results ordered by pagerank DESC, name ASC.
-- `GET  /callers?repo_key&name&rel_path?&limit=50` \u2014 files calling a
+- `GET  /callers?repo_key&name&rel_path?&limit=50` — files calling a
   symbol. rel_path is optional; without it we accept any file that defines
   a symbol with the given name.
-- `GET  /callees?repo_key&rel_path&limit=100` \u2014 all symbols called from a
+- `GET  /callees?repo_key&rel_path&limit=100` — all symbols called from a
   file; ordered by callee pagerank DESC.
-- `GET  /co_changed?repo_key&rel_path&window=50&limit=20` \u2014 files that
+- `GET  /co_changed?repo_key&rel_path&window=50&limit=20` — files that
   historically change together with the target. This endpoint does NOT
   touch Neo4j; it shells out to `git log` / `git show` against the
   workspace registered for repo_key.
-- `POST /context_bundle` (ContextBundleRequest) \u2014 PageRank-ranked context
+- `POST /context_bundle` (ContextBundleRequest) — PageRank-ranked context
   symbols for a set of seed files. Returns the top symbols reachable from
   the seeds (either defined in them or called by them). This is the
   read-list the D.5 frontend Trace panel and the OpenHands tool will use.
@@ -1264,7 +1264,7 @@ Indexed Forge-OH itself in 0.64s. Results:
 - Return typed Pydantic models so the frontend gets a stable contract.
 
 **New service module:**
-- `bff/services/repograph_registry.py` \u2014 thread-safe in-memory dict
+- `bff/services/repograph_registry.py` — thread-safe in-memory dict
   mapping repo_key -> absolute workspace path. Populated by `POST /index`.
   If the BFF restarts, the caller re-indexes. Persistence to SQLite is a
   straightforward follow-up if we need durability, but not needed for MVP
@@ -1272,7 +1272,7 @@ Indexed Forge-OH itself in 0.64s. Results:
 
 **Tests:**
 - Extended `bff/tests/test_repograph_router.py` from 8 tests to 26 total.
-  - `TestRejectsWhenDisabled` (parametrized 6\u00d7): every endpoint 503s when
+  - `TestRejectsWhenDisabled` (parametrized 6×): every endpoint 503s when
     the feature flag is off.
   - `TestIndexEndpoint`: writes graph + registers workspace on success;
     400s for nonexistent path.
@@ -1287,7 +1287,7 @@ Indexed Forge-OH itself in 0.64s. Results:
   - `TestRegistry`: registry roundtrip.
 
 **Real-repo smoke:** deferred to Colossus (needs a live Neo4j to exercise
-end-to-end). Local mirror uses mocked Neo4j via MagicMock \u2014 same pattern
+end-to-end). Local mirror uses mocked Neo4j via MagicMock — same pattern
 the D.3 store tests use.
 
 **Files added:**
@@ -1302,7 +1302,7 @@ the D.3 store tests use.
 - pytest bff/tests/test_repograph_router.py: 26/26 PASS in 0.87s.
 - pytest openhands_tools_ext/tests/: 51/51 PASS in 0.21s.
 - Wider BFF suite (excluding pre-existing mcp/plugins/observability
-  failures): 96 pass \u2014 no regressions.
+  failures): 96 pass — no regressions.
 
 **DoD for D.4:**
 - [x] All six endpoints wired.
@@ -1312,7 +1312,7 @@ the D.3 store tests use.
 - [x] 18 new router tests + registry tests.
 - [x] End-to-end mocked git flow verifies co_changed correctness.
 
-**Next:** D.5 \u2014 frontend Trace RepoGraph panel + ADR-0006 +
+**Next:** D.5 — frontend Trace RepoGraph panel + ADR-0006 +
 PORTING_LEDGER + SESSION_HANDOFF close.
 
 ## 2026-08-03 07:52 EDT — Step 8 Slice D.4 fixup + D.5: frontend Trace panel, ADR-0006, PORTING_LEDGER
@@ -1322,33 +1322,33 @@ OR Symbol.rel_path. Verified on Colossus: `q=run_metadata` now returns
 5 symbols from run_metadata_store.py including the class + methods.
 Logged in DEBUG_LOG.md.
 
-**Slice D.5 \u2014 sub-slice 5 of 5 for Recommendation #1:**
+**Slice D.5 — sub-slice 5 of 5 for Recommendation #1:**
 
 **Frontend feature module:**
-- `src/lib/schemas/repograph.ts` \u2014 Zod schemas + inferred TS types for
+- `src/lib/schemas/repograph.ts` — Zod schemas + inferred TS types for
   the 5 RepoGraph payload shapes (Symbol, Caller, Callee,
   CoChangedResponse, IndexResponse, Health).
-- `src/features/repograph/api.ts` \u2014 typed calls over `bffGet`/`bffPost`.
+- `src/features/repograph/api.ts` — typed calls over `bffGet`/`bffPost`.
   RepoGraph endpoints return unwrapped JSON (no `{data:...}` envelope),
   the code notes this.
-- `src/features/repograph/hooks.ts` \u2014 TanStack Query hooks:
+- `src/features/repograph/hooks.ts` — TanStack Query hooks:
   `useRepoGraphHealth`, `useIndexWorkspace`, `useSymbolSearch`,
   `useCallers`, `useCallees`, `useCoChanged`, `useContextBundle`.
-- `src/lib/api/endpoints.ts` \u2014 new `ENDPOINTS.REPOGRAPH` namespace with
+- `src/lib/api/endpoints.ts` — new `ENDPOINTS.REPOGRAPH` namespace with
   URL-encoded builders for all six endpoints.
-- `src/lib/query/query-keys.ts` \u2014 `QUERY_KEYS.repograph` with stable
+- `src/lib/query/query-keys.ts` — `QUERY_KEYS.repograph` with stable
   keys per endpoint (contextBundle sorts seeds so key equality is
   order-independent).
-- `src/lib/feature-flags/flags.ts` + `src/lib/feature-flags/index.ts` \u2014
+- `src/lib/feature-flags/flags.ts` + `src/lib/feature-flags/index.ts` —
   new `REPOGRAPH` flag (`NEXT_PUBLIC_FEATURE_REPOGRAPH`). Panel gates on
   it and renders a stub with instructions when off.
 
 **Component:**
-- `src/components/domain/RepoGraphPanel.tsx` (+ .module.css) \u2014
+- `src/components/domain/RepoGraphPanel.tsx` (+ .module.css) —
   dark-first panel with tokens. Layout:
   1. Header with title + Neo4j health badge (green/red).
   2. Workspace path input + Index button (disabled unless Neo4j healthy).
-  3. Stats line: `repo <key> \u00b7 files N \u00b7 symbols N \u00b7 calls N`.
+  3. Stats line: `repo <key> · files N · symbols N · calls N`.
   4. Search input; results list ranked by PageRank.
   5. On symbol select: three-column detail view showing Callers,
      Callees, and Co-changed files.
@@ -1360,33 +1360,33 @@ Logged in DEBUG_LOG.md.
   "what does the repo look like around the code it touched".
 
 **Tests:**
-- `src/tests/unit/repograph-endpoints.test.ts` \u2014 10 tests covering
+- `src/tests/unit/repograph-endpoints.test.ts` — 10 tests covering
   every `ENDPOINTS.REPOGRAPH.*` URL builder, including URL encoding of
   paths, optional rel_path handling, and default parameters.
-- `src/tests/unit/RepoGraphPanel.test.tsx` \u2014 4 tests using MSW to stub
-  all six endpoints and drive a full index \u2192 search \u2192 select \u2192
+- `src/tests/unit/RepoGraphPanel.test.tsx` — 4 tests using MSW to stub
+  all six endpoints and drive a full index → search → select →
   callers/callees/co_changed flow. Covers flag-off stub too.
-- `src/tests/unit/feature-flags.test.ts` \u2014 assertion bumped from 20 to
+- `src/tests/unit/feature-flags.test.ts` — assertion bumped from 20 to
   21 to reflect the new REPOGRAPH flag.
 
 **Documentation:**
-- `docs/adr/006-repograph.md` \u2014 records the structural-port decision
+- `docs/adr/006-repograph.md` — records the structural-port decision
   (Option A), storage choice (DozerDB), feature-flag gating, PageRank
   implementation, search predicate, trade-offs, and follow-ups.
-- `PORTING_LEDGER.md` \u2014 first entry created. RepoGraph upstream
+- `PORTING_LEDGER.md` — first entry created. RepoGraph upstream
   (`6c3977d8`, MIT) marked as `reference-only`; explicit note that no
   upstream code was copied and the reasons why.
-- `SESSION_HANDOFF.md` \u2014 overwritten to reflect Rec #1 complete.
+- `SESSION_HANDOFF.md` — overwritten to reflect Rec #1 complete.
 
 **Checks:**
 - ruff/format on touched Python files: clean.
 - `npx tsc --noEmit`: 0 errors on new frontend code.
-- `npx eslint src/features/repograph src/components/domain/RepoGraphPanel.tsx \u2026`:
+- `npx eslint src/features/repograph src/components/domain/RepoGraphPanel.tsx …`:
   0 errors (2 pre-existing warnings in TraceTab about unused imports).
 - `npx vitest run src/tests/unit/RepoGraphPanel.test.tsx src/tests/unit/repograph-endpoints.test.ts`:
   14/14 PASS.
 - Full vitest suite: 813 pass / 1 pre-existing unrelated failure
-  (bffDownload Blob instanceof \u2014 jsdom quirk, was failing before D.5).
+  (bffDownload Blob instanceof — jsdom quirk, was failing before D.5).
 
 **DoD for Rec #1 (D.1..D.5):**
 - [x] Neo4j driver + health endpoint (D.1).
@@ -1401,3 +1401,29 @@ Logged in DEBUG_LOG.md.
 
 **Next:** Recommendation #2 or #3 from the improvements research
 report, per user direction.
+
+## 2026-08-03 08:04 EDT — Slice D.5 hotfix: JSX unicode + Playwright E2E test
+
+**Hotfix (bug shipped in 2245a8d):** JSX text nodes and markdown files
+contained literal `\u00b7` / `\u2026` escape sequences instead of the
+actual glyphs (`·`, `…`). `\uXXXX` only works inside JS/TS string
+literals; in JSX children and markdown it renders as 6 ASCII
+characters. Swept every touched Slice D.5 file plus the log files that
+were edited in the same session. See DEBUG_LOG.md 08:04 EDT for full
+diagnosis.
+
+**Playwright E2E test:**
+- `src/tests/e2e/repograph-panel.spec.ts` — 3 tests: panel mount +
+  green health badge, index-then-stats, search + select + detail
+  columns. Writes screenshots to `screenshots/repograph-{01,02,03,04}.png`
+  (gitignored) at each milestone.
+- Runs against real BFF (requires `REPOGRAPH_ENABLED=true` +
+  `NEXT_PUBLIC_FEATURE_REPOGRAPH=true`). Skips gracefully if no runs
+  exist or the RepoGraph endpoint returns non-200.
+- Uses `getByLabel` + `data-testid` selectors (matching unit-test
+  conventions) instead of placeholder text.
+- Added `data-testid="repograph-stats"` on the stats line and
+  `data-testid="repograph-search-result"` on each search result row so
+  the E2E can select them reliably.
+
+**Next:** user runs `PLAYWRIGHT_REAL_BFF=1 npm run test:e2e -- src/tests/e2e/repograph-panel.spec.ts` on Colossus, sends screenshots back, starts Slice E (Rec #2: Execution-Verified Self-Debugging Loop).

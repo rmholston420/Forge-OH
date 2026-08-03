@@ -35,7 +35,7 @@ Format per entry:
 
 - **Modifications vs upstream:**
   Upstream (`construct_graph.py`, `graph_searcher.py`, `utils.py`) was
-  read for reference only \u2014 **no code was copied**. Reasons for the
+  read for reference only — **no code was copied**. Reasons for the
   structural port instead of a verbatim vendor:
 
   1. Upstream `graph_searcher.py` contains `exec()` and `eval()` calls

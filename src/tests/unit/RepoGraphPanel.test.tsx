@@ -1,13 +1,13 @@
 /**
  * src/tests/unit/RepoGraphPanel.test.tsx
  *
- * Slice D.5 \u2014 unit tests for the RepoGraph panel.
+ * Slice D.5 — unit tests for the RepoGraph panel.
  *
  * Uses MSW to stub the six BFF endpoints and React Query to drive the
  * component. Covers:
  *   - disabled state when the feature flag is off
  *   - health badge (reachable=true vs error)
- *   - index \u2192 search \u2192 select \u2192 callers/callees/co_changed flow
+ *   - index → search → select → callers/callees/co_changed flow
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
@@ -41,7 +41,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('RepoGraphPanel \u2014 disabled', () => {
+describe('RepoGraphPanel — disabled', () => {
   it('renders disabled hint when the flag is off', () => {
     delete process.env.NEXT_PUBLIC_FEATURE_REPOGRAPH;
     renderWithClient(<RepoGraphPanel />);
@@ -54,7 +54,7 @@ describe('RepoGraphPanel \u2014 disabled', () => {
   });
 });
 
-describe('RepoGraphPanel \u2014 enabled', () => {
+describe('RepoGraphPanel — enabled', () => {
   it('shows a green health badge when Neo4j is reachable', async () => {
     server.use(
       http.get(`${BFF}/api/repograph/health`, () =>

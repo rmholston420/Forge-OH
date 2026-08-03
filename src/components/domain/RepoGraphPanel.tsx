@@ -3,7 +3,7 @@
 /**
  * src/components/domain/RepoGraphPanel.tsx
  *
- * Slice D.5 \u2014 RepoGraph panel for the run detail Trace tab.
+ * Slice D.5 — RepoGraph panel for the run detail Trace tab.
  *
  * Given a workspace path (typed by the user, or defaulted from the run),
  * indexes the workspace via POST /api/repograph/index and then shows:
@@ -99,7 +99,7 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
   );
 
   const healthBadge = useMemo(() => {
-    if (health.isLoading) return { text: 'checking\u2026', ok: null as boolean | null };
+    if (health.isLoading) return { text: 'checking…', ok: null as boolean | null };
     if (health.isError) return { text: 'unreachable', ok: false };
     const d = health.data;
     if (!d) return { text: 'unknown', ok: false };
@@ -151,7 +151,7 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
             className={styles.button}
             disabled={indexMut.isPending || healthBadge.ok !== true}
           >
-            {indexMut.isPending ? 'indexing\u2026' : 'Index'}
+            {indexMut.isPending ? 'indexing…' : 'Index'}
           </button>
         </div>
         {indexMut.isError && (
@@ -160,9 +160,9 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
           </p>
         )}
         {stats && (
-          <p className={styles.stats}>
-            repo <code>{repoKey}</code> \u00b7 files {stats.files} \u00b7 symbols{' '}
-            {stats.symbols} \u00b7 calls {stats.calls} \u00b7 methods{' '}
+          <p className={styles.stats} data-testid="repograph-stats">
+            repo <code>{repoKey}</code> · files {stats.files} · symbols{' '}
+            {stats.symbols} · calls {stats.calls} · methods{' '}
             {stats.method_edges}
           </p>
         )}
@@ -176,7 +176,7 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search symbols by name or file\u2026"
+              placeholder="Search symbols by name or file…"
               spellCheck={false}
               aria-label="Search symbols"
             />
@@ -184,14 +184,14 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
 
           <div className={styles.results}>
             {search.isFetching && (
-              <p className={styles.hint}>searching\u2026</p>
+              <p className={styles.hint}>searching…</p>
             )}
             {!search.isFetching && query && (search.data ?? []).length === 0 && (
               <p className={styles.hint}>No matches.</p>
             )}
             <ul className={styles.list}>
               {(search.data ?? []).map((sym) => (
-                <li key={`${sym.rel_path}:${sym.name}:${sym.start_line}`}>
+                <li key={`${sym.rel_path}:${sym.name}:${sym.start_line}`} data-testid="repograph-search-result">
                   <button
                     className={styles.symbolButton}
                     data-selected={
@@ -203,7 +203,7 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
                   >
                     <span className={styles.symbolName}>{sym.name}</span>
                     <span className={styles.symbolMeta}>
-                      {sym.category} \u00b7 {sym.rel_path}:{sym.start_line}
+                      {sym.category} · {sym.rel_path}:{sym.start_line}
                     </span>
                     <span className={styles.pagerank}>
                       pr {sym.pagerank.toFixed(3)}
@@ -247,7 +247,7 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
                   items={(callees.data ?? []).map((c) => ({
                     key: `${c.callee_file}:${c.callee}:${c.call_line ?? ''}`,
                     primary: c.callee,
-                    secondary: `${c.callee_file} \u00b7 pr ${c.pagerank.toFixed(3)}`,
+                    secondary: `${c.callee_file} · pr ${c.pagerank.toFixed(3)}`,
                   }))}
                   emptyText="No outgoing calls tracked."
                 />
@@ -307,7 +307,7 @@ const ColumnList: React.FC<ColumnListProps> = ({
 }) => (
   <div className={styles.col}>
     <div className={styles.colTitle}>{title}</div>
-    {isLoading && <p className={styles.hint}>loading\u2026</p>}
+    {isLoading && <p className={styles.hint}>loading…</p>}
     {isError && <p className={styles.error}>query failed</p>}
     {!isLoading && !isError && items.length === 0 && (
       <p className={styles.hint}>{emptyText}</p>
