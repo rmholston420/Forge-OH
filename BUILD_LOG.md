@@ -1805,3 +1805,53 @@ retrieve(task_description, *, symptom="", k=3, verified_only=True,
 - Ruff clean.
 
 **Stop-condition status:** F.6 complete. F.5b (run-completion hook wiring writer + indexer to STOP event) next, then F.7 (Overview widget).
+
+## 2026-08-03 09:40 EDT — Slice F.5b: Trajectory run-completion hook
+
+**Stage:** Step 8, Slice F.5b.
+
+**What:** CLI hook module — subprocess entrypoint symmetric to `verify/hook.py` — that materializes a `TrajectoryRecord` on STOP events. Consumes verify-state + optional trajectory-sidecar to assemble a `RunSummary`, writes via `TrajectoryWriter`, optionally inline-indexes.
+
+**Files created:**
+- `openhands_tools_ext/trajectory/hook.py` — `main()` CLI, `build_summary_from_sources()` pure function.
+- `openhands_tools_ext/tests/trajectory/test_hook.py` — 19 tests (CLI plumbing errors, verdict → status mapping, sidecar precedence, malformed diff skip, end-to-end STOP → record persisted, run_id fallback to session, inline indexing populates embedding, second STOP replaces first).
+
+**Sidecar contract** (`.forge-oh/trajectory-sidecar.json`, session-keyed):
+```json
+{
+  "<session_id>": {
+    "task_description": "...",
+    "plan": "...",
+    "symptom": "...",
+    "repograph_repo_key": "...",
+    "repograph_symbols": ["a.b", ...],
+    "diffs": [{"path": "a.py", "lines_added": 3, "lines_removed": 1, "summary": ""}],
+    "verify_iterations": [...]
+  }
+}
+```
+When absent, hook still runs with best-effort fields (falls back to `OPENHANDS_TASK` env for task_description).
+
+**Verdict → status mapping** (from `verify-state.json.last_verdict`):
+- `pass` → SUCCESS
+- `fail` / `error` → FAILED
+- `no-step` / `skip` / anything else → UNKNOWN
+
+**Optional inline indexing:** `FORGE_OH_TRAJECTORY_INDEX_INLINE=1` runs `TrajectoryIndexer.index_pending()` after write — record is searchable immediately. Default: off; expects a follow-up drain pass.
+
+**How to wire on Colossus** (agent-server side, when ready):
+```
+HookType.COMMAND on Stop → python -m openhands_tools_ext.trajectory.hook
+```
+Runs *alongside* the verify hook (not instead of); both subprocesses see the same `verify-state.json` because verify writes it first.
+
+**Design decisions:**
+- **Never blocks the agent** — non-blocking exit codes only (0 on success, 1 on hard input failure). Trajectory data is nice-to-have, not gating.
+- **Idempotent** — second STOP for same run_id replaces the record (writer's `traj_{run_id}` upsert path). Verified in `test_rewrite_on_second_stop_event`.
+- **Malformed diff entries skipped**, not fatal (`# noqa: S112` — deliberate best-effort matching `verify/hook.py`).
+
+**Tests:**
+- `.venv/bin/pytest bff/tests/test_trajectories_router.py openhands_tools_ext/` → 260 passed (241 + 19 new).
+- Ruff clean.
+
+**Stop-condition status:** F.5b complete. Slice F backend fully wired: schema (F.1), store (F.2), embedder (F.3), retriever (F.4), writer + indexer (F.5), BFF endpoints (F.6), STOP hook (F.5b). Next: F.7 (Overview widget) and F.8 (ADR-008 + Playwright E2E + tag `v1.0-alpha3`).
