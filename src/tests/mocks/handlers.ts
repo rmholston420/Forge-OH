@@ -50,16 +50,21 @@ export const handlers = [
   http.post(`${BFF}/api/runs/:runId/reject`, () =>
     HttpResponse.json({ ok: true })
   ),
-  http.get(`${BFF}/api/runs/compare`, () =>
-    HttpResponse.json({
+  http.get(`${BFF}/api/runs/compare`, ({ request }) => {
+    const url = new URL(request.url);
+    const baseRunId = url.searchParams.get('base') ?? mockRuns[0]?.id ?? '';
+    const forkRunId = url.searchParams.get('fork') ?? mockRuns[1]?.id ?? mockRuns[0]?.id ?? '';
+    return HttpResponse.json({
       data: {
+        baseRunId,
+        forkRunId,
         base: mockRuns[0],
         fork: mockRuns[1] ?? mockRuns[0],
         files: [],
         stats: { filesChanged: 0, additions: 0, deletions: 0 },
       },
-    })
-  ),
+    });
+  }),
   http.get(`${BFF}/api/runs/:runId/traces`, () =>
     HttpResponse.json({
       data: [

@@ -18,9 +18,9 @@ import { mockWorkspaces } from '../fixtures/workspaces.fixture';
 
 const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+// MSW server lifecycle handled globally in src/tests/setup.ts
+// (afterEach reset handled globally)
+// (afterAll close handled globally)
 
 describe('GET /api/workspaces', () => {
   it('returns an array of workspaces', async () => {

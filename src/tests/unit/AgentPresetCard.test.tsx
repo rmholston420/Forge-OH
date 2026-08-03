@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '@/tests/helpers/render';
 import { vi } from 'vitest';
 
 vi.mock('./hooks', () => ({

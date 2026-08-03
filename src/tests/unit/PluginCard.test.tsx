@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent } from '@/tests/helpers/render';
 import { PluginCard } from '@/components/domain/plugin-card';
 import type { Plugin } from '@/features/mcp/schemas';
 import { describe, it, expect, vi } from 'vitest';

@@ -69,7 +69,14 @@ export const useRunDetailStore = create<RunDetailStore>((set) => ({
       const newEvents = [...state.streamEvents, event].slice(-200);
       const newIds = new Set(state.streamEventIds);
       if (id !== undefined) newIds.add(id);
-      return { streamEvents: newEvents, streamEventIds: newIds };
+      // Track the numeric max ID seen so far so consumers (Socket.IO reconnect
+      // resume cursor, UI progress indicators) can trust `latestStreamEventId`.
+      let latestStreamEventId = state.latestStreamEventId;
+      if (id !== undefined) {
+        const n = typeof id === 'number' ? id : Number(id);
+        if (Number.isFinite(n) && n > latestStreamEventId) latestStreamEventId = n;
+      }
+      return { streamEvents: newEvents, streamEventIds: newIds, latestStreamEventId };
     }),
   clearStreamEvents: () => set({ streamEvents: [], streamEventIds: new Set() }),
   setStreamConnected: (streamConnected) => set({ streamConnected }),

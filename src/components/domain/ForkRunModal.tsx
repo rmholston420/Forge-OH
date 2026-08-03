@@ -7,7 +7,11 @@ import { Modal } from '@/components/core/Modal';
 import { Banner } from '@/components/core/Banner';
 import { bffFetch } from '@/lib/http/bff-client';
 
-const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED !== 'false';
+// Evaluated per-render so tests (and future runtime toggles) can mutate the
+// underlying env var without needing to reload the module.
+function isFeatureEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED !== 'false';
+}
 
 interface Props {
   runId: string;
@@ -50,7 +54,7 @@ export function ForkRunModal({ runId, runTitle, open, onClose }: Props) {
     onClose();
   }
 
-  if (!FEATURE_ENABLED) return null;
+  if (!isFeatureEnabled()) return null;
 
   return (
     <Modal

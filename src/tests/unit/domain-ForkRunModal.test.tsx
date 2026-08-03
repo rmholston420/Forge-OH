@@ -39,7 +39,9 @@ describe('ForkRunModal', () => {
 
   it('renders modal title', () => {
     render(<ForkRunModal {...base} />, { wrapper });
-    expect(screen.getByText(/fork run/i)).toBeInTheDocument();
+    // Both the modal heading and the submit button say 'Fork run' — assert
+    // on the heading role specifically.
+    expect(screen.getByRole('heading', { name: /fork run/i })).toBeInTheDocument();
   });
 
   it('renders Fork run button', () => {

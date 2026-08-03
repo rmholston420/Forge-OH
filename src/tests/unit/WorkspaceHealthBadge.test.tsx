@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '@/tests/helpers/render';
 import { WorkspaceHealthBadge } from '@/components/domain/workspace-health-badge';
 import { describe, it, expect } from 'vitest';
 

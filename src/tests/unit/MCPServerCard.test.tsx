@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent } from '@/tests/helpers/render';
 import { MCPServerCard } from '@/components/domain/mcp-server-card';
 import type { MCPServer } from '@/features/mcp/schemas';
 import { describe, it, expect, vi } from 'vitest';

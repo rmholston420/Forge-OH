@@ -14,9 +14,9 @@ import { mockEvents } from '../fixtures/events.fixture';
 const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
 const RUN = mockRuns[0];
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+// MSW server lifecycle handled globally in src/tests/setup.ts
+// (afterEach reset handled globally)
+// (afterAll close handled globally)
 
 describe('GET /api/runs/:runId', () => {
   it('returns the run with expected fields', async () => {

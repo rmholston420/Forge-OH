@@ -43,9 +43,12 @@ export class PluginBridge {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (manifest.authType === 'bearer' && manifest.secret) {
           headers.Authorization = `Bearer ${manifest.secret}`;
-          headers['X-Forge-Signature'] = createHmac('sha256', manifest.secret).update(body).digest('hex');
         } else if (manifest.authType === 'api_key' && manifest.secret) {
           headers['X-API-Key'] = manifest.secret;
+        }
+        // Always sign the body when a secret is present, regardless of authType.
+        if (manifest.secret) {
+          headers['X-Forge-Signature'] = createHmac('sha256', manifest.secret).update(body).digest('hex');
         }
 
         const url = `${manifest.baseUrl.replace(/\/$/, '')}/events`;

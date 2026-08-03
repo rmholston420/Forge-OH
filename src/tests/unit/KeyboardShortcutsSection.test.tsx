@@ -1,8 +1,16 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@/tests/helpers/render';
 import { KeyboardShortcutsSection } from '@/components/settings/KeyboardShortcutsSection';
 import { SettingsSchema } from '@/lib/schemas/settings';
+import { useSettingsStore } from '@/features/settings/store';
 
 const defaults = SettingsSchema.parse({});
+
+// Reset zustand store between tests so capturingShortcutFor from a prior
+// test doesn't leak into the next one (the store is a module singleton).
+beforeEach(() => {
+  useSettingsStore.getState().setCapturingShortcutFor(null);
+});
 
 describe('KeyboardShortcutsSection', () => {
   it('renders all action rows', () => {

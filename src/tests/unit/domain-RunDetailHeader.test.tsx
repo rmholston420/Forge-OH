@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '@/tests/helpers/render';
 import userEvent from '@testing-library/user-event';
 import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
 import type { RunSummary } from '@/lib/schemas/run';
@@ -57,8 +57,8 @@ describe('RunDetailHeader', () => {
     expect(screen.queryByLabelText('Stop run')).toBeNull();
   });
 
-  it('Approve button is shown for awaiting_approval', () => {
-    render(<RunDetailHeader run={{ ...baseRun, status: 'awaiting_approval' }} onApprove={vi.fn()} />);
+  it('Approve button is shown for awaiting-approval', () => {
+    render(<RunDetailHeader run={{ ...baseRun, status: 'awaiting-approval' }} onApprove={vi.fn()} />);
     expect(screen.getByLabelText('Approve pending action')).toBeInTheDocument();
   });
 

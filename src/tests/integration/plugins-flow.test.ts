@@ -6,7 +6,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { usePlugins, useRegisterPlugin, usePingPlugin, useDeletePlugin } from '@/lib/plugins/hooks';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 const PLUGIN_A = {
   id: '00000000-0000-0000-0000-000000000001',

@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '@/tests/helpers/render';
 import { PlanNodeItem } from '@/components/domain/PlanNode';
 import type { PlanNode } from '@/lib/schemas/plan';
 
@@ -56,8 +56,11 @@ describe('PlanNodeItem', () => {
     expect(li.style.paddingLeft).toBeFalsy();
   });
 
-  it('does not render children list when children is empty', () => {
+  it('does not render a nested children <ul> when children is empty', () => {
+    // The outer <ul> in the render tree is provided by the test itself. If
+    // PlanNodeItem renders an empty-children node with no nested <ul>, the
+    // total count in the container is exactly 1 (the wrapper only).
     const { container } = render(<ul><PlanNodeItem node={makeNode({ children: [] })} /></ul>);
-    expect(container.querySelectorAll('ul')).toHaveLength(0);
+    expect(container.querySelectorAll('ul')).toHaveLength(1);
   });
 });

@@ -11,7 +11,8 @@ import {
   useDeletePlugin,
 } from '@/lib/plugins/hooks';
 
-const BASE = 'http://localhost:3000';
+// bff-client points at NEXT_PUBLIC_BFF_URL (default http://localhost:8081)
+const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 const server = setupServer(
   http.get(`${BASE}/api/plugins`, () =>
