@@ -1,147 +1,191 @@
+"""Secrets router — passthrough to agent-server settings-backed secret store.
+
+Upstream (agent-server):
+  GET    /api/settings/secrets                 → {secrets: [{name, description}]}
+  PUT    /api/settings/secrets                 → create (SecretCreateRequest: name, value, description)
+  GET    /api/settings/secrets/{name}          → fetch value (not exposed by BFF)
+  DELETE /api/settings/secrets/{name}          → delete
+  POST   /api/conversations/{id}/secrets       → per-conversation secret update
+
+BFF surface (frontend contract — src/features/secrets/api.ts):
+  GET    /api/secrets                          → SecretRef[]
+  POST   /api/secrets                          → SecretRef
+  PUT    /api/secrets/{id}/rotate              → SecretRef      (id == secret name)
+  DELETE /api/secrets/{id}                     → 204
+  POST   /api/runs/{run_id}/secrets            → {ok: true}     (per-conversation)
+
+Design notes:
+- Local-first single-user: no Authorization header enforcement (dropped from
+  the interim stub). Access control lives at the agent-server layer if enabled.
+- Secret values NEVER leave the agent-server. The BFF only ever exposes
+  metadata: {id, name, description, valueStatus}. `valueStatus='masked'`
+  whenever the upstream list contains the name (upstream only lists set
+  secrets); no 'unset' path today.
+- Rotate is implemented as delete-then-recreate because upstream lacks a
+  dedicated rotate endpoint and PUT semantics for existing names are unclear
+  from the openapi (a PUT with a colliding name may 409).
 """
-bff/routers/secrets.py
+from __future__ import annotations
 
-Secrets router — interim contract for Forge-OH vertical slice.
+import time
+from typing import Any, Optional
 
-TODO(foh-phase2):
-- Replace in-memory _STORE with a real secrets backend (Vault, AWS Secrets Manager, etc.)
-- Decide on workspace scoping and persistence beyond in-memory.
-- (auth stripped; helpers below are no-ops until real auth returns)
-  the LMS router is also migrated (keeps both consistent).
-"""
-from typing import Dict, Literal, Optional, List
+from fastapi import APIRouter, HTTPException, Response
+from pydantic import BaseModel
 
-from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel, Field
+from bff.openhands_client import get_client
 
 
 router = APIRouter(prefix="/secrets", tags=["secrets"])
 
-Scope = Literal["global", "workspace", "run"]
 
+# ---------------------------------------------------------------------------
+# Reshape upstream {name, description} → frontend SecretRef
+# ---------------------------------------------------------------------------
 
-class SecretRecord(BaseModel):
-    id: str
-    key: str
-    rawValue: str
-    scope: Scope
-    tags: List[str] = Field(default_factory=list)
-
-
-# TODO(foh-phase2): replace with non-sensitive placeholder constants once a
-# real secrets backend is in place. Do NOT substitute real credentials here.
-_STORE: Dict[str, SecretRecord] = {
-    "sec-1": SecretRecord(id="sec-1", key="OPENAI_API_KEY",    rawValue="REPLACE_ME_OPENAI",     scope="global",    tags=[]),
-    "sec-2": SecretRecord(id="sec-2", key="GITHUB_TOKEN",      rawValue="REPLACE_ME_GITHUB",     scope="global",    tags=[]),
-    "sec-3": SecretRecord(id="sec-3", key="WORKSPACE_SECRET",  rawValue="REPLACE_ME_WORKSPACE",  scope="workspace", tags=[]),
-}
-
-
-def _mask(value: str) -> str:
-    return "****" if len(value) < 4 else "****" + value[-4:]
-
-
-def _to_public(record: SecretRecord) -> dict:
+def _to_ref(item: dict[str, Any]) -> dict[str, Any]:
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    name = item.get("name") or ""
     return {
-        "id": record.id,
-        "key": record.key,
-        "scope": record.scope,
-        "tags": list(record.tags),
-        "maskedValue": _mask(record.rawValue),
+        "id": name,
+        "name": name,
+        "description": item.get("description"),
+        "createdAt": now,
+        "updatedAt": now,
+        "valueStatus": "masked",
     }
 
 
-def _parse_token(authorization: Optional[str]) -> str:
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Invalid auth header")
-    return parts[1]
+# ---------------------------------------------------------------------------
+# Request bodies
+# ---------------------------------------------------------------------------
+
+class CreateSecretBody(BaseModel):
+    # Frontend contract sends {name, value, description?}. Legacy stub accepted
+    # {key, rawValue, scope} — support that too for backward compatibility.
+    name: Optional[str] = None
+    value: Optional[str] = None
+    description: Optional[str] = None
+    # Legacy shape
+    key: Optional[str] = None
+    rawValue: Optional[str] = None
 
 
-def _require_auth(authorization: Optional[str]) -> str:
-    token = _parse_token(authorization)
-    pass
-    return token
+class RotateSecretBody(BaseModel):
+    newValue: str
 
 
-def _find_store_id_by_key(key: str) -> Optional[str]:
-    for sid, rec in _STORE.items():
-        if rec.key == key:
-            return sid
-    return None
+class ConversationSecretsBody(BaseModel):
+    # Upstream POST /api/conversations/{id}/secrets accepts an UpdateSecretsRequest.
+    # We pass through 'secrets' verbatim.
+    secrets: dict[str, Any]
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _upstream_list() -> list[dict[str, Any]]:
+    client = get_client()
+    resp = await client.get("/api/settings/secrets")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
+    payload = resp.json() or {}
+    return payload.get("secrets") or []
+
+
+async def _upstream_create(name: str, value: str, description: Optional[str]) -> None:
+    client = get_client()
+    resp = await client.put(
+        "/api/settings/secrets",
+        json={"name": name, "value": value, "description": description},
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text[:400])
+
+
+async def _upstream_delete(name: str) -> None:
+    client = get_client()
+    resp = await client.delete(f"/api/settings/secrets/{name}")
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail=f"secret not found: {name}")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 
 @router.get("")
-def list_secrets(
-    scope: Optional[Scope] = None,
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-):
-    _require_auth(authorization)
-    items = [_to_public(rec) for rec in _STORE.values() if not scope or rec.scope == scope]
-    return {"data": items}
+async def list_secrets(scope: Optional[str] = None) -> list[dict[str, Any]]:
+    """List secrets (metadata only).
+
+    The 'scope' query param is accepted for frontend compatibility but has no
+    effect: agent-server stores a single global secrets namespace. The
+    per-conversation POST is a separate write-only merge, not a listable scope.
+    """
+    items = await _upstream_list()
+    return [_to_ref(i) for i in items]
 
 
 @router.post("")
-def create_secret(
-    body: dict,
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-):
-    _require_auth(authorization)
+async def create_secret(body: CreateSecretBody) -> dict[str, Any]:
+    name = body.name or body.key
+    value = body.value if body.value is not None else body.rawValue
+    if not name or value is None:
+        raise HTTPException(status_code=422, detail="Missing required fields: name, value")
 
-    key = body.get("key")
-    scope = body.get("scope")
-    tags = body.get("tags", [])
-    raw_value = body.get("rawValue")
-    plain_value = body.get("value")
-    value = raw_value if raw_value is not None else plain_value
+    await _upstream_create(name, value, body.description)
 
-    if not key or not value or not scope:
-        raise HTTPException(status_code=422, detail="Missing required fields")
-
-    if scope not in ("global", "workspace", "run"):
-        raise HTTPException(status_code=422, detail=f"Invalid scope: {scope!r}")
-
-    if _find_store_id_by_key(key):
-        raise HTTPException(status_code=409, detail="Secret already exists")
-
-    new_id = f"sec-{len(_STORE) + 1}"
-    rec = SecretRecord(id=new_id, key=key, rawValue=value, scope=scope, tags=tags)
-    _STORE[new_id] = rec
-    return {"data": _to_public(rec)}
+    # Refetch to return canonical metadata
+    items = await _upstream_list()
+    match = next((i for i in items if i.get("name") == name), {"name": name, "description": body.description})
+    return _to_ref(match)
 
 
 @router.put("/{secret_id}/rotate")
-def rotate_secret(
-    secret_id: str,
-    body: dict,
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-):
-    _require_auth(authorization)
+async def rotate_secret(secret_id: str, body: RotateSecretBody) -> dict[str, Any]:
+    # Preserve description across rotate
+    items = await _upstream_list()
+    existing = next((i for i in items if i.get("name") == secret_id), None)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"secret not found: {secret_id}")
+    description = existing.get("description")
 
-    if secret_id not in _STORE:
-        raise HTTPException(status_code=404, detail="Secret not found")
+    await _upstream_delete(secret_id)
+    await _upstream_create(secret_id, body.newValue, description)
 
-    new_value = body.get("newValue")
-    if not new_value:
-        raise HTTPException(status_code=422, detail="Missing newValue")
-
-    _STORE[secret_id] = _STORE[secret_id].model_copy(update={"rawValue": new_value})
-    # Wrap in {data: ...} envelope, consistent with all other secrets endpoints.
-    return {"data": _to_public(_STORE[secret_id])}
+    items = await _upstream_list()
+    match = next((i for i in items if i.get("name") == secret_id), {"name": secret_id, "description": description})
+    return _to_ref(match)
 
 
-@router.delete("/{secret_id}")
-def delete_secret(
-    secret_id: str,
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-):
-    _require_auth(authorization)
+@router.delete("/{secret_id}", status_code=204)
+async def delete_secret(secret_id: str) -> Response:
+    await _upstream_delete(secret_id)
+    return Response(status_code=204)
 
-    store_id = secret_id if secret_id in _STORE else _find_store_id_by_key(secret_id)
-    if not store_id:
-        raise HTTPException(status_code=404, detail="Secret not found")
 
-    _STORE.pop(store_id, None)
-    return {"ok": True}
+# ---------------------------------------------------------------------------
+# Per-conversation secrets (POST /api/runs/{run_id}/secrets)
+#
+# Registered here (rather than in runs router) to keep secret handling
+# centralized. Mounted under /runs prefix externally via a dedicated route.
+# ---------------------------------------------------------------------------
+
+conv_secrets_router = APIRouter(tags=["secrets"])
+
+
+@conv_secrets_router.post("/runs/{run_id}/secrets")
+async def update_conversation_secrets(run_id: str, body: ConversationSecretsBody) -> dict[str, Any]:
+    client = get_client()
+    resp = await client.post(
+        f"/api/conversations/{run_id}/secrets",
+        json={"secrets": body.secrets},
+    )
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="run not found")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
+    return {"ok": True, "run_id": run_id}

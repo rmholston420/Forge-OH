@@ -71,6 +71,7 @@ app.add_middleware(
 
 app.include_router(agent_presets.router, prefix="/api")
 app.include_router(secrets.router, prefix="/api")
+app.include_router(secrets.conv_secrets_router, prefix="/api")
 app.include_router(mcp.router, prefix="/api")
 app.include_router(metrics.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
