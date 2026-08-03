@@ -11,6 +11,9 @@ export interface RunDetailHeaderProps {
   onStop?: () => void;
   onFork?: () => void;
   onApprove?: () => void;
+  onReject?: () => void;
+  /** Disable all controls (e.g. while a mutation is in flight). */
+  busy?: boolean;
 }
 
 function formatSelectedModel(value?: string | null) {
@@ -18,7 +21,15 @@ function formatSelectedModel(value?: string | null) {
   return value.replace(/^ollama\//, 'Ollama: ').replace(/^vllm\//, 'vLLM: ');
 }
 
-export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({ run, onPause, onStop, onFork, onApprove }) => {
+export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({
+  run,
+  onPause,
+  onStop,
+  onFork,
+  onApprove,
+  onReject,
+  busy = false,
+}) => {
   const isRunning = run.status === 'running' || run.status === 'pending';
   const isPaused = run.status === 'paused';
   const isAwaiting = run.status === 'awaiting_approval' || run.status === 'pending_approval';
@@ -55,19 +66,31 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({ run, onPause, 
         </div>
         <div className={styles.controls}>
           {isAwaiting && (
-            <button
-              className={[styles.btn, styles['btn--approve']].join(' ')}
-              onClick={onApprove}
-              aria-label="Approve pending action"
-            >
-              ✓ Approve
-            </button>
+            <>
+              <button
+                className={[styles.btn, styles['btn--approve']].join(' ')}
+                onClick={onApprove}
+                aria-label="Approve pending action"
+                disabled={busy}
+              >
+                ✓ Approve
+              </button>
+              <button
+                className={[styles.btn, styles['btn--danger']].join(' ')}
+                onClick={onReject}
+                aria-label="Reject pending action"
+                disabled={busy}
+              >
+                ✗ Reject
+              </button>
+            </>
           )}
           {(isRunning || isPaused) && (
             <button
               className={[styles.btn, styles['btn--secondary']].join(' ')}
               onClick={onPause}
               aria-label={isPaused ? 'Resume run' : 'Pause run'}
+              disabled={busy}
             >
               {isPaused ? '▶ Resume' : '⏸ Pause'}
             </button>
@@ -77,6 +100,7 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({ run, onPause, 
               className={[styles.btn, styles['btn--danger']].join(' ')}
               onClick={onStop}
               aria-label="Stop run"
+              disabled={busy}
             >
               ■ Stop
             </button>
@@ -85,6 +109,7 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({ run, onPause, 
             className={[styles.btn, styles['btn--secondary']].join(' ')}
             onClick={onFork}
             aria-label="Fork run"
+            disabled={busy}
           >
             ⎇ Fork
           </button>

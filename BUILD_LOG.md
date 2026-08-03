@@ -292,3 +292,20 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - /files returned 1 entry: /workspace/stage4-1785727853548.txt (added, +1/-0)
   - Screenshot: scripts/debug-out/e2e-06-files-tab.png shows the file rendered in the Files tab
 - Stage 4 is fully CLOSED (backend + frontend end-to-end).
+
+## 2026-08-02 23:38 EDT \u2014 Stage 5: Run lifecycle controls (backend wired, frontend wired)
+- Stage: 5 (build)
+- Backend (bff/routers/runs.py): replaced 5 stubs (pause/resume/stop/approve/reject) with real agent-server calls via new _call_lifecycle() helper.
+  - pause  \u2192 POST /api/conversations/{cid}/pause
+  - resume \u2192 POST /api/conversations/{cid}/run  (agent-server has no /resume; /run restarts from paused|idle)
+  - stop   \u2192 POST /api/conversations/{cid}/interrupt
+  - approve \u2192 POST /api/conversations/{cid}/events/respond_to_confirmation  {accept:true}
+  - reject  \u2192 POST /api/conversations/{cid}/events/respond_to_confirmation  {accept:false,reason?}
+  - 404 preserved; anything else \u2192 502.
+- Frontend:
+  - src/features/runs/api.ts: added pauseRun/resumeRun/stopRun/approveRun/rejectRun.
+  - src/features/runs/hooks.ts: added usePauseRun/useResumeRun/useStopRun/useApproveRun/useRejectRun (each invalidates list + detail).
+  - src/components/domain/RunDetailHeader.tsx: added onReject prop, added \u2717 Reject button in the awaiting-approval group, added busy=disabled for all controls.
+  - src/app/(dashboard)/runs/[runId]/page.tsx: wired all five mutations; the Pause button toggles pause/resume based on status.
+- Not yet e2e-verified in this commit. Verification (pause/resume/stop) queued as next step; approve/reject verified via curl only \u2014 confirmation-policy UX is Step 1E (Approval Gate) scope.
+- ADR: chose option (a) per action plan \u00a7Step 5 DoD ("pause a running task, confirm at agent-server level, resume, confirm it continues"). Approve/reject wiring is done and correct; end-to-end UI verification of approve/reject is deferred to Step 1E where confirmation policy is exposed at run-start.

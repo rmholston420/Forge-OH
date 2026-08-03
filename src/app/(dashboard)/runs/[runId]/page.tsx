@@ -1,6 +1,13 @@
 'use client';
 import React, { useCallback, useRef } from 'react';
 import { useRunDetail, useRunEvents } from '@/features/run-detail/hooks';
+import {
+  usePauseRun,
+  useResumeRun,
+  useStopRun,
+  useApproveRun,
+  useRejectRun,
+} from '@/features/runs/hooks';
 import { useRunDetailStore } from '@/features/run-detail/store';
 import { useRunStream } from '@/lib/streaming/useRunStream';
 import type { StreamEvent } from '@/lib/streaming/useRunStream';
@@ -68,6 +75,13 @@ export default function RunDetailPage({
   const { data: run, isLoading: runLoading, error: runError } = useRunDetail(runId);
   const { data: bootstrapEvents = [] } = useRunEvents(runId);
 
+  // Stage 5 — lifecycle mutations.
+  const pauseMut = usePauseRun();
+  const resumeMut = useResumeRun();
+  const stopMut = useStopRun();
+  const approveMut = useApproveRun();
+  const rejectMut = useRejectRun();
+
   const {
     selectedTab, setSelectedTab,
     selectedEventId, setSelectedEventId,
@@ -130,7 +144,30 @@ export default function RunDetailPage({
       ) : run ? (
         <RunDetailHeader
           run={run}
-          onApprove={() => setPendingApprovalBanner(false)}
+          busy={
+            pauseMut.isPending ||
+            resumeMut.isPending ||
+            stopMut.isPending ||
+            approveMut.isPending ||
+            rejectMut.isPending
+          }
+          onPause={() => {
+            // One toggle drives both Pause and Resume based on current status.
+            if (run.status === 'paused') resumeMut.mutate(run.id);
+            else pauseMut.mutate(run.id);
+          }}
+          onStop={() => stopMut.mutate(run.id)}
+          onApprove={() => {
+            approveMut.mutate(run.id, {
+              onSuccess: () => setPendingApprovalBanner(false),
+            });
+          }}
+          onReject={() => {
+            rejectMut.mutate(
+              { runId: run.id },
+              { onSuccess: () => setPendingApprovalBanner(false) },
+            );
+          }}
         />
       ) : null}
 

@@ -1,14 +1,19 @@
-"""Runs router — Stage 3: real conversation lifecycle via OpenHands agent-server.
+"""Runs router — Stage 3+4+5: real conversation lifecycle via OpenHands agent-server.
 
 Wired endpoints (real):
   GET  /runs            list conversations from agent-server as RunSummary
   POST /runs            start + run a conversation, return RunSummary (queued|blocked|running)
   GET  /runs/{id}       fetch a single conversation as RunSummary
   GET  /runs/{id}/events fetch persisted events (paged) as-is from agent-server
+  GET  /runs/{id}/files, /runs/{id}/files/{path}   Stage 4 event-stream file diffs
+  POST /runs/{id}/pause     → agent-server POST /conversations/{cid}/pause
+  POST /runs/{id}/resume    → agent-server POST /conversations/{cid}/run
+  POST /runs/{id}/stop      → agent-server POST /conversations/{cid}/interrupt
+  POST /runs/{id}/approve   → agent-server POST /conversations/{cid}/events/respond_to_confirmation {accept:true}
+  POST /runs/{id}/reject    → agent-server POST /conversations/{cid}/events/respond_to_confirmation {accept:false}
 
 Still stub (deferred to later stages per Forge-OH-Action-Plan-v4.md):
-  /runs/compare, /runs/{id}/plan, /files/*, /artifacts, /commands, /traces,
-  /pause, /resume, /stop, /approve, /reject, /fork
+  /runs/compare, /runs/{id}/plan, /artifacts, /commands, /traces, /fork
 
 Contract:
   run_id == conversation_id (agent-server UUID). No SQLite mapping layer.
@@ -377,29 +382,82 @@ async def get_run_traces(run_id: str) -> dict:
     return {"data": [], "stub": True}
 
 
+# ---------------------------------------------------------------------------
+# Lifecycle helpers (Stage 5)
+# ---------------------------------------------------------------------------
+
+async def _call_lifecycle(
+    run_id: str,
+    subpath: str,
+    json_body: Optional[dict] = None,
+) -> dict:
+    """POST to `/api/conversations/{run_id}/{subpath}` on agent-server.
+
+    Translates agent-server 404 → HTTP 404 and any other failure → 502.
+    Returns agent-server's response payload (typically {"success": true}).
+    """
+    client = get_client()
+    url = f"/api/conversations/{run_id}/{subpath}"
+    try:
+        resp = await client.post(url, json=json_body if json_body is not None else {})
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="run not found")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"agent-server error {resp.status_code}: {resp.text[:200]}")
+    try:
+        return resp.json() or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+class RejectRunRequest(BaseModel):
+    reason: Optional[str] = None
+
+
 @router.post("/runs/{run_id}/pause")
 async def pause_run(run_id: str) -> dict:
-    return {"ok": True, "run_id": run_id, "status": "paused"}
+    result = await _call_lifecycle(run_id, "pause")
+    return {"ok": True, "run_id": run_id, "status": "paused", "agent_server": result}
 
 
 @router.post("/runs/{run_id}/resume")
 async def resume_run(run_id: str) -> dict:
-    return {"ok": True, "run_id": run_id, "status": "running"}
+    # Agent-server has no dedicated 'resume' — POST /run restarts the loop
+    # from paused or idle.
+    result = await _call_lifecycle(run_id, "run")
+    return {"ok": True, "run_id": run_id, "status": "running", "agent_server": result}
 
 
 @router.post("/runs/{run_id}/stop")
 async def stop_run(run_id: str) -> dict:
-    return {"ok": True, "run_id": run_id, "status": "stopped"}
+    # Agent-server exposes hard cancel as /interrupt.
+    result = await _call_lifecycle(run_id, "interrupt")
+    return {"ok": True, "run_id": run_id, "status": "stopped", "agent_server": result}
 
 
 @router.post("/runs/{run_id}/approve")
 async def approve_run(run_id: str) -> dict:
-    return {"ok": True, "run_id": run_id, "status": "running"}
+    result = await _call_lifecycle(
+        run_id,
+        "events/respond_to_confirmation",
+        json_body={"accept": True},
+    )
+    return {"ok": True, "run_id": run_id, "status": "running", "agent_server": result}
 
 
 @router.post("/runs/{run_id}/reject")
-async def reject_run(run_id: str) -> dict:
-    return {"ok": True, "run_id": run_id, "status": "paused"}
+async def reject_run(run_id: str, body: Optional[RejectRunRequest] = None) -> dict:
+    payload = {"accept": False}
+    if body and body.reason:
+        payload["reason"] = body.reason
+    result = await _call_lifecycle(
+        run_id,
+        "events/respond_to_confirmation",
+        json_body=payload,
+    )
+    return {"ok": True, "run_id": run_id, "status": "paused", "agent_server": result}
 
 
 @router.post("/runs/{run_id}/fork")
