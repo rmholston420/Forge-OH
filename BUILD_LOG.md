@@ -549,3 +549,26 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - Event distribution matches: 3 ActionEvent → 3 spans, 0 agent MessageEvents → 0 llm spans
   - stub-count = 0 across all 4 endpoints
 - runs.py now has zero stub returns except /runs/compare (out of scope per plan).
+
+## 2026-08-03 01:33 EDT — Slice 7G CLOSED (`/runs/compare` no longer a stub)
+- Stage: 7G — the final stub in the BFF. Chose Option A+B: artifacts-set diff
+  (always) + best-effort content diff (when both runs' working_dirs exist on disk).
+- Changed:
+  - NEW bff/services/run_compare.py  compare_runs(base, fork, events, wds) → FileDiff[]
+  - bff/routers/runs.py              /runs/compare un-stubbed; moved above
+                                      /runs/{run_id} to fix route-shadowing (was
+                                      capturing 'compare' as a run_id and forwarding
+                                      to agent-server /api/conversations/compare → 422)
+  - NEW bff/tests/test_run_compare.py 10 tests
+- Semantics:
+  - Union of file paths touched by either run's file_editor ActionEvents
+  - Path only in base → 'deleted', only in fork → 'added', both → 'modified'
+  - Content diff via difflib.unified_diff (n=0) → additions/deletions counts
+  - Binary extensions (.png, .pdf, .zip, etc.) never read from disk
+  - Files > 5 MB never read
+- Verified on Colossus with base=b983c992... vs fork=5602f560...:
+  - HTTP 200
+  - 10/10 unit tests pass
+  - Real title from agent-server: "📝 Create stage4-final.txt with DoD proof"
+  - 1 file 'modified', content identical (fork inherited, no re-edit) → +0/-0 exact
+- ZERO stubs remain in the entire BFF. Every OpenHands surface is now real.
