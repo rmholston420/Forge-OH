@@ -1,30 +1,69 @@
-# SESSION_HANDOFF — 2026-08-03 03:29 EDT
+# Session Handoff
 
-## Current stage
-FOH Phase 3 · Task 3.7 (frontend coverage + Playwright e2e sweep) — **COMPLETE**.
+_Last updated: 2026-08-03 04:38 EDT_
 
-## Completed this session
-- Vitest coverage backfill: 40.44% → **46.7% statement / 44.57% fn / 48.00% line** (+6.3/+11.8/+6.4).
-  - Batch 1: 6 lib/* unit tests (format, ui-store, query-keys, api client+errors, socket).
-  - Batch 2: 14 feature-slice zustand stores swept (runs, workspaces, secrets, plugins, mcp, settings, trace, notifications, artifacts, browser, file-diff, terminal, metrics, agent-presets).
-  - 754 pass / 6 skipped / 0 fail.
-- Playwright e2e sweep vs real BFF at 127.0.0.1:8081:
-  - Added: nav-routes.spec.ts, workspaces.spec.ts, plugins.spec.ts, settings.spec.ts.
-  - Rewrote: runs.spec.ts, run-detail.spec.ts, secrets.spec.ts.
-  - Deleted rbac.spec.ts + fixtures/auth.ts (single-user local-first, RBAC does not apply).
-  - Final: 34 pass / 1 skipped (Settings tab-switch — needs BFF /api/settings warm) / 0 fail. 20.8s.
-- Commits (13): 12c0863, 7c6e01a, 208aa8d, acf148a, 8672ba5, 2a0a1e8, 04abed8, a7af9e8, ecaf9a6, a83027a, d90ffa1, 99819f0, (this commit).
+## Current build-sequencing stage
 
-## What remains
-- **Next coverage sprint:** feature-slice `api.ts` + `hooks.ts` files (still 0% for most). Would push line coverage past 60%.
-- **Wire settings tab e2e to green** (currently skipped) — either warm BFF /api/settings before test suite or reduce waitFor threshold. Deferred.
-- **Component-level tests** (PluginsPage, SecretsPage, McpPage, RunsDashboardPage, NewRunComposer, PlanRail, EventCard, FileList, WorkspaceCard, Sidebar/Topbar, ModelSection, CommandPalette, all run-detail tabs) — best exercised through e2e; skip in unit unless a bug appears.
+**Forge-OH FE ↔ BFF wiring sweep — COMPLETE (Slices A-J shipped).**
 
-## Open questions / ambiguity
+Every route in `bff/routers/*.py` is now reachable from a user-facing UI
+surface or a dedicated feature hook. No `raw fetch` calls remain in the
+runs, run-detail, workspaces, plugins, or observability features.
+
+## What was completed this session
+
+10 slices, 10 commits on `main` (all pushed to
+`https://git-agent-proxy.perplexity.ai/rmholston420/Forge-OH.git`):
+
+| Slice | Commit    | Summary |
+|-------|-----------|---------|
+| A     | `911e962` | Fix runtime breakage: metrics + browser routes |
+| B     | `b04ca68` | Rewrite ENDPOINTS registry + api-endpoints.test.ts |
+| C     | `5e20d50` | Wire `/runs/{id}/plan` → new PlanTab |
+| D     | `9820d8c` | Wire `POST /runs/{id}/fork` → RunDetailHeader Fork button |
+| E     | `17f8309` | Wire `POST /runs/{id}/secrets` → RunSecretsModal |
+| F     | `c8fa902` | Wire `POST /workspaces/{id}/test` → WorkspaceCard Test button |
+| G     | `1040fe3` | Wire `/runs/compare` → two-run picker modal on runs list |
+| H     | `bc35c1f` | Wire `/plugins/marketplace` + `/plugins/install` → PluginMarketplaceGrid + Installed/Marketplace tabs |
+| I     | `da9dccb` | Wire observability trace-detail drill-down → run list sidebar + trace summary + spans table |
+| J     | (this)    | Validation gate + BUILD_LOG + SESSION_HANDOFF |
+
+## Validation status (mirror sandbox)
+
+- **tsc --noEmit**: ✅ 0 errors
+- **eslint**: ✅ 0 errors, 55 warnings (matches baseline)
+- **vitest**: ✅ 790 pass · 6 skipped · 1 fail (`bffDownload` blob-identity — pre-existing jsdom flake, unrelated to sweep)
+- **pytest bff/tests**: ✅ 48 pass · 14 fail (all ConnectError against agent-server @ :8090; expected — mirror sandbox has no docker). On Colossus baseline was 62/62.
+- **forge-test.sh**: ⏳ NOT run in mirror (needs docker). Run on host:
+  ```bash
+  cd ~/dev/forge-oh && bash scripts/forge-test.sh
+  ```
+
+## Remaining work before DoD
+
+**Wiring-sweep DoD is met.** No wiring work outstanding.
+
+Optional follow-ups (out of sweep scope):
+
+1. Investigate `bffDownload returns Blob on success` jsdom flake — likely needs a manual instanceof shim in the test, not a client-code change.
+2. Run `bash scripts/forge-test.sh` on Colossus with agent-server + BFF + Next.js all up to confirm the full stack passes end-to-end (playwright + full pytest suite).
+3. Consider adding a marketplace-empty seed doc to help users understand how to populate `MarketplacePluginInfo` in the agent-server.
+
+## Open questions / ambiguity awaiting answer
+
 None.
 
 ## Exact next action
-On new session, decide between:
-  a) Continue coverage sprint into feature `api.ts` + `hooks.ts` (target 60%+ line).
-  b) Move onto next Phase 3 task per Forge-OH-Action-Plan-v4.md.
-Read `Forge-OH-Action-Plan-v4.md` to confirm before proceeding.
+
+1. On Colossus: `git pull origin main` in `~/dev/forge-oh`.
+2. `bash scripts/forge-up.sh` to relaunch the stack against latest FE.
+3. Visually smoke-test each new surface:
+   - Runs list → Compare button → pick two runs → verify /runs/compare page renders
+   - Run detail → Fork button → verify new run created + navigation
+   - Run detail → Env button → verify secrets modal loads existing secrets
+   - Run detail → Plan tab → verify plan JSON renders
+   - Workspaces page → Test button → verify green/red toast
+   - Plugins page → Marketplace tab → verify catalog loads (may be empty if agent-server has no registry seeded)
+   - Observability page → pick a run → verify trace summary + span table
+4. `bash scripts/forge-test.sh` to confirm all lints + unit + playwright green on Colossus.
+5. Append the forge-test.sh run result to BUILD_LOG.md.

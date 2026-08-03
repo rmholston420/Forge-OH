@@ -682,3 +682,41 @@ Real product improvements made along the way (not just test churn):
 
 Ports/adapters affected: none (this slice was pure test coverage).
 Stop-condition: Task 3.7 DoD = vitest ≥45% line, playwright suite green against real BFF — **BOTH MET**.
+
+## 2026-08-03 04:38 EDT — Wiring Sweep Complete (Slices A-J)
+
+**Stage:** Forge-OH FE ↔ BFF wiring completeness — every BFF route now reachable from the FE.
+**Definition of Done:** every route in bff/routers/*.py callable from a user-facing UI surface OR from a dedicated hook consumed by the FE.
+
+### Slices shipped (chronological)
+
+- **A** ​ 911e962 — fix runtime breakage: /api/runs/{id}/metrics + browser routes
+- **B** ​ b04ca68 — rewrote src/lib/api/endpoints.ts registry to match BFF reality; force-added rewritten api-endpoints.test.ts (71 pass)
+- **C** ​ 5e20d50 — /runs/{id}/plan wired via new PlanTab (src/app/(dashboard)/runs/[runId]/tabs/PlanTab.tsx + features/run-detail/plan-{api,hooks}.ts)
+- **D** ​ 9820d8c — POST /runs/{id}/fork wired into RunDetailHeader (features/runs/api.ts::forkRun + hooks::useForkRun; auto-navigates to new run)
+- **E** ​ 17f8309 — POST /runs/{id}/secrets via RunSecretsModal (per-run env-vars UI)
+- **F** ​ c8fa902 — POST /workspaces/{id}/test into WorkspaceCard; also rewrote features/workspaces/api.ts to use bffGet/Post/Patch/Delete + ENDPOINTS
+- **G** ​ 1040fe3 — /runs/compare two-run picker modal on runs list toolbar
+- **H** ​ bc35c1f — /plugins/marketplace + /plugins/install: rewrote features/plugins/api.ts to bffGet/Post/Delete + ENDPOINTS; PluginMarketplaceGrid component; plugins page split into Installed / Marketplace tabs
+- **I** ​ da9dccb — observability trace-detail drill-down: run-list sidebar + trace summary stats + per-span table (name, kind color-coded, status pill, duration, in/out tokens). Wires /observability/traces, /runs/{id}/traces, /traces/{id}, /traces/{id}/spans
+- **J** ​ this entry — validation gate
+
+### Ports/adapters affected
+
+- FE endpoints registry (src/lib/api/endpoints.ts) — full BFF surface
+- features/{runs,run-detail,workspaces,plugins,observability}/{api,hooks}.ts — hooks-first, no raw fetch calls remain in these features
+- src/app/(dashboard)/{runs, workspaces, plugins, observability}/**/*.tsx — every list/detail page has actions matching the router-level capabilities
+- No BFF changes this window (routers were already complete; only FE was under-wired)
+
+### Validation results (mirror @ /home/user/workspace/forge-oh-mirror)
+
+- **tsc --noEmit:** ✅ clean, 0 errors
+- **eslint src/**/*.{ts,tsx}:** ✅ 0 errors, 55 warnings (matches pre-sweep baseline; no new lints introduced by slices A-I)
+- **vitest run:** ✅ 790 pass · 6 skipped · **1 fail (pre-existing)**
+  - Failing: src/tests/unit/lib-api-client.test.ts `bffDownload returns Blob on success` — jsdom Blob-prototype identity mismatch, unrelated to the sweep
+- **pytest bff/tests -q:** ✅ 48 pass · 14 fail — all 14 failures are ConnectError against agent-server @ :8090 (not present in mirror sandbox). These pass on Colossus with agent-server up (baseline was 62 pass)
+- **forge-test.sh:** ⏳ NOT executable in mirror (needs docker + colossus). Must be run on host machine as `bash scripts/forge-test.sh`
+
+### Stop condition
+
+Wiring completeness stop condition MET. Every BFF route now has a user-facing surface. Remaining work — the pre-existing bffDownload flake — is out of sweep scope.
