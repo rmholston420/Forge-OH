@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/core/Skeleton';
 import { EmptyState } from '@/components/core/EmptyState';
 import { Tabs } from '@/components/core/Tabs';
 import BrowserTab from './tabs/BrowserTab';
+import PlanTab from './tabs/PlanTab';
 import MetricsTab from './tabs/MetricsTab';
 import SecurityTab from './tabs/SecurityTab';
 import TraceTab from './tabs/TraceTab';
@@ -29,6 +30,7 @@ import styles from './run-detail.module.css';
 //   - RunDetailUIStateSchema.selectedTab in src/lib/schemas/run.ts
 const TABS = [
   { id: 'overview',  label: 'Overview'  },
+  { id: 'plan',      label: 'Plan'      },
   { id: 'files',     label: 'Files'     },
   { id: 'terminal',  label: 'Terminal'  },
   { id: 'browser',   label: 'Browser'   },
@@ -275,6 +277,10 @@ export default function RunDetailPage({
       {/* Browser — Phase 1 (Slice 2A) */}
       {selectedTab === 'browser' && (
         <BrowserTab runId={runId} isActive={selectedTab === 'browser'} />
+      )}
+
+      {selectedTab === 'plan' && (
+        <PlanTab runId={runId} isActive={selectedTab === 'plan'} />
       )}
 
       {/* Metrics — Phase 1 (Slice 3A) */}

@@ -20,7 +20,7 @@ const initialState = {
 export interface RunDetailStore {
   // Tab union must match TABS array in page.tsx AND the Zod schema in src/lib/schemas/run.ts.
   // Canonical tab set as of Phase 0: overview | files | terminal | browser | metrics | security | trace
-  selectedTab: 'overview' | 'files' | 'terminal' | 'browser' | 'metrics' | 'security' | 'trace';
+  selectedTab: 'overview' | 'plan' | 'files' | 'terminal' | 'browser' | 'metrics' | 'security' | 'trace';
   selectedEventId: string | null;
   selectedArtifactId: string | null;
   diffMode: 'split' | 'unified';
