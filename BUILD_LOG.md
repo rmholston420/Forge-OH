@@ -415,3 +415,21 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   2. Create workspace via UI → real path on disk — filesystem verified.
   3. New Run wired to selected workspace's real path (runs.py §2).
   4. Delete via UI → gone from agent-server — verified via curl.
+
+
+## 2026-08-03 00:34 EDT — Stage 6 (Workspaces) CLOSED
+- Stage: 6 — Workspaces UI + backend collapsed to local-only, agent-server registry.
+- Verification (Playwright, scripts/e2e-stage6.ts):
+  1. /workspaces shows workspace name + real path — PASS
+  2. New Workspace modal has NO Type select and no docker/remote form fields — PASS
+  3. /runs "New Run" composer workspace picker labels clean (no `(local)` suffix) — PASS
+  4. Launched run's agent-server working_dir matches selected workspace path — PASS (working_dir=/home/rmholston/dev/forge-oh)
+- Test artifact (verified run id): c98f24a8-09bb-4ff9-9f6f-f1315fcdfe36
+- Definition of Done met:
+  1. Workspaces tab lists real agent-server registry data. ✓
+  2. Create via UI → workspace appears on agent-server + real dir created on disk. ✓
+  3. New Run wired to selected workspace's real path — agent-server confirms. ✓
+  4. Delete via UI → gone from agent-server. ✓ (verified via curl in commit c01a1ea)
+- Known unrelated debt surfaced during Stage 6 verify (NOT in Stage 6 scope):
+  - `pnpm type-check` reports ~50 pre-existing errors across secrets, plugins, trace, RunCard, StatusBadge, artifact/browser/event schemas. All predate Stage 6 (schema drift from earlier work). Track separately.
+  - `next.config.ts` warnings: `experimental.typedRoutes` should move to `typedRoutes`; `middleware` convention deprecated in favor of `proxy`. Cosmetic; leave for a housekeeping pass.
