@@ -1,0 +1,481 @@
+/*
+ * legacy-globals.css
+ *
+ * Utility + component classes referenced by pages that were built before
+ * the design system's CSS modules landed. Everything here is scoped to the
+ * class names actually used by:
+ *   - src/app/(dashboard)/settings/page.tsx
+ *   - src/components/settings/{AppearanceSection,ModelSection,KeyboardShortcutsSection}.tsx
+ *   - src/features/metrics/{MetricsDashboardPage,KpiCard}.tsx
+ *   - src/features/secrets/{SecretsPage,SecretRow}.tsx
+ *   - src/features/mcp/{McpPage,McpServerCard}.tsx
+ *   - src/features/agent-presets/{AgentPresetsPage,AgentPresetCard}.tsx
+ *   - src/features/plugins/PluginsPage.tsx
+ *   - src/components/domain/WorkspaceCard.tsx  (Tailwind-style utility classes)
+ *
+ * Uses the design tokens from tokens.css. Dark theme only for now.
+ */
+
+/* ─────────────────────────── screen-reader utilities ─────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.text-muted     { color: var(--color-text-muted); }
+.tabular-nums   { font-variant-numeric: tabular-nums; }
+
+/* ─────────────────────────── button primitives ───────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-body);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-easing),
+              border-color var(--motion-fast) var(--motion-easing),
+              color var(--motion-fast) var(--motion-easing);
+}
+.btn:hover:not(:disabled)  { background: var(--color-bg-surface-alt); }
+.btn:disabled              { opacity: 0.4; cursor: not-allowed; }
+.btn:focus-visible         { outline: 2px solid var(--color-accent-primary); outline-offset: 2px; }
+
+.btn-primary,
+.btn.btn-primary {
+  background: var(--color-accent-primary);
+  border-color: var(--color-accent-primary);
+  color: #0a1220;
+  font-weight: 600;
+}
+.btn-primary:hover:not(:disabled) { background: var(--color-accent-hover); }
+
+.btn-ghost,
+.btn.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-secondary);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--color-bg-surface-alt); color: var(--color-text-primary); }
+
+.btn-error,
+.btn.btn-error {
+  background: rgba(240, 97, 107, 0.12);
+  border-color: var(--color-state-error);
+  color: var(--color-text-error);
+}
+.btn-error:hover:not(:disabled) { background: rgba(240, 97, 107, 0.22); }
+
+/* ────────────────────────── settings-page layout ─────────────────────────── */
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: var(--space-8);
+  padding: var(--space-6);
+  max-width: 1100px;
+}
+.settings-tab-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  position: sticky;
+  top: var(--space-4);
+  align-self: start;
+}
+.settings-tab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-easing),
+              color var(--motion-fast) var(--motion-easing);
+}
+.settings-tab:hover                          { background: var(--color-bg-surface-alt); color: var(--color-text-primary); }
+.settings-tab--active,
+.settings-tab[aria-selected="true"] {
+  background: var(--color-accent-soft);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-accent);
+}
+.unsaved-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-state-warning);
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding-bottom: var(--space-8);
+}
+.settings-content h2 { font-size: 18px; font-weight: 600; margin-bottom: var(--space-3); }
+.settings-content fieldset {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.settings-content fieldset legend {
+  padding: 0 var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.settings-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  background: linear-gradient(to top, var(--color-bg-canvas) 60%, transparent);
+  margin-top: var(--space-6);
+}
+
+.settings-skeleton {
+  min-height: 200px;
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-lg);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.toast {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-meta);
+  border: 1px solid var(--color-border-subtle);
+}
+.toast--success {
+  background: rgba(53, 196, 124, 0.12);
+  color: var(--color-text-success);
+  border-color: var(--color-state-success);
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.dialog {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  min-width: 360px;
+  max-width: 480px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+.dialog h3 { font-size: 16px; font-weight: 600; margin-bottom: var(--space-3); }
+.dialog p  { color: var(--color-text-secondary); margin-bottom: var(--space-4); font-size: var(--font-size-body); }
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.about-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-6);
+  font-size: var(--font-size-body);
+}
+.about-list dt { color: var(--color-text-secondary); }
+.about-list dd { color: var(--color-text-primary); }
+
+/* ─────────────────────── AppearanceSection widgets ───────────────────────── */
+
+.theme-cards,
+.accent-swatches,
+.font-size-options {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.theme-card,
+.font-size-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--motion-easing),
+              background var(--motion-fast) var(--motion-easing);
+}
+.theme-card:hover,
+.font-size-option:hover { background: var(--color-bg-surface-alt); }
+.theme-card.selected,
+.font-size-option.selected,
+.accent-swatch.selected {
+  border-color: var(--color-accent-primary);
+  background: var(--color-accent-soft);
+}
+.theme-card-preview {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-elevated);
+  border: 1px solid var(--color-border-subtle);
+}
+.theme-card-preview[data-theme-preview="light"] { background: #f4f7fb; }
+.theme-card-preview[data-theme-preview="dark"]  { background: #0f1115; }
+
+.accent-swatch {
+  cursor: pointer;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+}
+.accent-swatch span[aria-hidden] {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+}
+
+/* ─────────────────────────── metrics page ────────────────────────────────── */
+
+.metrics-page {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.page-header h1 { font-size: 22px; font-weight: 600; }
+
+.filter-tabs {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+}
+.filter-tab {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-meta);
+  cursor: pointer;
+}
+.filter-tab:hover                             { color: var(--color-text-primary); }
+.filter-tab--active,
+.filter-tab[aria-selected="true"] {
+  background: var(--color-accent-primary);
+  color: #0a1220;
+  font-weight: 600;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+.metrics-chart-section,
+.metrics-bottom-grid section {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+.metrics-chart-section h2,
+.metrics-bottom-grid h2 { font-size: 15px; font-weight: 600; margin-bottom: var(--space-3); }
+.metrics-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-4);
+}
+.metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-body);
+}
+.metrics-table th,
+.metrics-table td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.metrics-table th { color: var(--color-text-secondary); font-weight: 500; font-size: var(--font-size-meta); }
+
+/* ─────────────────────────── shared empty + skeleton ─────────────────────── */
+
+.empty-state {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--color-bg-surface) 0%,
+    var(--color-bg-surface-alt) 50%,
+    var(--color-bg-surface) 100%);
+  background-size: 200% 100%;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─────────────────────────── secrets rows ────────────────────────────────── */
+
+.secret-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  align-items: center;
+}
+.secret-key { font-family: var(--font-mono); font-size: var(--font-size-code); color: var(--color-text-primary); }
+.secret-value,
+.masked-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.08em;
+}
+.secret-meta { font-size: var(--font-size-meta); }
+
+/* ─────────────────────── minimal Tailwind atom shim ──────────────────────── */
+/*
+ * WorkspaceCard.tsx and a few other files use a handful of Tailwind utility
+ * classes. We are NOT running Tailwind — just define exactly the atoms used.
+ */
+
+.rounded-md   { border-radius: var(--radius-md); }
+.rounded-lg   { border-radius: var(--radius-lg); }
+.rounded-xl   { border-radius: var(--radius-xl); }
+.rounded-full { border-radius: var(--radius-full); }
+
+.border       { border: 1px solid var(--color-border-default); }
+
+.p-3          { padding: var(--space-3); }
+.p-4          { padding: var(--space-4); }
+.px-2         { padding-left: var(--space-2); padding-right: var(--space-2); }
+.py-1         { padding-top: var(--space-1); padding-bottom: var(--space-1); }
+.py-2         { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+
+.mt-1         { margin-top: var(--space-1); }
+.mt-2         { margin-top: var(--space-2); }
+.mt-3         { margin-top: var(--space-3); }
+.mb-3         { margin-bottom: var(--space-3); }
+
+.flex         { display: flex; }
+.flex-col     { flex-direction: column; }
+.flex-wrap    { flex-wrap: wrap; }
+.items-start  { align-items: flex-start; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-end  { justify-content: flex-end; }
+.gap-1        { gap: var(--space-1); }
+.gap-2        { gap: var(--space-2); }
+.gap-3        { gap: var(--space-3); }
+
+.text-xs      { font-size: var(--font-size-meta); }
+.text-sm      { font-size: var(--font-size-body); }
+.text-base    { font-size: 15px; }
+.font-medium  { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-mono    { font-family: var(--font-mono); }
+.truncate     { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.break-all    { word-break: break-all; }
+
+.min-w-full   { min-width: 100%; }
+.overflow-x-auto { overflow-x: auto; }
+
+.uppercase        { text-transform: uppercase; }
+.tracking-wide    { letter-spacing: 0.06em; }
+.inline-flex      { display: inline-flex; }
+.shadow-sm        { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); }
+
+/* ── color atoms used by settings routing diagnostics panel ─────────────── */
+
+.bg-white\/5,
+.bg-white\/60         { background: var(--color-bg-surface); }
+.dark\:bg-white\/5    { background: var(--color-bg-surface); }
+.border-black\/10,
+.border-white\/10     { border-color: var(--color-border-subtle); }
+.dark\:border-white\/10 { border-color: var(--color-border-subtle); }
+.border-b             { border-bottom: 1px solid var(--color-border-subtle); }
+.border-black\/5,
+.dark\:border-white\/5 { border-color: var(--color-border-subtle); }
+
+.text-neutral-500,
+.text-neutral-600,
+.dark\:text-neutral-300 { color: var(--color-text-secondary); }
+.text-red-600,
+.dark\:text-red-400   { color: var(--color-text-error); }
+.text-green-600       { color: var(--color-text-success); }
+
+.bg-green-100,
+.dark\:bg-green-950\/40    { background: rgba(53, 196, 124, 0.14); }
+.text-green-800,
+.dark\:text-green-300      { color: var(--color-text-success); }
+.border-green-200,
+.dark\:border-green-900    { border-color: rgba(53, 196, 124, 0.4); }
+
+.bg-red-100,
+.dark\:bg-red-950\/40      { background: rgba(240, 97, 107, 0.14); }
+.text-red-800,
+.dark\:text-red-300        { color: var(--color-text-error); }
+.border-red-200,
+.dark\:border-red-900      { border-color: rgba(240, 97, 107, 0.4); }
+
+/* Responsive grid helpers used on settings routing table */
+.grid                    { display: grid; }
+.md\:grid-cols-2         { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.md\:grid-cols-3         { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.xl\:grid-cols-4         { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.space-y-4 > * + *       { margin-top: var(--space-4); }
+
+/* Hover ─ used by refresh button in settings routing panel */
+.hover\:bg-black\/5:hover,
+.dark\:hover\:bg-white\/10:hover { background: var(--color-bg-surface-alt); }

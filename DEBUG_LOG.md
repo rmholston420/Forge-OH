@@ -80,3 +80,18 @@
 - Root cause: agent-server's response to a rejected confirmation is to abort the tool call and return the conversation loop to idle. There is no terminal-on-reject transition. From the user's POV the run is still open.
 - Fix: reject_run() now POSTs to /interrupt after respond_to_confirmation. /interrupt yields 400 when the conversation is already idle/finished; that branch is tolerated. Successful interrupt drives execution_status to 'paused' (agent-server's version of a hard-cancel state). BFF status map already routes paused\u2192paused, so the UI shows a paused run that can be resumed or fully stopped. This matches how OpenHands models cancellation.
 - Files changed: bff/routers/runs.py.
+
+## 2026-08-03 05:19 EDT — Multiple pages rendering as unstyled browser defaults
+
+**Symptom:** Playwright screenshots on branch `agent/screenshots-20260803-050430` showed /settings, /workspaces action buttons, Run Overview message bodies, and Metrics tab all rendering with wrong or missing styles despite forge-test.sh being fully green.
+
+**Root cause chain:**
+1. No Tailwind is installed in this project (no tailwind.config.*, no postcss.config.*, tailwindcss not in package.json) yet ~9 files still write `className="rounded-md border-[var(--color-border)] px-2 py-1 ..."`. Those class names are inert.
+2. Many components reference global class names (`.settings-layout`, `.metrics-page`, `.kpi-grid`, `.btn`, `.dialog-overlay`, `.theme-cards`) that are not defined in globals.css / theme.css / tokens.css — no matching CSS module either.
+3. Files also use CSS variables (`--color-border`, `--color-surface`, `--color-danger`, `--color-success`, `--color-surface-hover`, `--space-16`) that were never added to tokens.css.
+4. BFF /runs/{id}/events returned raw agent-server events without a `.summary` field, so EventCard displayed only icon + timestamp for every message.
+5. BFF had no /runs/{id}/metrics endpoint, so the Metrics tab's fetch 404'd and the component sat on `loading` skeletons (Banner didn't render because bffGet's error path was masked by refetchInterval).
+
+**Fix:** Wrote src/styles/legacy-globals.css to define every missing class name + a minimal Tailwind-atom shim, added compat aliases and missing spacing tokens to tokens.css, added `bff/services/event_normalize.py` (piped into GET /runs/{id}/events), added `bff/services/run_metrics.py` + GET /runs/{id}/metrics endpoint, and rewrote WorkspaceCard buttons to use the new `.btn` classes.
+
+**Files touched:** src/styles/{legacy-globals.css (new),globals.css,tokens.css}, bff/services/{event_normalize.py,run_metrics.py} (new), bff/routers/runs.py, src/components/domain/WorkspaceCard.tsx

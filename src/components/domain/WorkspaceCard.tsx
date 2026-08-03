@@ -82,14 +82,14 @@ export function WorkspaceCard({ workspace }: Props) {
           type="button"
           onClick={handleTest}
           disabled={testMut.isPending}
-          className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-hover,rgba(255,255,255,0.04))]"
+          className="btn btn-ghost text-xs"
         >
           {testMut.isPending ? 'Testing…' : 'Test'}
         </button>
         <button
           type="button"
           onClick={() => openEditDrawer(workspace.id)}
-          className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-hover,rgba(255,255,255,0.04))]"
+          className="btn btn-ghost text-xs"
         >
           Edit
         </button>
@@ -97,8 +97,7 @@ export function WorkspaceCard({ workspace }: Props) {
           type="button"
           onClick={handleDelete}
           disabled={deleteMut.isPending}
-          className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-hover,rgba(255,255,255,0.04))]"
-          style={{ color: 'var(--color-danger, #ef4444)' }}
+          className="btn btn-error text-xs"
         >
           {deleteMut.isPending ? 'Deleting…' : 'Delete'}
         </button>

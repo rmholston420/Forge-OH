@@ -64,6 +64,10 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
 
   /* Border Radius */
   --radius-sm: 4px;
@@ -84,4 +88,14 @@
   --motion-fast: 140ms;
   --motion-normal: 200ms;
   --motion-easing: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ─── Compatibility aliases (used by legacy pages/components) ─── */
+  --color-border:         var(--color-border-default);
+  --color-surface:        var(--color-bg-surface);
+  --color-surface-alt:    var(--color-bg-surface-alt);
+  --color-surface-hover:  rgba(255, 255, 255, 0.04);
+  --color-danger:         var(--color-state-error);
+  --color-success:        var(--color-state-success);
+  --color-warning:        var(--color-state-warning);
+  --color-state-error-subtle: rgba(240, 97, 107, 0.12);
 }

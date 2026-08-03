@@ -50,6 +50,7 @@ from bff.services.action_reconstruction import (
     build_commands,
     build_plan,
 )
+from bff.services.event_normalize import normalize_events
 from bff.services.event_relay import start_relay
 from bff.services.file_diff_reconstruction import build_file_diff, build_summaries
 from bff.services.model_router import ModelUnavailableError, route_request
@@ -387,16 +388,26 @@ async def get_run_events(
     resp.raise_for_status()
     payload = resp.json() or {}
     if isinstance(payload, list):
-        return {"data": payload, "nextPageId": None}
+        return {"data": normalize_events(payload), "nextPageId": None}
     items = payload.get("items") or payload.get("data") or payload.get("events") or []
     next_page = payload.get("next_page_id") or payload.get("nextPageId")
-    return {"data": items, "nextPageId": next_page}
+    return {"data": normalize_events(items), "nextPageId": next_page}
 
 
 @router.get("/runs/{run_id}/plan")
 async def get_run_plan(run_id: str) -> dict:
     events = await _fetch_all_events(run_id)
     return {"data": build_plan(events, run_id)}
+
+
+@router.get("/runs/{run_id}/metrics")
+async def get_run_metrics(run_id: str) -> dict:
+    """Per-run KPIs (Metrics tab). Aggregates from the event stream so no
+    additional agent-server endpoints are needed."""
+    from bff.services.run_metrics import build_run_metrics
+
+    events = await _fetch_all_events(run_id)
+    return {"data": build_run_metrics(events, run_id)}
 
 
 # _fetch_all_events was moved to bff.services.event_fetch for reuse by the

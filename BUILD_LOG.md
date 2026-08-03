@@ -720,3 +720,27 @@ Stop-condition: Task 3.7 DoD = vitest ≥45% line, playwright suite green agains
 ### Stop condition
 
 Wiring completeness stop condition MET. Every BFF route now has a user-facing surface. Remaining work — the pre-existing bffDownload flake — is out of sweep scope.
+
+## 2026-08-03 05:18 EDT — Visual QA sweep pass 1 (critical + high fixes)
+
+**Stage:** UI Polish — post-Playwright visual audit
+**Ports/adapters:** BFF /runs/{id}/events (normalizer) + /runs/{id}/metrics (new); global CSS
+
+Fixed critical + high issues from the 26-shot Playwright visual tour (branch `agent/screenshots-20260803-050430`).
+
+**Files created:**
+- `src/styles/legacy-globals.css` — defines the undefined utility + component
+  classes that pages had been referencing since day one (settings-*, .btn/.btn-primary/.btn-ghost/.btn-error, .dialog-*, .metrics-page, .kpi-grid, .filter-tab, .skeleton, .empty-state, .secret-row, .theme-cards/accent-swatches/font-size-options, plus a minimal Tailwind-atom shim (.rounded-*, .flex, .gap-*, .text-xs, etc.) so WorkspaceCard buttons and settings routing panel render.
+- `bff/services/event_normalize.py` — projects raw agent-server events (MessageEvent, ActionEvent, ObservationEvent, error variants) to the frontend ToolEvent shape, giving Run Overview messages a filled `.summary`.
+- `bff/services/run_metrics.py` — aggregates tokens/tool-calls/files-touched/duration/cost from the event stream so the run-detail Metrics tab no longer 404s.
+
+**Files modified:**
+- `src/styles/tokens.css` — added compat aliases (--color-border/-surface/-danger/-success/-warning + --color-surface-hover) and extended spacing scale (--space-10/12/16/20).
+- `src/styles/globals.css` — imports legacy-globals.css.
+- `bff/routers/runs.py` — GET /runs/{id}/events now runs items through normalize_events; new endpoint GET /runs/{id}/metrics.
+- `src/components/domain/WorkspaceCard.tsx` — Test/Edit/Delete now use `.btn .btn-ghost` / `.btn .btn-error` classes instead of the dead Tailwind arbitrary-value utilities.
+
+**Definition of Done:**
+- Playwright forge-test.sh still green (42 e2e + unit + BFF).
+- forge-screenshots.sh re-run produces cleaner PNGs (verify visually before closing this slice).
+
