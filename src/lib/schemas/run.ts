@@ -84,3 +84,15 @@ export const CreateRunRequestSchema = z.object({
 });
 
 export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;
+
+// ---------------------------------------------------------------------------
+// UI-state schema exported for tests that assert store-shape validity.
+// ---------------------------------------------------------------------------
+export const RunDetailUIStateSchema = z.object({
+  selectedTab: z.enum(['overview', 'events', 'artifacts', 'traces', 'plan', 'diffs', 'browser', 'terminal', 'metrics', 'security', 'notifications']),
+  selectedEventId: z.union([z.string(), z.number()]).nullable(),
+  diffMode: z.enum(['split', 'unified']),
+  inspectorOpen: z.boolean(),
+  latestStreamEventId: z.number(),
+});
+export type RunDetailUIState = z.infer<typeof RunDetailUIStateSchema>;

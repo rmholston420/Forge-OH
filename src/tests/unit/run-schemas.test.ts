@@ -1,16 +1,14 @@
 /**
  * Unit tests: src/lib/schemas/run.ts
  *
- * Verifies all RunStatus enum values including the 'stopped' terminal state
- * added in the last fix pass. Also covers RunSummarySchema and
- * RunDetailUIStateSchema structural validation.
+ * Covers RunStatusSchema, RunSummarySchema, and RunDetailUIStateSchema.
  */
 import { describe, it, expect } from 'vitest';
 import { RunStatusSchema, RunSummarySchema, RunDetailUIStateSchema } from '@/lib/schemas/run';
 
 const ALL_STATUSES = [
   'idle', 'running', 'streaming', 'queued', 'paused',
-  'awaiting_approval', 'succeeded', 'failed', 'blocked', 'stopped',
+  'awaiting-approval', 'disconnected', 'succeeded', 'failed', 'blocked',
 ] as const;
 
 describe('RunStatusSchema', () => {
@@ -18,12 +16,10 @@ describe('RunStatusSchema', () => {
     expect(RunStatusSchema.safeParse(status).success).toBe(true);
   });
 
-  it("accepts 'stopped' — the terminal state added in fix pass", () => {
-    expect(RunStatusSchema.safeParse('stopped').success).toBe(true);
-  });
-
   it('rejects unknown status', () => {
     expect(RunStatusSchema.safeParse('cancelled').success).toBe(false);
+    expect(RunStatusSchema.safeParse('stopped').success).toBe(false);
+    expect(RunStatusSchema.safeParse('completed').success).toBe(false);
   });
 
   it('rejects empty string', () => {
@@ -35,17 +31,13 @@ describe('RunSummarySchema', () => {
   const validRun = {
     id: 'run-001', title: 'Test run', status: 'running',
     agentPresetName: 'default', workspaceId: 'ws-1',
-    workspaceType: 'docker', activeTool: null,
+    workspaceType: 'local', activeTool: null,
     updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
     elapsedMs: null, estimatedCostUsd: null,
   };
 
   it('parses a valid run summary', () => {
     expect(RunSummarySchema.safeParse(validRun).success).toBe(true);
-  });
-
-  it('accepts stopped status in a run summary', () => {
-    expect(RunSummarySchema.safeParse({ ...validRun, status: 'stopped' }).success).toBe(true);
   });
 
   it('rejects missing id', () => {

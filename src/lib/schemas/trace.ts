@@ -76,3 +76,17 @@ export const TraceSummarySchema = z.object({
 });
 
 export type TraceSummary = z.infer<typeof TraceSummarySchema>;
+
+// ---------------------------------------------------------------------------
+// Compat aliases for tests/UI written against older schema names.
+// ---------------------------------------------------------------------------
+export const SpanSchema = TraceSpanSchema;
+export const TraceSchema = z.object({
+  traceId: z.string(),
+  runId: z.string(),
+  spans: z.array(TraceSpanSchema),
+  startTime: z.string(),
+  endTime: z.string().optional(),
+  status: z.enum(['ok', 'error', 'unset']).optional(),
+});
+export type Trace = z.infer<typeof TraceSchema>;
