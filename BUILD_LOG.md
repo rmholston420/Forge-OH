@@ -1752,3 +1752,26 @@ retrieve(task_description, *, symptom="", k=3, verified_only=True,
 - Ruff clean.
 
 **Stop-condition status:** F.4 complete. F.5 (run-completion writer hook that materializes a `TrajectoryRecord` from BFF events) next.
+
+## 2026-08-03 09:20 EDT — Slice F.5: TrajectoryWriter + TrajectoryIndexer
+
+**Stage:** Step 8, Slice F.5.
+
+**What:** materializes a `TrajectoryRecord` from run outputs and persists it (embedding=None), plus a background indexer that populates embeddings for pending records.
+
+**Files created:**
+- `openhands_tools_ext/trajectory/writer.py` — `RunSummary` dataclass (structured inputs from caller), `TrajectoryWriter.write_from_run(summary)` and `.build_record(summary)`, `TrajectoryIndexer.index_pending(*, max_records=None)`.
+- `openhands_tools_ext/tests/trajectory/test_writer.py` — 10 tests: minimal / full summary writes, plain-dict verify_iterations coercion, idempotent rewrite (last observation wins), UNKNOWN default status, indexer drain / batching / max_records budget / batch × budget interaction.
+
+**Design decisions:**
+- **Writer is pure library, not a hook.** The STOP-hook subprocess remains verify-only; a follow-up slice will wire the writer/indexer either into the same hook (after VerifyLoop resolves) or a distinct run-completion event, but the module deliberately doesn't couple to hook plumbing.
+- **Idempotency by `traj_{run_id}`.** Re-firing the writer for the same run replaces the previous record (delete + insert) — matches the STOP hook re-firing across verify-retry iterations. `store.count()` proves no duplicates.
+- **verify_iterations accepts both `VerificationStep` and plain `dict`.** Lets the future hook shovel JSON sidecar rows directly through the writer without an extra parse step.
+- **Indexer batches one model call per pass.** `batch_size` bounds one GPU forward pass; `max_records` bounds the whole invocation. Batches of [2,2,1] and [3,2] verified.
+- **`build_record_text` reused from F.3** so the retriever and indexer share one textual projection.
+
+**Tests:**
+- `.venv/bin/pytest openhands_tools_ext/` → 223 passed (was 213; +10 new).
+- Ruff clean.
+
+**Stop-condition status:** F.5 complete. F.6 (BFF endpoints `/trajectories/search` + `/trajectories/{id}`) next.
