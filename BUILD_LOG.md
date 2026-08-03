@@ -3094,3 +3094,39 @@ is still possible via `FORGE_VLLM_PLANNER_PORT` / `VLLM_PLANNER_PORT`.
 **Stop condition (F.19.1b):** planner container binds :8511
 successfully and `/v1/models` returns `qwen3-thinking-2507-awq`.
 Needs Colossus re-smoke.
+
+## 2026-08-03 18:49 EDT — F.19.2c settings.py per-role probes
+
+**Stage:** F.19.2c — settings router migration.
+
+**Delivered:** `/api/settings/model-routing` now returns per-role
+routing info additively.
+
+**New response fields:**
+- `coderUrl`, `coderModel`, `coderMaxTokens`, `coderVllmHealthy`
+- `plannerUrl`, `plannerModel`, `plannerMaxTokens`, `plannerVllmHealthy`
+- `roleProbes: [RoleProbe]` with one entry per role. Each
+  `RoleProbe` reports resolved backend, model, baseUrl, maxTokens,
+  and a `selected` string (`"vllm/qwen3.6-35b-nvfp4"` /
+  `"ollama/qwen3-coder:30b"` etc.). Populated via `route_by_role`.
+
+**Legacy compat:** all F.18 fields (`ollamaUrl`, `vllmUrl`,
+`primaryBackend`, `probes`, etc.) preserved as-is. FE using the
+old shape is unaffected.
+
+**Files changed:**
+- `bff/routers/settings.py` (imports, `RoleProbe`, extended
+  `ModelRoutingStatus`, extended handler)
+- `bff/tests/test_settings_router.py` (assert new fields exist)
+
+**Verification:**
+- `test_model_router.py`: 20/20 pass in sandbox.
+- `test_settings_router.py`: needs `socketio` (not in sandbox
+  deps) — will validate on Colossus.
+- Standalone import + Pydantic model-field enumeration confirms
+  no typos in field wiring.
+
+**Stop condition:** F.19.2c DONE. All 3 legacy `route_request`
+call sites (settings, runs, hook_config) migrated or removed.
+`route_request` itself remains for legacy `/model-routing` probe
+scenarios — full removal deferred to F.19.3.

@@ -34,6 +34,7 @@ def test_model_routing_endpoint():
     resp = client.get("/api/settings/model-routing")
     assert resp.status_code == 200
     body = resp.json()
+    # Legacy F.18 fields (kept for FE compat).
     assert "ollamaUrl" in body
     assert "vllmUrl" in body
     assert "primaryBackend" in body
@@ -46,3 +47,20 @@ def test_model_routing_endpoint():
     assert "vllmHealthy" in body
     assert "probes" in body
     assert len(body["probes"]) == 3
+    # F.19.2c: per-role fields.
+    for k in (
+        "coderUrl", "coderModel", "coderMaxTokens", "coderVllmHealthy",
+        "plannerUrl", "plannerModel", "plannerMaxTokens", "plannerVllmHealthy",
+        "roleProbes",
+    ):
+        assert k in body, f"missing role field: {k}"
+    assert isinstance(body["coderMaxTokens"], int) and body["coderMaxTokens"] > 0
+    assert isinstance(body["plannerMaxTokens"], int) and body["plannerMaxTokens"] > 0
+    role_probes = body["roleProbes"]
+    assert isinstance(role_probes, list) and len(role_probes) == 2
+    roles_seen = {p["role"] for p in role_probes}
+    assert roles_seen == {"coder", "planner"}
+    for p in role_probes:
+        assert "role" in p
+        # Either fully resolved (backend+model set) or error-populated.
+        assert (p.get("backend") and p.get("model")) or p.get("error")

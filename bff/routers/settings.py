@@ -16,13 +16,21 @@ from pydantic import BaseModel
 
 from bff.services.model_router import (
     FAST_MODEL,
+    LLM_CODER_MAX_TOKENS,
+    LLM_CODER_MODEL,
+    LLM_CODER_URL,
+    LLM_PLANNER_MAX_TOKENS,
+    LLM_PLANNER_MODEL,
+    LLM_PLANNER_URL,
     LLM_PRIMARY_BACKEND,
     OLLAMA_URL,
     PRIMARY_MODEL,
     VLLM_FALLBACK_MODEL,
     VLLM_URL,
     ModelUnavailableError,
+    _vllm_role_health,
     ollama_health_check,
+    route_by_role,
     route_request,
     vllm_health_check,
 )
@@ -69,6 +77,21 @@ class RoutingProbe(BaseModel):
     error: str | None = None
 
 
+class RoleProbe(BaseModel):
+    """F.19.2c: per-role routing probe. Reports the resolved backend,
+    model, base_url, and max_tokens the router would pick right now.
+    ``error`` is populated when no path (vLLM, supervisor swap, or
+    Ollama fallback) is available for that role."""
+
+    role: str
+    backend: str | None = None
+    model: str | None = None
+    baseUrl: str | None = None
+    maxTokens: int | None = None
+    selected: str | None = None  # legacy 'backend/model' tagged form
+    error: str | None = None
+
+
 class ModelRoutingStatus(BaseModel):
     ollamaUrl: str
     vllmUrl: str
@@ -80,6 +103,16 @@ class ModelRoutingStatus(BaseModel):
     ollamaFastHealthy: bool
     vllmHealthy: bool
     probes: list[RoutingProbe]
+    # F.19.2c: role-scoped fields (additive).
+    coderUrl: str
+    coderModel: str
+    coderMaxTokens: int
+    coderVllmHealthy: bool
+    plannerUrl: str
+    plannerModel: str
+    plannerMaxTokens: int
+    plannerVllmHealthy: bool
+    roleProbes: list[RoleProbe]
 
 
 _SETTINGS = SettingsResponse()
@@ -114,13 +147,13 @@ def reset_settings_handler():
 
 @router.get("/model-routing", response_model=ModelRoutingStatus)
 async def get_model_routing_handler():
+    # --- Legacy task-complexity probes (F.18 shape, kept for FE compat) ---
     probes: list[RoutingProbe] = []
     scenarios = [
         ("agentic", 8000),
         ("simple", 8000),
         ("simple", 50000),
     ]
-
     for task_complexity, context_length in scenarios:
         try:
             selected = await route_request(task_complexity, context_length)
@@ -140,6 +173,24 @@ async def get_model_routing_handler():
                 )
             )
 
+    # --- F.19.2c: per-role probes ---
+    role_probes: list[RoleProbe] = []
+    for role in ("coder", "planner"):
+        try:
+            route = await route_by_role(role)
+            role_probes.append(
+                RoleProbe(
+                    role=role,
+                    backend=route.backend,
+                    model=route.model,
+                    baseUrl=route.base_url,
+                    maxTokens=route.max_tokens,
+                    selected=route.tagged,
+                )
+            )
+        except ModelUnavailableError as exc:
+            role_probes.append(RoleProbe(role=role, error=str(exc)))
+
     return ModelRoutingStatus(
         ollamaUrl=OLLAMA_URL,
         vllmUrl=VLLM_URL,
@@ -151,4 +202,13 @@ async def get_model_routing_handler():
         ollamaFastHealthy=await ollama_health_check(FAST_MODEL),
         vllmHealthy=await vllm_health_check(),
         probes=probes,
+        coderUrl=LLM_CODER_URL,
+        coderModel=LLM_CODER_MODEL,
+        coderMaxTokens=LLM_CODER_MAX_TOKENS,
+        coderVllmHealthy=await _vllm_role_health(LLM_CODER_URL),
+        plannerUrl=LLM_PLANNER_URL,
+        plannerModel=LLM_PLANNER_MODEL,
+        plannerMaxTokens=LLM_PLANNER_MAX_TOKENS,
+        plannerVllmHealthy=await _vllm_role_health(LLM_PLANNER_URL),
+        roleProbes=role_probes,
     )
