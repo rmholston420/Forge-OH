@@ -500,3 +500,22 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - Toggle back: status returns to 'error' (last real probe state)
   - Delete → HTTP 204; list empty again
 - All contracts match src/lib/schemas/mcp.ts and src/features/mcp/api.ts consumers.
+
+## 2026-08-03 01:15 EDT — Slice 7E CLOSED (secrets router = full passthrough)
+- Stage: 7E — secrets router.
+- Changed:
+  - bff/routers/secrets.py rewritten (in-memory _STORE → agent-server passthrough).
+  - bff/main.py: register conv_secrets_router for POST /api/runs/{id}/secrets.
+- Endpoints wired:
+  - GET  /api/secrets                     /api/settings/secrets → SecretRef[]
+  - POST /api/secrets                     PUT /api/settings/secrets (create)
+  - PUT  /api/secrets/{id}/rotate         delete-then-recreate (upstream has no rotate)
+  - DELETE /api/secrets/{id}              /api/settings/secrets/{name} → 204
+  - POST /api/runs/{id}/secrets           /api/conversations/{id}/secrets passthrough
+- Dropped bogus Bearer-auth guard (local-first single-user).
+- Verified on Colossus (full lifecycle):
+  - create TEST_SECRET value='hunter2' → list shows metadata only, no 'hunter2' in response
+  - rotate to 'new-value-x' → description 'smoke' preserved
+  - delete → HTTP 204; list empty
+  - legacy body {key, rawValue} accepted; LEGACY_KEY created and deleted (HTTP 204)
+- No stub markers remain in secrets router.
