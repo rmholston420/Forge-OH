@@ -147,14 +147,29 @@ def _produce_diffs(events: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
         path = s.get("path")
         if not isinstance(path, str) or not path:
             continue
-        added = s.get("linesAdded") or s.get("lines_added") or 0
-        removed = s.get("linesRemoved") or s.get("lines_removed") or 0
+        # ``file_diff_reconstruction.build_summaries`` uses the
+        # frontend-facing key names (``additions``/``deletions``); the
+        # older ``linesAdded``/``lines_added`` fallbacks are kept in
+        # case an upstream refactor changes the shape.
+        added = (
+            s.get("additions")
+            or s.get("linesAdded")
+            or s.get("lines_added")
+            or 0
+        )
+        removed = (
+            s.get("deletions")
+            or s.get("linesRemoved")
+            or s.get("lines_removed")
+            or 0
+        )
         try:
             added_int = max(0, int(added))
             removed_int = max(0, int(removed))
         except (TypeError, ValueError):
             added_int, removed_int = 0, 0
-        summary = str(s.get("summary") or "")
+        status = str(s.get("status") or "")
+        summary = str(s.get("summary") or status)
         out.append(
             {
                 "path": path,
@@ -166,27 +181,131 @@ def _produce_diffs(events: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
     return out or None
 
 
-# Verify-observation events emit a symptom via a well-known content
-# shape. We match on both the raw agent-server envelope and the
-# normalized shape defensively.
+# The real agent-server event schema (verified F.15 fixup) has NO
+# top-level ``symptom`` key. Failures surface as:
+#   * ObservationEvent with observation.is_error == True (any tool)
+#   * ObservationEvent w/ TerminalObservation + exit_code != 0
+#   * HookExecutionEvent with success == False, or verify verdict of
+#     ``failed``/``error`` inside its stdout JSON payload.
+#
+# We ALSO honor the legacy top-level ``symptom``/``verify_symptom``/
+# ``failure_reason`` keys so a future refactor that adds them can't
+# regress silently.
+
 _SYMPTOM_KEYS = ("symptom", "verify_symptom", "failure_reason")
+_VERIFY_FAILING_VERDICTS = frozenset({"failed", "error", "fail"})
+_MAX_SYMPTOM_LEN = 500
+
+
+def _flatten_content_text(container: Any) -> str:
+    """Collapse a ``content`` list-of-dicts into a single string.
+
+    Both ``ObservationEvent.observation.content`` and
+    ``ActionEvent.action.content`` follow the OpenHands wire format:
+    a list of ``{"type": "text", "text": "..."}`` chunks.
+    """
+    if isinstance(container, str):
+        return container.strip()
+    if isinstance(container, list):
+        parts: list[str] = []
+        for item in container:
+            if isinstance(item, dict):
+                txt = item.get("text")
+                if isinstance(txt, str) and txt.strip():
+                    parts.append(txt.strip())
+            elif isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+        return " ".join(parts).strip()
+    return ""
+
+
+def _truncate(text: str) -> str:
+    text = text.strip()
+    if len(text) <= _MAX_SYMPTOM_LEN:
+        return text
+    return text[: _MAX_SYMPTOM_LEN - 1].rstrip() + "…"
 
 
 def _extract_symptom_from_event(event: dict[str, Any]) -> str | None:
-    """Best-effort: pull a symptom string out of a verify observation."""
-    # 1. Direct top-level key.
+    """Best-effort: derive a symptom string from a single event.
+
+    Order of precedence:
+
+    1. Legacy top-level key (future-proofing).
+    2. HookExecutionEvent that reports failure.
+    3. ObservationEvent with an error signal (is_error / exit_code).
+    4. Nested legacy keys.
+    """
+    # 1. Legacy top-level.
     for key in _SYMPTOM_KEYS:
         val = event.get(key)
         if isinstance(val, str) and val.strip():
-            return val.strip()
-    # 2. Nested under ``observation`` or ``content``.
+            return _truncate(val)
+
+    kind = event.get("kind")
+
+    # 2. HookExecutionEvent — verify hook fires here.
+    if kind == "HookExecutionEvent":
+        success = event.get("success")
+        # Try the parsed JSON in stdout first — it names the verdict.
+        stdout = event.get("stdout")
+        parsed: dict[str, Any] | None = None
+        if isinstance(stdout, str) and stdout.strip():
+            import json as _json
+
+            try:
+                candidate = _json.loads(stdout)
+            except Exception:
+                candidate = None
+            if isinstance(candidate, dict):
+                parsed = candidate
+        if parsed is not None:
+            ctx = parsed.get("additionalContext") if isinstance(
+                parsed.get("additionalContext"), dict
+            ) else {}
+            verdict = ctx.get("verdict") or parsed.get("verdict")
+            if isinstance(verdict, str) and verdict.lower() in _VERIFY_FAILING_VERDICTS:
+                reason = parsed.get("reason") or ctx.get("stderr_tail")
+                if isinstance(reason, str) and reason.strip():
+                    return _truncate(f"verify {verdict}: {reason}")
+                return _truncate(f"verify {verdict}")
+        if success is False:
+            # Fall back to the hook's ``reason`` or stderr.
+            reason = event.get("reason") or event.get("stderr")
+            if isinstance(reason, str) and reason.strip():
+                return _truncate(f"hook failed: {reason}")
+            return "hook failed"
+
+    # 3. ObservationEvent — any tool that errored.
+    if kind == "ObservationEvent":
+        obs = event.get("observation")
+        if isinstance(obs, dict):
+            is_error = bool(obs.get("is_error"))
+            exit_code = obs.get("exit_code")
+            terminal_failed = (
+                obs.get("kind") == "TerminalObservation"
+                and isinstance(exit_code, int)
+                and exit_code != 0
+            )
+            if is_error or terminal_failed:
+                text = _flatten_content_text(obs.get("content"))
+                obs_kind = obs.get("kind") or "tool"
+                if text:
+                    if terminal_failed:
+                        return _truncate(f"{obs_kind} exit={exit_code}: {text}")
+                    return _truncate(f"{obs_kind} error: {text}")
+                if terminal_failed:
+                    return _truncate(f"{obs_kind} exit={exit_code}")
+                return _truncate(f"{obs_kind} error")
+
+    # 4. Nested legacy keys (kept for defensive matching).
     for container_key in ("observation", "content", "extras", "data"):
         container = event.get(container_key)
         if isinstance(container, dict):
             for key in _SYMPTOM_KEYS:
                 val = container.get(key)
                 if isinstance(val, str) and val.strip():
-                    return val.strip()
+                    return _truncate(val)
     return None
 
 
@@ -207,25 +326,60 @@ def _produce_symptom(events: list[dict[str, Any]]) -> str | None:
     return None
 
 
-# RepoGraph-lookup actions announce which symbols they queried via
-# well-known keys on the action envelope. We accumulate the union of
-# symbols across all such actions in a single run.
+# RepoGraph-lookup actions announce which symbols they queried. In
+# the real agent-server schema an action's payload lives under
+# ``event.action`` (a dict with its own ``kind``). We match by
+# either the outer ``event.kind`` (rare RepoGraph tool events) or
+# the inner ``event.action.kind`` (normal case).
 _REPOGRAPH_ACTION_KINDS = frozenset(
-    {"repograph.search", "repograph.symbol_lookup", "repograph_query"}
+    {
+        "repograph.search",
+        "repograph.symbol_lookup",
+        "repograph_query",
+        # Camel/PascalCase variants we may see if RepoGraph is
+        # wired in later as a first-class OpenHands tool.
+        "repographsearchaction",
+        "repographlookupaction",
+        "repographqueryaction",
+    }
 )
 _SYMBOL_KEYS = ("symbols", "symbol_ids", "query_symbols")
 
 
+def _iter_action_kinds(event: dict[str, Any]) -> list[str]:
+    """Return every candidate ``kind`` string for RepoGraph matching."""
+    kinds: list[str] = []
+    for k in (event.get("kind"), event.get("actionKind")):
+        if isinstance(k, str):
+            kinds.append(k.lower())
+    inner = event.get("action")
+    if isinstance(inner, dict):
+        k2 = inner.get("kind")
+        if isinstance(k2, str):
+            kinds.append(k2.lower())
+    elif isinstance(inner, str):
+        # Older shape: ``action`` was the kind string itself.
+        kinds.append(inner.lower())
+    return kinds
+
+
 def _extract_symbols_from_event(event: dict[str, Any]) -> list[str]:
     """Pull symbol ids from a RepoGraph-related event, if any."""
-    kind = event.get("action") or event.get("actionKind") or event.get("kind")
-    if isinstance(kind, str) and kind.lower() not in _REPOGRAPH_ACTION_KINDS:
-        # Only care about RepoGraph actions; skip other events cheaply.
-        # We still fall through if ``kind`` is missing entirely so a
-        # bare payload with symbol keys is not silently ignored.
+    kinds = _iter_action_kinds(event)
+    if kinds and not any(k in _REPOGRAPH_ACTION_KINDS for k in kinds):
+        # No RepoGraph kind matched; skip cheaply.
         return []
     collected: list[str] = []
-    for container in (event, event.get("args"), event.get("params")):
+    # Search both the outer envelope and the nested ``action`` /
+    # ``args`` / ``params`` payloads for symbol lists.
+    action_payload = event.get("action") if isinstance(event.get("action"), dict) else {}
+    for container in (
+        event,
+        action_payload,
+        event.get("args"),
+        event.get("params"),
+        action_payload.get("args") if isinstance(action_payload.get("args"), dict) else None,
+    ):
         if not isinstance(container, dict):
             continue
         for key in _SYMBOL_KEYS:

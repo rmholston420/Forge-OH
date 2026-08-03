@@ -108,13 +108,14 @@ class TestUpdateFromEventGuardrails:
 
 
 class TestSymptomProducer:
-    def test_top_level_symptom_extracted(
+    def test_legacy_top_level_symptom_extracted(
         self, workspace: Path, cid: str
     ) -> None:
+        """Future-proofing: honor a top-level ``symptom`` key."""
         _feed(workspace, cid, {"kind": "verify_obs", "symptom": "boom"})
         assert _read_slot(workspace, cid)["symptom"] == "boom"
 
-    def test_nested_symptom_extracted(
+    def test_legacy_nested_symptom_extracted(
         self, workspace: Path, cid: str
     ) -> None:
         _feed(
@@ -141,6 +142,127 @@ class TestSymptomProducer:
         # Not overwritten to "" or None.
         assert _read_slot(workspace, cid)["symptom"] == "first"
 
+    # ------------------------------------------------------------------
+    # Real agent-server schema paths (F.15 fixup)
+    # ------------------------------------------------------------------
+
+    def test_terminal_observation_with_nonzero_exit_becomes_symptom(
+        self, workspace: Path, cid: str
+    ) -> None:
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "ObservationEvent",
+                "observation": {
+                    "kind": "TerminalObservation",
+                    "is_error": False,
+                    "exit_code": 2,
+                    "content": [
+                        {"type": "text", "text": "pytest: 3 failed"}
+                    ],
+                },
+            },
+        )
+        sym = _read_slot(workspace, cid).get("symptom", "")
+        assert "TerminalObservation" in sym
+        assert "exit=2" in sym
+        assert "pytest: 3 failed" in sym
+
+    def test_terminal_observation_with_zero_exit_is_not_a_symptom(
+        self, workspace: Path, cid: str
+    ) -> None:
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "ObservationEvent",
+                "observation": {
+                    "kind": "TerminalObservation",
+                    "is_error": False,
+                    "exit_code": 0,
+                    "content": [{"type": "text", "text": "Hello World"}],
+                },
+            },
+        )
+        assert "symptom" not in _read_slot(workspace, cid)
+
+    def test_observation_with_is_error_becomes_symptom(
+        self, workspace: Path, cid: str
+    ) -> None:
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "ObservationEvent",
+                "observation": {
+                    "kind": "FileEditorObservation",
+                    "is_error": True,
+                    "content": [{"type": "text", "text": "file not found"}],
+                },
+            },
+        )
+        sym = _read_slot(workspace, cid).get("symptom", "")
+        assert "FileEditorObservation error" in sym
+        assert "file not found" in sym
+
+    def test_hook_failed_verdict_becomes_symptom(
+        self, workspace: Path, cid: str
+    ) -> None:
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "HookExecutionEvent",
+                "hook_event_type": "Stop",
+                "success": True,
+                "stdout": (
+                    '{"reason": "tests failed", '
+                    '"additionalContext": {"verdict": "failed", '
+                    '"stderr_tail": "AssertionError: 1 != 2"}}'
+                ),
+            },
+        )
+        sym = _read_slot(workspace, cid).get("symptom", "")
+        assert "verify failed" in sym
+        assert "tests failed" in sym
+
+    def test_hook_skipped_verdict_is_not_a_symptom(
+        self, workspace: Path, cid: str
+    ) -> None:
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "HookExecutionEvent",
+                "hook_event_type": "Stop",
+                "success": True,
+                "stdout": (
+                    '{"reason": "verify-loop skipped", '
+                    '"additionalContext": {"verdict": "skipped"}}'
+                ),
+            },
+        )
+        assert "symptom" not in _read_slot(workspace, cid)
+
+    def test_symptom_is_truncated(
+        self, workspace: Path, cid: str
+    ) -> None:
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "ObservationEvent",
+                "observation": {
+                    "kind": "TerminalObservation",
+                    "exit_code": 1,
+                    "content": [{"type": "text", "text": "X" * 5000}],
+                },
+            },
+        )
+        sym = _read_slot(workspace, cid).get("symptom", "")
+        assert len(sym) <= 500
+
 
 # ---------------------------------------------------------------------------
 # RepoGraph symbols producer
@@ -148,14 +270,14 @@ class TestSymptomProducer:
 
 
 class TestRepoGraphSymbolsProducer:
-    def test_symbols_extracted_from_repograph_action(
+    def test_symbols_from_legacy_flat_shape(
         self, workspace: Path, cid: str
     ) -> None:
+        """Legacy top-level ``action`` string still recognized."""
         _feed(
             workspace,
             cid,
             {
-                "kind": "action",
                 "action": "repograph.search",
                 "symbols": ["mod.foo", "mod.bar"],
             },
@@ -165,7 +287,9 @@ class TestRepoGraphSymbolsProducer:
             "mod.bar",
         ]
 
-    def test_symbols_from_nested_args(self, workspace: Path, cid: str) -> None:
+    def test_symbols_from_nested_args_legacy(
+        self, workspace: Path, cid: str
+    ) -> None:
         _feed(
             workspace,
             cid,
@@ -175,6 +299,26 @@ class TestRepoGraphSymbolsProducer:
             },
         )
         assert _read_slot(workspace, cid)["repograph_symbols"] == ["a.b.c"]
+
+    def test_symbols_from_real_action_event_shape(
+        self, workspace: Path, cid: str
+    ) -> None:
+        """Real agent-server ActionEvent nests kind under ``.action.kind``."""
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "ActionEvent",
+                "action": {
+                    "kind": "RepoGraphSearchAction",
+                    "symbols": ["pkg.foo", "pkg.bar"],
+                },
+            },
+        )
+        assert _read_slot(workspace, cid)["repograph_symbols"] == [
+            "pkg.foo",
+            "pkg.bar",
+        ]
 
     def test_symbols_union_across_events_and_deduped(
         self, workspace: Path, cid: str
@@ -191,13 +335,21 @@ class TestRepoGraphSymbolsProducer:
         )
         assert _read_slot(workspace, cid)["repograph_symbols"] == ["a", "b", "c"]
 
-    def test_non_repograph_action_ignored_when_kind_known(
+    def test_non_repograph_terminal_action_does_not_leak_symbols(
         self, workspace: Path, cid: str
     ) -> None:
+        """A TerminalAction with a stray ``symbols`` payload must NOT match."""
         _feed(
             workspace,
             cid,
-            {"action": "bash", "symbols": ["should", "not", "leak"]},
+            {
+                "kind": "ActionEvent",
+                "action": {
+                    "kind": "TerminalAction",
+                    "command": "echo hi",
+                    "symbols": ["should", "not", "leak"],
+                },
+            },
         )
         assert "repograph_symbols" not in _read_slot(workspace, cid)
 
@@ -208,43 +360,88 @@ class TestRepoGraphSymbolsProducer:
 
 
 class TestDiffsProducer:
-    def test_file_edit_event_produces_diff(
+    def test_file_create_observation_produces_diff(
         self, workspace: Path, cid: str
     ) -> None:
-        # file_diff_reconstruction consumes normalized file-edit events.
-        # The exact envelope depends on OpenHands' event schema; the
-        # reconstruction module already knows how to handle it. We fake
-        # a minimal shape here: it produces summaries with `path`,
-        # `linesAdded`, `linesRemoved`.
         _feed(
             workspace,
             cid,
             {
-                "kind": "observation",
-                "action": "edit",
-                "path": "src/foo.py",
-                "content": "print('hi')\n",
-                "old_content": "",
+                "kind": "ObservationEvent",
+                "observation": {
+                    "kind": "FileEditorObservation",
+                    "is_error": False,
+                    "command": "create",
+                    "path": "/workspace/foo.py",
+                    "prev_exist": False,
+                    "old_content": None,
+                    "new_content": "print('hi')\n",
+                },
             },
         )
         slot = _read_slot(workspace, cid)
-        # The reconstruction may not recognize this exact shape (it
-        # varies with SDK version); we assert the merge contract:
-        # either no diffs were produced (empty case) or the diffs
-        # field has the right shape.
-        if "diffs" in slot:
-            for entry in slot["diffs"]:
-                assert set(entry.keys()) >= {
-                    "path",
-                    "lines_added",
-                    "lines_removed",
-                    "summary",
-                }
+        assert "diffs" in slot
+        assert len(slot["diffs"]) == 1
+        entry = slot["diffs"][0]
+        assert entry["path"] == "/workspace/foo.py"
+        assert entry["lines_added"] == 1
+        assert entry["lines_removed"] == 0
+        assert set(entry.keys()) >= {
+            "path",
+            "lines_added",
+            "lines_removed",
+            "summary",
+        }
+
+    def test_str_replace_observation_produces_diff(
+        self, workspace: Path, cid: str
+    ) -> None:
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "ObservationEvent",
+                "observation": {
+                    "kind": "FileEditorObservation",
+                    "is_error": False,
+                    "command": "str_replace",
+                    "path": "/workspace/bar.py",
+                    "prev_exist": True,
+                    "old_content": "a = 1\nb = 2\n",
+                    "new_content": "a = 1\nb = 3\nc = 4\n",
+                },
+            },
+        )
+        slot = _read_slot(workspace, cid)
+        assert "diffs" in slot
+        entry = slot["diffs"][0]
+        assert entry["path"] == "/workspace/bar.py"
+        assert entry["lines_added"] == 2  # b=3 + c=4
+        assert entry["lines_removed"] == 1  # b=2
+
+    def test_errored_file_edit_produces_no_diff(
+        self, workspace: Path, cid: str
+    ) -> None:
+        _feed(
+            workspace,
+            cid,
+            {
+                "kind": "ObservationEvent",
+                "observation": {
+                    "kind": "FileEditorObservation",
+                    "is_error": True,
+                    "command": "create",
+                    "path": "/workspace/never.py",
+                    "new_content": "noop\n",
+                },
+            },
+        )
+        assert "diffs" not in _read_slot(workspace, cid)
 
     def test_no_diffs_when_no_file_events(
         self, workspace: Path, cid: str
     ) -> None:
-        _feed(workspace, cid, {"kind": "message", "content": "hi"})
+        _feed(workspace, cid, {"kind": "MessageEvent", "content": "hi"})
         assert "diffs" not in _read_slot(workspace, cid)
 
 

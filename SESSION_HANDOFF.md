@@ -1,90 +1,66 @@
-# Forge-OH — Session Handoff
+# Session Handoff — 2026-08-03 10:48 EDT
 
-**Last updated:** 2026-08-03 10:38 EDT
+## Current stage / plugin / port
+Step 8, slices **F.14 + F.15 fixups** — BFF sidecar + hook alignment
+with the real OpenHands agent-server event schema.
 
-## Current build-sequencing stage
+## Completed this session
+- **F.14 fixup:** `openhands_tools_ext.trajectory.hook._VERDICT_MAP`
+  now accepts past-tense verdicts (`passed`, `skipped`, `failed`,
+  `errored`) as well as the imperative forms already handled. Three
+  new hook tests cover the past-tense paths.
+- **F.15 fixup:** `bff/services/sidecar_producers.py` producers
+  rewritten against the real event schema:
+  - Symptom probes `ObservationEvent.observation.is_error` and
+    `TerminalObservation.exit_code`, flattens
+    `observation.content[]`, and parses
+    `HookExecutionEvent.stdout` JSON for verify verdicts.
+  - Diffs read the correct `file_diff_reconstruction.build_summaries`
+    keys (`additions`/`deletions`).
+  - RepoGraph symbols now match on nested
+    `event.action.kind == "RepoGraph*Action"`.
+  - Legacy flat-shape probes retained as fallbacks so a future
+    schema change can't silently regress.
+- Tests rewritten to use real `ObservationEvent` / `ActionEvent` /
+  `HookExecutionEvent` envelopes; added 8 schema-aware cases.
+- Full offline-safe suite: **446 passed / 23 deselected**, no
+  regressions. Ruff clean on touched files.
+- BUILD_LOG.md updated with F.14-fixup and F.15-fixup entries.
 
-Slice F (Trajectory Memory, Rec #3). Kernel side of the pipeline is
-end-to-end wired AND signal fields are populated.
+## Remaining before Definition of Done is met
+1. Commit F.14 fixup and F.15 fixup as two commits.
+2. Push both to `git-agent-proxy.perplexity.ai/rmholston420/Forge-OH.git`.
+3. Colossus verifies: pull, restart BFF, fire a fresh run, drain
+   events, confirm the trajectory row shows `final_status=success`
+   AND a populated `symptom` (from any failing observation or
+   verify verdict) plus `diffs` (if files were edited).
 
-## What was completed this session
+## Open questions / ambiguities
+None blocking. Deferred items still deferred (see below).
 
-- **F.12** — sidecar producer for `task_description` (seeded at
-  conversation-create in `bff/routers/runs.py`).
-- **F.13** — background drain scheduler in the BFF lifespan +
-  `POST /api/trajectories/drain` endpoint.
-- **F.14** — fixed `final_status` attribution in the STOP hook.
-  Introduces `_infer_final_status`: sidecar-override > verify verdict
-  > STOP-hook default (SUCCESS) > UNKNOWN (unrecognized verdict only).
-- **F.15** — sidecar producers for `plan`, `diffs`, `symptom`, and
-  `repograph_symbols`. Wired into `event_relay._run_loop`; each
-  event is fed through `bff/services/sidecar_producers.update_from_event`.
-  Per-conversation accumulator, bounded to 5000 events, reset on
-  terminal status.
+## Exact next action
+Commit + push the two fixup commits. Then paste the Colossus
+verification recipe.
 
-**Test totals:** 434 passing offline-safe backend (baseline 387;
-+47 across F.12/F.13/F.14/F.15). 0 regressions. 14 pre-existing
-localhost-only failures unchanged (`test_mcp_router`,
-`test_observability_router`, `test_plugins_router`). Ruff clean.
+## Deferred (non-blocking)
+1. Backfill `task_description` for pre-F.12 orphan trajectory rows
+   (`6df11ecb`, `dc84e8a5`).
+2. Retention policy ADR for `~/.forge-oh/trajectories.db`.
+3. Fresh recommendation slate outside Recs #1–#3.
+4. Verify `action_reconstruction.build_plan` against a real
+   `TaskTrackerAction` event (no preset emits one today).
+5. Add a RepoGraph tool to a preset so
+   `repograph_symbols` producer has something to extract in real
+   runs.
 
-## What remains before the current DoD is met
-
-Slice F kernel work is done. Full-loop live verification on
-Colossus needs a fresh run to confirm all four fields populate.
-
-1. Pull latest on Colossus (`~/dev/forge-oh/`) and restart the BFF
-   so both the drain scheduler AND the new event-tap are live.
-2. Fire one run via curl (or the UI) with a real prompt.
-3. After the agent finishes (natural `finish` call → STOP hook
-   fires), force-drain and inspect the sidecar + DB row.
-
-## Open questions / ambiguities awaiting your answer
-
-None currently.
-
-## Deferred items (non-blocking)
-
-- Retention policy ADR for `trajectories.db`.
-- Backfill: attribute the two pre-F.12 orphan rows (task_description
-  empty).
-- If any F.15 producer proves noisy in practice (e.g. RepoGraph
-  action `kind` naming drifts), the map at the top of
-  `sidecar_producers.py` is the single place to adjust.
-- Fresh recommendation outside Rec 1/2/3.
-
-## Exact next action to take
-
-On Colossus:
-
-```bash
-cd ~/dev/forge-oh
-git pull --ff-only
-pkill -9 -f 'uvicorn bff.main:app' || true
-scripts/forge-up.sh
-
-# Fire a fresh live run via curl:
-RESP=$(curl -s -X POST http://127.0.0.1:8081/api/runs \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"F.14 F.15 verify","agentPresetId":"ap-1","workspaceId":"18c99443b23c452899010095abd5f29b","taskPrompt":"write a python one-liner that prints hello world"}')
-CID=$(echo "$RESP" | jq -r '.data.id')
-echo "conversation: $CID"
-
-# Watch the sidecar populate in real time
-watch -n 2 "cat /home/rmholston/dev/forge-oh/.forge-oh/trajectory-sidecar.json | jq ."
-
-# When done (agent finishes on its own), force drain + check DB:
-curl -s -X POST http://127.0.0.1:8081/api/trajectories/drain | jq
-sqlite3 ~/.forge-oh/trajectories.db \
-  "SELECT substr(run_id,1,8), task_description, final_status,
-          length(diffs_json), length(plan), symptom,
-          length(embedding)
-   FROM trajectories ORDER BY created_at DESC LIMIT 3;"
-```
-
-Slice F DoD met when the newest row has:
-
-- non-empty `task_description`
-- `final_status` = `success` (not `unknown`)
-- non-null `embedding` (`length(embedding) > 0`)
-- best-effort populated `plan` / `diffs_json` / `symptom` when those
-  signals were emitted by the run
+## Environment
+- Mirror: `/home/user/workspace/forge-oh-mirror/` on `main`
+  (uncommitted F.14+F.15 fixups on top of `a09fc45`).
+- Colossus: `~/dev/forge-oh/` — needs to pull the upcoming
+  fixup commits.
+- Trajectory DB: `~/.forge-oh/trajectories.db`.
+- Sidecar: `.forge-oh/trajectory-sidecar.json` keyed by
+  `session_id` (== conversation id).
+- Verify state: `.forge-oh/verify-state.json`.
+- Ports: BFF :8081, agent-server :8090, Next.js :3000.
+- Agent preset: `ap-1` ("General Dev").

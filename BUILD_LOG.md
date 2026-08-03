@@ -2413,3 +2413,55 @@ Architecture:
 from here on will carry plan (when the agent emitted one), diffs
 (when files were edited), symptom (when verify or a tool named
 one), and repograph_symbols (when RepoGraph was queried).
+
+## 2026-08-03 10:48 EDT — F.14 fixup: verdict-map past-tense aliases
+
+**Stage / plugin / port:** step 8 slice F.14 fixup (BFF sidecar `final_status` inference).
+
+**Symptom:** even after F.14 landed, live runs on Colossus still recorded `final_status="unknown"`. Root cause: `openhands_tools_ext.trajectory.hook._VERDICT_MAP` only accepted imperative-mood verdicts (`"pass"`, `"skip"`, `"fail"`, `"error"`), but `verify` writes past-tense strings (`"passed"`, `"skipped"`, `"failed"`, `"errored"`) into `verify-state.json` for `last_verdict`. The hook silently fell through to `"unknown"`.
+
+**Files touched:**
+
+- `openhands_tools_ext/trajectory/hook.py` — extended `_VERDICT_MAP` with `"passed"→"success"`, `"skipped"→"success"`, `"failed"→"failed"`, `"errored"→"error"` alongside the existing imperative forms.
+- `openhands_tools_ext/tests/trajectory/test_hook.py` — added `test_skipped_past_tense_verdict_defaults_to_success`, `test_passed_past_tense_verdict_maps_to_success`, `test_failed_past_tense_verdict_maps_to_failed`.
+
+**Verified:** hook tests green; full offline-safe suite still passes.
+
+**ADRs/ledger:** none.
+
+**Stop-condition status:** F.14 fully honors both imperative and past-tense verdicts.
+
+## 2026-08-03 10:48 EDT — F.15 fixup: producers rewritten for real OH event schema
+
+**Stage / plugin / port:** step 8 slice F.15 fixup (BFF sidecar producers).
+
+**Symptom:** F.15 producers ran on every relayed event without error, but every sidecar signal field (`symptom`, `diffs`, `plan`, `repograph_symbols`) came out empty on Colossus runs. Root cause: the original probes assumed a flat envelope (`event["action"]` as a string, top-level `event["symptom"]`), while the real OpenHands agent-server schema is nested:
+
+- `ActionEvent`: `event["action"]["kind"]` == `"TerminalAction"` | `"FileEditorAction"` | `"FinishAction"` | ...
+- `ObservationEvent`: `event["observation"]["kind"]` == `"TerminalObservation"` | `"FileEditorObservation"` | ..., with `is_error`, `exit_code`, and `content: [{"type": "text", "text": ...}]` all nested one level deep.
+- `HookExecutionEvent`: `stdout` is a JSON string whose `additionalContext.verdict` names the verify verdict.
+
+Verified via the paste sample captured this session (`/home/user/workspace/uploaded_attachments/799e1b64aea4426c815eb2c2218355ba/paste.txt`) plus `GET /api/conversations/{cid}/events/search?limit=100&sort_order=TIMESTAMP` on Colossus.
+
+**Files touched:**
+
+- `bff/services/sidecar_producers.py`
+  - Symptom: `_extract_symptom_from_event` now probes `ObservationEvent` for `observation.is_error` **or** `TerminalObservation` with non-zero `exit_code`, flattens `observation.content[]` into text, truncates to 500 chars, and parses `HookExecutionEvent.stdout` JSON to catch `verdict` in `{failed, error, fail}`. Legacy top-level/nested keys still honored.
+  - Diffs: `_produce_diffs` now maps the real `file_diff_reconstruction.build_summaries` keys (`additions`/`deletions`, `status`) into the sidecar's `lines_added`/`lines_removed`/`summary` shape. Old key names kept as fallbacks.
+  - RepoGraph: `_extract_symbols_from_event` looks at `event["action"]["kind"]` (nested) in addition to the flat legacy shape, and accepts `RepoGraphSearchAction`/`RepoGraphLookupAction`/`RepoGraphQueryAction` camel-case kinds. Searches both outer and inner `args`/`params` for symbol lists.
+- `bff/tests/test_sidecar_producers.py` — rewrote tests to use real `ObservationEvent` / `ActionEvent` / `HookExecutionEvent` envelopes matching the paste sample. Added:
+  - `test_terminal_observation_with_nonzero_exit_becomes_symptom`
+  - `test_terminal_observation_with_zero_exit_is_not_a_symptom`
+  - `test_observation_with_is_error_becomes_symptom`
+  - `test_hook_failed_verdict_becomes_symptom`
+  - `test_hook_skipped_verdict_is_not_a_symptom`
+  - `test_symptom_is_truncated`
+  - `test_symbols_from_real_action_event_shape`
+  - `test_non_repograph_terminal_action_does_not_leak_symbols`
+  - Rewrote diff tests to use real `FileEditorObservation` shape (create, str_replace, is_error).
+
+**Verified:** 28/28 sidecar producer tests pass; **446/469** offline-safe backend tests pass (23 deselected localhost-only, no regressions); ruff clean on all touched files.
+
+**ADRs/ledger:** none — schema fix, no new port.
+
+**Stop-condition status:** F.15 producers now match the real OH event schema. Sidecar rows for future runs will carry `symptom` (from any error observation or failing verify), `diffs` (from FileEditorObservation), `plan` (when a TaskTrackerAction is emitted — no preset uses it yet), and `repograph_symbols` (when a RepoGraph action fires — no preset uses it yet).
