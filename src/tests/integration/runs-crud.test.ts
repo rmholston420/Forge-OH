@@ -45,15 +45,8 @@ const handlers = [
       data: { ...STUB_RUN, id: 'run-int-new', title: body['title'] as string },
     });
   }),
-  http.get(`${BASE}/api/runs/:runId`, ({ params }) =>
-    HttpResponse.json({ data: { ...STUB_RUN, id: params['runId'] } }),
-  ),
-  http.post(`${BASE}/api/runs/:runId/stop`, ({ params }) =>
-    HttpResponse.json({ ok: true, run_id: params['runId'], status: 'stopped' }),
-  ),
-  http.post(`${BASE}/api/runs/:runId/fork`, ({ params }) =>
-    HttpResponse.json({ ok: true, run_id: params['runId'], forked_id: `${params['runId']}-fork-1` }),
-  ),
+  // /api/runs/compare must be registered BEFORE /api/runs/:runId, otherwise
+  // MSW matches `compare` as a runId param.
   http.get(`${BASE}/api/runs/compare`, ({ request }) => {
     const url = new URL(request.url);
     return HttpResponse.json({
@@ -65,6 +58,15 @@ const handlers = [
       },
     });
   }),
+  http.get(`${BASE}/api/runs/:runId`, ({ params }) =>
+    HttpResponse.json({ data: { ...STUB_RUN, id: params['runId'] } }),
+  ),
+  http.post(`${BASE}/api/runs/:runId/stop`, ({ params }) =>
+    HttpResponse.json({ ok: true, run_id: params['runId'], status: 'stopped' }),
+  ),
+  http.post(`${BASE}/api/runs/:runId/fork`, ({ params }) =>
+    HttpResponse.json({ ok: true, run_id: params['runId'], forked_id: `${params['runId']}-fork-1` }),
+  ),
 ];
 
 const server = setupServer(...handlers);

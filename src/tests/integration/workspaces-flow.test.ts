@@ -16,7 +16,7 @@ import { server } from '../mocks/server';
 import { http, HttpResponse } from 'msw';
 import { mockWorkspaces } from '../fixtures/workspaces.fixture';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
 // MSW server lifecycle handled globally in src/tests/setup.ts
 // (afterEach reset handled globally)

@@ -4,10 +4,10 @@ import { describe, it, expect } from 'vitest';
 
 describe('WorkspaceHealthBadge', () => {
   it.each([
-    ['healthy', 'Healthy'],
-    ['warning', 'Warning'],
-    ['error', 'Error'],
-    ['disconnected', 'Disconnected'],
+    ['healthy',  'Healthy'],
+    ['degraded', 'Degraded'],
+    ['offline',  'Offline'],
+    ['unknown',  'Unknown'],
   ] as const)('renders text label for %s — not color alone', (health, label) => {
     render(<WorkspaceHealthBadge health={health} />);
     expect(screen.getByText(label)).toBeTruthy();

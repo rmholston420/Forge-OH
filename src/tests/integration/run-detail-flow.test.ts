@@ -11,7 +11,7 @@ import { http, HttpResponse } from 'msw';
 import { mockRuns } from '../fixtures/runs.fixture';
 import { mockEvents } from '../fixtures/events.fixture';
 
-const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8000';
+const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 const RUN = mockRuns[0];
 
 // MSW server lifecycle handled globally in src/tests/setup.ts

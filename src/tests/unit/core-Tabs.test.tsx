@@ -57,8 +57,9 @@ describe('Tabs', () => {
     ).not.toThrow();
   });
 
-  it('renders correct number of buttons', () => {
+  it('renders correct number of tabs', () => {
+    // Tabs render as role="tab" (ARIA tablist pattern), not role="button".
     render(<Tabs tabs={tabs} activeTab="plan" onTabChange={() => {}} />);
-    expect(screen.getAllByRole('button')).toHaveLength(tabs.length);
+    expect(screen.getAllByRole('tab')).toHaveLength(tabs.length);
   });
 });
