@@ -31,6 +31,7 @@ describe('WorkspaceSchema', () => {
     id: 'ws-1',
     name: 'My Workspace',
     type: 'local',
+    path: '/home/user/dev/forge-oh/workspaces/my-ws',
     status: 'idle',
     diskUsageMb: 0,
     runCount: 0,

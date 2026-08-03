@@ -82,19 +82,7 @@ export function useDeleteWorkspace() {
   });
 }
 
-export function useResetWorkspace() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await bffFetch(`${BASE}/${id}/reset`, { method: 'POST' });
-      return readJsonOrThrow(res);
-    },
-    onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: workspaceKeys.all });
-      qc.invalidateQueries({ queryKey: workspaceKeys.detail(id) });
-    },
-  });
-}
+// Stage 6: useResetWorkspace removed — destructive endpoint dropped from BFF.
 
 export function useTestWorkspaceConnection() {
   return useMutation({

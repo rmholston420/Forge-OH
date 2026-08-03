@@ -1,34 +1,38 @@
 import type { Workspace } from '@/lib/schemas/workspace';
 
+/**
+ * Stage 6: only `local` workspaces are supported. Fixtures reflect the
+ * minimal agent-server WorkspaceItem shape.
+ */
 export const mockWorkspaces: Workspace[] = [
   {
     id: 'ws-local-001',
     name: 'Local Dev',
     type: 'local',
+    path: '/home/user/dev/forge-oh/workspaces/local-dev',
+    parentPath: '/home/user/dev/forge-oh/workspaces',
     health: 'healthy',
-    agentServerUrl: 'http://localhost:3000',
-    isolationMode: 'process',
+    status: 'idle',
     createdAt: '2026-07-01T00:00:00Z',
     updatedAt: new Date().toISOString(),
+    runCount: 0,
+    diskUsageMb: 0,
+    diskLimitMb: 2048,
+    envVars: [],
   },
   {
-    id: 'ws-docker-001',
-    name: 'Docker Sandbox',
-    type: 'docker',
+    id: 'ws-local-002',
+    name: 'Sandbox',
+    type: 'local',
+    path: '/tmp/forge-sandbox',
+    parentPath: null,
     health: 'healthy',
-    agentServerUrl: 'http://localhost:3001',
-    isolationMode: 'container',
-    createdAt: '2026-07-01T00:00:00Z',
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'ws-remote-001',
-    name: 'Remote API',
-    type: 'remote_api',
-    health: 'warning',
-    agentServerUrl: 'https://api.example.com/openhands',
-    isolationMode: 'managed',
+    status: 'idle',
     createdAt: '2026-07-05T00:00:00Z',
     updatedAt: new Date().toISOString(),
+    runCount: 0,
+    diskUsageMb: 0,
+    diskLimitMb: 2048,
+    envVars: [],
   },
 ];

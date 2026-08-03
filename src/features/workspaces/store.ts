@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 
-export type WorkspaceTypeFilter = 'all' | 'local' | 'docker' | 'remote_api' | 'remoteapi' | 'e2b' | 'modal';
+/**
+ * Stage 6: only `local` workspaces are supported. The filter is retained so
+ * existing UI code paths keep compiling, but 'all' and 'local' collapse to
+ * the same set.
+ */
+export type WorkspaceTypeFilter = 'all' | 'local';
 
 export interface WorkspacesStore {
   typeFilter: WorkspaceTypeFilter;

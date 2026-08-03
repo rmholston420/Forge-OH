@@ -376,7 +376,7 @@ describe('WorkspaceSchema', () => {
   const VALID = {
     id: 'ws-1',
     name: 'My Workspace',
-    repoUrl: 'https://github.com/org/repo',
+    path: '/home/user/dev/forge-oh/workspaces/my-ws',
     createdAt: now,
   };
 
@@ -384,8 +384,9 @@ describe('WorkspaceSchema', () => {
     expect(() => WorkspaceSchema.parse(VALID)).not.toThrow();
   });
 
-  it('rejects invalid repoUrl', () => {
-    expect(() => WorkspaceSchema.parse({ ...VALID, repoUrl: 'not-a-url' })).toThrow();
+  it('rejects missing path', () => {
+    const { path: _p, ...noPath } = VALID;
+    expect(() => WorkspaceSchema.parse(noPath)).toThrow();
   });
 
   it('optional fields default or are absent', () => {

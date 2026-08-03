@@ -7,61 +7,28 @@ import { WorkspaceFormModal } from '@/components/domain/WorkspaceFormModal';
 import { EmptyState } from '@/components/core/EmptyState';
 import { Banner } from '@/components/core/Banner';
 import { Skeleton } from '@/components/core/Skeleton';
-import type { WorkspaceType } from '@/lib/schemas/workspace';
 import styles from './workspaces.module.css';
 
 const FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_WORKSPACES_ENABLED !== 'false';
 
-const TYPE_LABELS: Record<WorkspaceType | 'all', string> = {
-  all: 'All',
-  local: 'Local',
-  docker: 'Docker',
-  remote_api: 'Remote API',
-  remoteapi: 'Remote API',
-  e2b: 'E2B',
-  modal: 'Modal',
-};
-
 export default function WorkspacesPage() {
-  const { typeFilter, setTypeFilter, composerOpen, editingId, openComposer, closeComposer } = useWorkspacesStore();
+  const { composerOpen, editingId, openComposer, closeComposer } = useWorkspacesStore();
   const { data: workspaces = [], isLoading, error } = useWorkspaces();
   const deleteMutation = useDeleteWorkspace();
   const testMutation = useTestWorkspaceConnection();
-
-  const filtered = typeFilter === 'all' ? workspaces : workspaces.filter((w) => w.type === typeFilter);
 
   if (!FEATURE_ENABLED) {
     return <Banner variant="info">Workspaces are feature-flagged. Set NEXT_PUBLIC_FEATURE_WORKSPACES_ENABLED=true.</Banner>;
   }
 
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this workspace? This cannot be undone.')) {
-      deleteMutation.mutate(id);
-    }
-  };
-
-  const handleTest = async (id: string) => {
-    const result = await testMutation.mutateAsync(id);
-    alert(result.ok
-      ? `✅ Connection OK (${('latencyMs' in result ? result.latencyMs : undefined)}ms)`
-      : `❌ Connection failed: ${('error' in result ? result.error : undefined)}`);
-  };
+  // Retained but currently unused — kept exported for future card actions.
+  void deleteMutation;
+  void testMutation;
 
   return (
     <div className={styles.page}>
       <div className={styles.toolbar}>
-        <div className={styles.filters} role="group" aria-label="Filter by type">
-          {(['all', 'local', 'docker', 'remote_api'] as (WorkspaceType | 'all')[]).map((t) => (
-            <button
-              key={t}
-              className={[styles.filterBtn, typeFilter === t ? styles['filterBtn--active'] : ''].filter(Boolean).join(' ')}
-              onClick={() => setTypeFilter(t)}
-              aria-pressed={typeFilter === t}
-            >
-              {TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
+        <div />
         <button className={styles.newBtn} onClick={() => openComposer()}>
           + New Workspace
         </button>
@@ -77,16 +44,16 @@ export default function WorkspacesPage() {
             <Skeleton key={i} width="100%" height={180} borderRadius="12px" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : workspaces.length === 0 ? (
         <EmptyState
           title="No workspaces"
           description="Create a workspace to give the agent a place to run."
-          icon="🐳"
+          icon="🗂️"
           action={<button className={styles.newBtn} onClick={() => openComposer()}>New Workspace</button>}
         />
       ) : (
         <div className={styles.grid}>
-          {filtered.map((ws) => (
+          {workspaces.map((ws) => (
             <WorkspaceCard
               key={ws.id}
               workspace={ws}

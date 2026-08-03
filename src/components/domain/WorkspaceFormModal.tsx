@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CreateWorkspaceSchema, type CreateWorkspace, type WorkspaceType } from '@/lib/schemas/workspace';
+import { CreateWorkspaceSchema, type CreateWorkspace } from '@/lib/schemas/workspace';
 import { useCreateWorkspace, useUpdateWorkspace, useWorkspace } from '@/features/workspaces/hooks';
 import styles from './WorkspaceFormModal.module.css';
 
@@ -12,28 +12,29 @@ export interface WorkspaceFormModalProps {
   onClose: () => void;
 }
 
+/**
+ * Stage 6: single form for local workspaces. Fields: name (required),
+ * path (optional — BFF derives one under FORGE_WORKSPACES_ROOT if omitted),
+ * description (optional, cosmetic — not persisted by agent-server).
+ */
 export const WorkspaceFormModal: React.FC<WorkspaceFormModalProps> = ({ open, editingId, onClose }) => {
   const { data: existing } = useWorkspace(editingId ?? '');
   const createMutation = useCreateWorkspace();
   const updateMutation = useUpdateWorkspace();
 
-  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<CreateWorkspace>({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<CreateWorkspace>({
     resolver: zodResolver(CreateWorkspaceSchema),
     defaultValues: { type: 'local', envVars: [] },
   });
-
-  const watchedType = watch('type') as WorkspaceType;
 
   useEffect(() => {
     if (existing) {
       reset({
         name: existing.name,
-        type: existing.type,
+        type: 'local',
         description: existing.description ?? '',
-        baseDir: existing.baseDir ?? '',
-        dockerImage: existing.dockerImage ?? '',
-        remoteUrl: existing.remoteUrl ?? '',
-        envVars: existing.envVars,
+        path: existing.path ?? '',
+        envVars: existing.envVars ?? [],
       });
     } else {
       reset({ type: 'local', envVars: [] });
@@ -73,12 +74,14 @@ export const WorkspaceFormModal: React.FC<WorkspaceFormModalProps> = ({ open, ed
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="ws-type" className={styles.label}>Type <span aria-hidden="true">*</span></label>
-            <select id="ws-type" className={styles.input} {...register('type')}>
-              <option value="local">Local</option>
-              <option value="docker">Docker</option>
-              <option value="remote_api">Remote API</option>
-            </select>
+            <label htmlFor="ws-path" className={styles.label}>Path</label>
+            <input
+              id="ws-path"
+              className={styles.input}
+              {...register('path')}
+              placeholder="/absolute/path/to/workspace (optional — derived from name if empty)"
+            />
+            {errors.path && <span className={styles.error}>{errors.path.message}</span>}
           </div>
 
           <div className={styles.field}>
@@ -86,27 +89,7 @@ export const WorkspaceFormModal: React.FC<WorkspaceFormModalProps> = ({ open, ed
             <input id="ws-desc" className={styles.input} {...register('description')} placeholder="Optional description" />
           </div>
 
-          {watchedType === 'local' && (
-            <div className={styles.field}>
-              <label htmlFor="ws-basedir" className={styles.label}>Base Directory</label>
-              <input id="ws-basedir" className={styles.input} {...register('baseDir')} placeholder="/home/user/projects" />
-            </div>
-          )}
-
-          {watchedType === 'docker' && (
-            <div className={styles.field}>
-              <label htmlFor="ws-image" className={styles.label}>Docker Image</label>
-              <input id="ws-image" className={styles.input} {...register('dockerImage')} placeholder="ubuntu:24.04" />
-            </div>
-          )}
-
-          {watchedType === 'remote_api' && (
-            <div className={styles.field}>
-              <label htmlFor="ws-url" className={styles.label}>Remote URL</label>
-              <input id="ws-url" className={styles.input} type="url" {...register('remoteUrl')} placeholder="https://api.example.com" />
-              {errors.remoteUrl && <span className={styles.error}>{errors.remoteUrl.message}</span>}
-            </div>
-          )}
+          <input type="hidden" value="local" {...register('type')} />
 
           <div className={styles.footer}>
             <button type="button" className={styles.cancelBtn} onClick={onClose}>Cancel</button>

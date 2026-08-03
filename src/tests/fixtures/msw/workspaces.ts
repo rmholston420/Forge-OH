@@ -1,43 +1,49 @@
 import type { WorkspaceListResponse } from '../../../lib/schemas/workspace';
 
+/**
+ * Stage 6: only `local` workspaces are supported. Fixtures reflect the
+ * minimal agent-server WorkspaceItem shape (id, name, path, parentPath?)
+ * plus safe defaults for optional UI fields.
+ */
 const now = new Date().toISOString();
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 export const workspacesFixture: WorkspaceListResponse = {
-  total: 3,
+  total: 2,
   workspaces: [
     {
-      id: 'ws-docker-1',
-      name: 'Primary Docker Workspace',
-      type: 'docker',
+      id: 'ws-local-1',
+      name: 'default',
+      type: 'local',
+      path: '/home/user/dev/forge-oh/workspaces/default',
+      parentPath: '/home/user/dev/forge-oh/workspaces',
+      description: 'Primary local workspace',
       health: 'healthy',
-      description: 'Main agentic workspace running forge-oh dev container',
-      dockerImage: 'ghcr.io/all-hands-ai/openhands:cloud-1.46.0',
+      status: 'idle',
       createdAt: ago(7 * 24 * 60 * 60 * 1000),
       updatedAt: now,
-      isDefault: true,
+      runCount: 0,
+      diskUsageMb: 0,
+      diskLimitMb: 2048,
+      envVars: [],
+      agentPresetId: null,
     },
     {
-      id: 'ws-docker-2',
-      name: 'Isolated Test Workspace',
-      type: 'docker',
-      health: 'degraded',
-      description: 'Ephemeral workspace for destructive or risky operations',
-      dockerImage: 'ghcr.io/all-hands-ai/openhands:cloud-1.46.0',
+      id: 'ws-local-2',
+      name: 'sandbox',
+      type: 'local',
+      path: '/tmp/forge-sandbox',
+      parentPath: null,
+      description: 'Sandbox for destructive/risky operations',
+      health: 'healthy',
+      status: 'idle',
       createdAt: ago(3 * 24 * 60 * 60 * 1000),
       updatedAt: ago(2 * 60 * 60 * 1000),
-      isDefault: false,
-    },
-    {
-      id: 'ws-local-1',
-      name: 'Local Filesystem',
-      type: 'local',
-      health: 'healthy',
-      description: 'Direct access to local filesystem — use with caution',
-      localPath: '/home/user/projects',
-      createdAt: ago(14 * 24 * 60 * 60 * 1000),
-      updatedAt: ago(24 * 60 * 60 * 1000),
-      isDefault: false,
+      runCount: 0,
+      diskUsageMb: 0,
+      diskLimitMb: 2048,
+      envVars: [],
+      agentPresetId: null,
     },
   ],
 };

@@ -384,3 +384,34 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - This makes the UI's workspace picker actually control where the agent operates \u2014 the point of the whole slice.
 - Files changed: bff/routers/workspaces.py, bff/routers/runs.py.
 - Verification pending: BFF restart on Colossus, then curl smoke of /api/workspaces + POST/DELETE round-trip.
+
+## 2026-08-03 00:32 EDT \u2014 Stage 6 (Workspaces) frontend: local-only, agent-server registry
+- Stage: 6 (Workspaces \u2014 frontend half).
+- Rewrote src/lib/schemas/workspace.ts:
+  - WorkspaceType is now z.literal('local') (was enum 'local'|'docker'|'remote_api').
+  - Added canonical  field (required) and optional  \u2014 mirrors agent-server WorkspaceItem.
+  - Dropped repoUrl. Kept optional legacy fields (health/status/runCount/diskUsageMb/envVars) with safe defaults so WorkspaceCard degrades gracefully.
+  - Added EnvVarSchema alias, WorkspaceStatusSchema, UpdateWorkspaceSchema \u2014 the re-exports in src/features/workspaces/schemas.ts were previously broken (imported symbols that didn't exist).
+- src/features/workspaces/store.ts: WorkspaceTypeFilter collapsed to 'all' | 'local'.
+- src/components/domain/WorkspaceFormModal.tsx: dropped Type select, dropped docker/remote_api conditional fields (dockerImage, remoteUrl). Renamed baseDir field to  (optional; BFF derives one if omitted).
+- src/components/domain/WorkspaceCard.tsx: pruned type/health/activeRunCount maps. Card now shows name + local badge + path.
+- src/app/(dashboard)/workspaces/page.tsx: dropped filter tabs (only local exists).
+- src/components/domain/NewRunComposer.tsx: removed "(w.type)" suffix from workspace picker options.
+- Fixture updates for schema drift:
+  - src/tests/fixtures/msw/workspaces.ts \u2014 all-local, with real path fields.
+  - src/tests/fixtures/workspaces.fixture.ts \u2014 same.
+- Test updates: src/tests/unit/domain-schemas.test.ts and src/tests/unit/schemas-remaining.test.ts now include  in VALID and assert "rejects missing path" instead of "rejects invalid repoUrl".
+- Deleted orphans (unused by app):
+  - src/features/workspaces/WorkspaceFormDrawer.tsx
+  - src/features/workspaces/WorkspacesPage.tsx
+  - src/features/workspaces/WorkspaceCard.tsx
+  - src/features/workspaces/DeleteConfirmDialog.tsx
+  - src/components/domain/workspace-details-drawer.tsx (never wired)
+  - src/tests/unit/WorkspaceCard.test.tsx (imported deleted component)
+  - src/tests/unit/workspaces-DeleteConfirmDialog.test.tsx (same)
+- Removed hooks.useResetWorkspace \u2014 destructive endpoint dropped from BFF.
+- Definition of Done met (pending frontend verify on Colossus):
+  1. Workspaces tab lists real agent-server data \u2014 verified via curl round-trip in previous commit (c01a1ea).
+  2. Create workspace via UI \u2192 real path on disk \u2014 filesystem verified.
+  3. New Run wired to selected workspace's real path (runs.py \u00a72).
+  4. Delete via UI \u2192 gone from agent-server \u2014 verified via curl.

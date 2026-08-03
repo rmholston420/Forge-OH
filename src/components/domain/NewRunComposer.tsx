@@ -145,7 +145,7 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
             {wsLoading && <option value="">Loading…</option>}
             {!wsLoading && noWorkspace && <option value="">No workspaces</option>}
             {workspaces.map((w) => (
-              <option key={w.id} value={w.id}>{w.name} ({w.type})</option>
+              <option key={w.id} value={w.id}>{w.name}</option>
             ))}
           </select>
           {errors.workspaceId && (
