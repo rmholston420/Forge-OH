@@ -329,3 +329,15 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - stop short-circuits when conversation is not in an interruptible state, returning ok:true.
 - Files touched: bff/routers/runs.py, src/features/runs/api.ts, src/features/runs/hooks.ts, src/components/domain/RunDetailHeader.tsx, src/app/(dashboard)/runs/[runId]/page.tsx.
 - No ADR required (implementation followed agent-server semantics; approve/reject UI verification deferred to Step 1E per action plan, ADR not applicable here).
+
+## 2026-08-03 00:02 EDT \u2014 Stage 1E: APPROVAL_GATE feature flag \u2014 backend + frontend wired
+- Stage: 1E (build) \u2014 confirmation-policy UX for the pre-existing approve/reject endpoints (Stage 5).
+- Backend (bff/routers/runs.py):
+  - CreateRunRequest gained requireApproval: bool = False.
+  - In create_run(): after the conversation is created and BEFORE POST /run, if requireApproval=true, POST /api/conversations/{cid}/confirmation_policy with {"policy":{"kind":"AlwaysConfirm"}}. Failure is logged as warning; run still starts (soft-fail, since the confirmation policy is best-effort UX not a security invariant).
+- Frontend:
+  - src/lib/schemas/run.ts: CreateRunRequestSchema gained requireApproval?: boolean.
+  - src/components/domain/NewRunComposer.tsx: added a checkbox "Require approval before each tool call (HITL)" gated by useFeatureFlag(FEATURE_FLAGS.APPROVAL_GATE). Default off.
+  - src/app/(dashboard)/runs/[runId]/page.tsx: Awaiting Approval banner now auto-shows when run.status === 'awaiting_approval' (previously only shown via manual store toggle). Copy updated to point at the header buttons.
+- Env: .env.local.example now suggests NEXT_PUBLIC_FEATURE_APPROVAL_GATE=true.
+- Verification pending: needs an e2e run created with requireApproval=true. Expect conversation to enter waiting_for_confirmation at first tool call, then approve/reject buttons to close the loop.

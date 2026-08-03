@@ -52,6 +52,9 @@ class CreateRunRequest(BaseModel):
     taskPrompt: Optional[str] = None
     taskComplexity: Optional[str] = None
     contextLength: Optional[int] = None
+    # Stage 1E: when true, agent will pause before every tool call for HITL
+    # approve/reject. Backed by APPROVAL_GATE feature flag in the frontend.
+    requireApproval: Optional[bool] = False
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +219,23 @@ async def create_run(body: CreateRunRequest) -> dict:
     cid = conv.get("id")
     if not cid:
         raise HTTPException(status_code=502, detail="agent-server returned no conversation id")
+
+    # 3a) Stage 1E — apply confirmation policy BEFORE kicking the loop off.
+    #     'AlwaysConfirm' makes agent-server enter waiting_for_confirmation
+    #     at every tool call; user must click Approve/Reject in the UI.
+    if body.requireApproval:
+        try:
+            pol_resp = await client.post(
+                f"/api/conversations/{cid}/confirmation_policy",
+                json={"policy": {"kind": "AlwaysConfirm"}},
+            )
+            if pol_resp.status_code >= 400:
+                log.warning(
+                    "create_run: setting AlwaysConfirm on %s failed: %s %s",
+                    cid, pol_resp.status_code, pol_resp.text[:200],
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("create_run: confirmation_policy call failed: %s", exc)
 
     # 3) Kick off in background.
     try:

@@ -8,6 +8,7 @@ import { useCreateRun } from '@/features/runs/hooks';
 import { useAgentPresets } from '@/features/runs/hooks';
 import { useWorkspaces } from '@/features/workspaces/hooks';
 import { CreateRunRequestSchema, type CreateRunRequest } from '@/features/runs/schemas';
+import { useFeatureFlag, FEATURE_FLAGS } from '@/lib/feature-flags';
 import styles from './NewRunComposer.module.css';
 
 export interface NewRunComposerProps {
@@ -25,6 +26,8 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
   const { data: presets = [], isLoading: presetsLoading } = useAgentPresets();
   const { data: workspaces = [], isLoading: wsLoading } = useWorkspaces();
   const createRun = useCreateRun();
+  const { isEnabled } = useFeatureFlag();
+  const approvalGateOn = isEnabled(FEATURE_FLAGS.APPROVAL_GATE);
 
   const {
     register,
@@ -41,6 +44,7 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
       workspaceId: '',
       taskComplexity: 'agentic',
       contextLength: 0,
+      requireApproval: false,
     },
   });
 
@@ -160,6 +164,27 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
 
       <input type="hidden" {...register('taskPrompt')} />
       <input type="hidden" {...register('contextLength', { valueAsNumber: true })} />
+
+      {approvalGateOn && (
+        <div className={styles.field}>
+          <label
+            className={styles.label}
+            htmlFor="run-require-approval"
+            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+          >
+            <input
+              id="run-require-approval"
+              type="checkbox"
+              {...register('requireApproval')}
+            />
+            Require approval before each tool call (HITL)
+          </label>
+          <span className={styles.helpText}>
+            When enabled, the agent pauses before every action and waits for
+            you to Approve or Reject in the run detail view.
+          </span>
+        </div>
+      )}
 
       <div className={styles.actions}>
         {onCancel && <Button type="button" variant="tertiary" onClick={onCancel}>Cancel</Button>}

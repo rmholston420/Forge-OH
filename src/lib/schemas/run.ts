@@ -73,6 +73,9 @@ export const CreateRunRequestSchema = z.object({
   taskPrompt: z.string().optional(),
   taskComplexity: z.enum(['simple', 'agentic']).default('agentic'),
   contextLength: z.number().int().nonnegative().optional(),
+  // Stage 1E — when true, agent pauses before every tool call for HITL
+  // approve/reject. UI toggle is gated by the APPROVAL_GATE feature flag.
+  requireApproval: z.boolean().optional(),
 });
 
 export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;

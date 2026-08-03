@@ -171,9 +171,10 @@ export default function RunDetailPage({
         />
       ) : null}
 
-      {pendingApprovalBanner && (
+      {(run?.status === 'awaiting_approval' || run?.status === 'pending_approval' || pendingApprovalBanner) && (
         <Banner variant="warning" title="Awaiting Approval">
           The agent has paused and is waiting for your approval before proceeding.
+          Use the Approve or Reject buttons above.
         </Banner>
       )}
 
