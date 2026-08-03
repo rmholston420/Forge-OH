@@ -8,7 +8,7 @@ import {
   useApproveRun,
   useRejectRun,
 } from '@/features/runs/hooks';
-import { useRunDetailStore } from '@/features/run-detail/store';
+import { useRunDetailStore, type RunDetailStore } from '@/features/run-detail/store';
 import { useRunStream } from '@/lib/streaming/useRunStream';
 import type { StreamEvent } from '@/lib/streaming/useRunStream';
 import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
@@ -171,7 +171,7 @@ export default function RunDetailPage({
         />
       ) : null}
 
-      {(run?.status === 'awaiting_approval' || run?.status === 'pending_approval' || pendingApprovalBanner) && (
+      {(run?.status === 'awaiting-approval' || pendingApprovalBanner) && (
         <Banner variant="warning" title="Awaiting Approval">
           The agent has paused and is waiting for your approval before proceeding.
           Use the Approve or Reject buttons above.
@@ -274,12 +274,12 @@ export default function RunDetailPage({
 
       {/* Browser — Phase 1 (Slice 2A) */}
       {selectedTab === 'browser' && (
-        <BrowserTab runId={runId} />
+        <BrowserTab runId={runId} isActive={selectedTab === 'browser'} />
       )}
 
       {/* Metrics — Phase 1 (Slice 3A) */}
       {selectedTab === 'metrics' && (
-        <MetricsTab runId={runId} />
+        <MetricsTab runId={runId} isActive={selectedTab === 'metrics'} />
       )}
 
       {/* Security — Phase 1 (Slice 3B) */}

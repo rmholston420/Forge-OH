@@ -266,7 +266,7 @@ describe('SettingsSchema', () => {
 describe('SecretSchema', () => {
   const valid = {
     id: 's1',
-    key: 'OPENAI_API_KEY',
+    name: 'OPENAI_API_KEY',
     scope: 'global',
     createdAt: new Date().toISOString(),
   };
@@ -275,8 +275,8 @@ describe('SecretSchema', () => {
     expect(() => SecretSchema.parse(valid)).not.toThrow();
   });
 
-  it('rejects missing key', () => {
-    expect(() => SecretSchema.parse({ ...valid, key: undefined })).toThrow();
+  it('rejects missing name', () => {
+    expect(() => SecretSchema.parse({ ...valid, name: undefined })).toThrow();
   });
 
   it('rejects invalid scope', () => {

@@ -7,6 +7,7 @@ export const ArtifactTypeSchema = z.enum([
   'report',
   'log',
   'archive',
+  'download',
   'other',
 ]);
 export type ArtifactType = z.infer<typeof ArtifactTypeSchema>;
@@ -20,6 +21,7 @@ export const ArtifactSchema = z.object({
   mimeType: z.string().optional(),
   sizeBytes: z.number().optional(),
   createdAt: z.string().datetime(),
+  url: z.string().optional(),
   downloadUrl: z.string().url().optional(),
   previewUrl: z.string().url().optional(),
   isBinary: z.boolean().optional(),

@@ -1,17 +1,42 @@
-import type { Trace, TraceSpan } from '@/lib/schemas/trace';
+'use client';
+import { useEffect, useState } from 'react';
+import type { TraceSpan, TraceSummary } from '@/lib/schemas/trace';
+import { fetchTrace, fetchTraceSpans } from './api';
 
-export function useTraceSpans(_runId?: string) {
-  return {
-    data: [] as TraceSpan[],
-    isLoading: false,
-    error: null as Error | null,
-  };
+export function useTraceSpans(runId?: string) {
+  const [data, setData] = useState<TraceSpan[]>([]);
+  const [isLoading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchTraceSpans(runId)
+      .then((spans) => { if (!cancelled) setData(spans); })
+      .catch((e: Error) => { if (!cancelled) setError(e); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [runId]);
+
+  return { data, isLoading, error };
 }
 
-export function useTrace(_runId?: string) {
-  return {
-    data: { traceId: 'mock-trace', spans: [] } as Trace,
-    isLoading: false,
-    error: null as Error | null,
-  };
+export function useTrace(runId?: string) {
+  const [data, setData] = useState<TraceSummary | null>(null);
+  const [isLoading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchTrace(runId)
+      .then((t) => { if (!cancelled) setData(t); })
+      .catch((e: Error) => { if (!cancelled) setError(e); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [runId]);
+
+  return { data, isLoading, error };
 }

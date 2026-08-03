@@ -30,9 +30,9 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({
   onReject,
   busy = false,
 }) => {
-  const isRunning = run.status === 'running' || run.status === 'pending';
+  const isRunning = run.status === 'running' || run.status === 'streaming';
   const isPaused = run.status === 'paused';
-  const isAwaiting = run.status === 'awaiting_approval' || run.status === 'pending_approval';
+  const isAwaiting = run.status === 'awaiting-approval';
   const selectedModelLabel = formatSelectedModel(run.selectedModel ?? run.routing?.selected ?? null);
 
   return (
