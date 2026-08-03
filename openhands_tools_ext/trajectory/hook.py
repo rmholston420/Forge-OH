@@ -99,18 +99,94 @@ def _load_sidecar(workspace: Path, session_id: str) -> dict[str, Any]:
     return sess if isinstance(sess, dict) else {}
 
 
-def _verdict_to_status(verdict: str) -> TrajectoryStatus:
-    """Map a verify verdict string to a :class:`TrajectoryStatus`."""
+# Sidecar keys F.15 producers may set to record structured signals
+# that outrank verify-state (e.g. an abort producer, a planner
+# emitting an explicit final-status override).
+_SIDECAR_FINAL_STATUS_KEY = "final_status"
+
+
+_VERDICT_MAP: dict[str, TrajectoryStatus] = {
     # ``verify-state.json`` stores the raw verdict string
     # (VerificationStep.use_enum_values=True).
-    mapping = {
-        "pass": TrajectoryStatus.SUCCESS,
-        "fail": TrajectoryStatus.FAILED,
-        "no-step": TrajectoryStatus.UNKNOWN,
-        "skip": TrajectoryStatus.UNKNOWN,
-        "error": TrajectoryStatus.FAILED,
-    }
-    return mapping.get(verdict, TrajectoryStatus.UNKNOWN)
+    "pass": TrajectoryStatus.SUCCESS,
+    "fail": TrajectoryStatus.FAILED,
+    "error": TrajectoryStatus.FAILED,
+    # A ``no-step`` / ``skip`` verdict means verify chose not to
+    # examine this run — not that the run itself was unknown. See
+    # ``_infer_final_status`` for how we combine this with the STOP
+    # hook's FINISHED precondition.
+    "no-step": TrajectoryStatus.SUCCESS,
+    "skip": TrajectoryStatus.SUCCESS,
+}
+
+
+def _verdict_to_status(verdict: str) -> TrajectoryStatus:
+    """Map a verify verdict string to a :class:`TrajectoryStatus`.
+
+    Kept as a pure lookup; callers that need the STOP-hook default
+    semantics should use :func:`_infer_final_status` instead.
+    """
+    return _VERDICT_MAP.get(verdict, TrajectoryStatus.UNKNOWN)
+
+
+def _coerce_sidecar_status(raw: object) -> TrajectoryStatus | None:
+    """Accept an optional sidecar-provided final status.
+
+    F.15 producers may write ``final_status`` into the sidecar as
+    either a raw enum value (e.g. ``"aborted"``) or a
+    :class:`TrajectoryStatus` instance. Any other value is treated as
+    absent so a malformed sidecar can never corrupt the row.
+    """
+    if isinstance(raw, TrajectoryStatus):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return TrajectoryStatus(raw)
+        except ValueError:
+            return None
+    return None
+
+
+def _infer_final_status(
+    verify_state: dict[str, object],
+    sidecar: dict[str, object],
+) -> TrajectoryStatus:
+    """Combine sidecar and verify signals into a terminal status.
+
+    Precedence, highest first:
+
+    1. A well-formed ``final_status`` in the sidecar. F.15 producers
+       (abort handlers, planner failures, etc) use this to make an
+       explicit terminal-state claim that outranks verify heuristics.
+    2. An explicit verify verdict (``pass`` → SUCCESS,
+       ``fail``/``error`` → FAILED).
+    3. **STOP-hook default**: SUCCESS. The trajectory STOP hook only
+       fires when the SDK reports ``execution_status == FINISHED``,
+       i.e. the agent called ``finish`` on its own. In that case an
+       absent or ``no-step``/``skip`` verify verdict means "verify
+       had nothing to say" — not "the run's outcome is unknown".
+       Attributing SUCCESS here matches every downstream retrieval
+       assumption (``verified_only=True`` still filters out the
+       explicit-failure rows).
+    4. UNKNOWN for a garbled verdict string we can't parse. This is
+       a genuine data-quality signal.
+    """
+    override = _coerce_sidecar_status(sidecar.get(_SIDECAR_FINAL_STATUS_KEY))
+    if override is not None:
+        return override
+
+    verdict = verify_state.get("last_verdict")
+    if not isinstance(verdict, str) or not verdict:
+        # No verify-state file, or a file with no verdict field.
+        # STOP-hook default applies.
+        return TrajectoryStatus.SUCCESS
+
+    if verdict in _VERDICT_MAP:
+        return _VERDICT_MAP[verdict]
+
+    # Unrecognized verdict string. Preserve UNKNOWN as an explicit
+    # "we can't tell" signal so operators can spot data drift.
+    return TrajectoryStatus.UNKNOWN
 
 
 def _parse_diffs(raw: object) -> list[TrajectoryDiff]:
@@ -163,7 +239,7 @@ def build_summary_from_sources(
     if not isinstance(verify_iterations, list):
         verify_iterations = []
 
-    status = _verdict_to_status(str(verify_state.get("last_verdict", "no-step")))
+    status = _infer_final_status(verify_state, sidecar)
 
     return RunSummary(
         run_id=run_id,

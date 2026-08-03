@@ -119,7 +119,13 @@ class TestHookCLI:
 
 
 class TestBuildSummaryFromSources:
-    def test_all_empty_yields_unknown_status(self, workspace: Path) -> None:
+    def test_all_empty_yields_success_status(self, workspace: Path) -> None:
+        """F.14: STOP-hook default is SUCCESS.
+
+        The trajectory STOP hook only fires when the SDK reports
+        ``execution_status == FINISHED``. An empty workspace has no
+        contrary signal, so the correct attribution is SUCCESS.
+        """
         summary = hook_mod.build_summary_from_sources(
             workspace=workspace,
             session_id="sess_1",
@@ -128,7 +134,7 @@ class TestBuildSummaryFromSources:
         assert summary.run_id == "run_1"
         assert summary.session_id == "sess_1"
         assert summary.task_description == ""
-        assert summary.final_status == TrajectoryStatus.UNKNOWN
+        assert summary.final_status == TrajectoryStatus.SUCCESS
 
     def test_env_task_used_when_sidecar_missing(self, workspace: Path) -> None:
         summary = hook_mod.build_summary_from_sources(
@@ -153,12 +159,67 @@ class TestBuildSummaryFromSources:
         )
         assert summary.final_status == TrajectoryStatus.FAILED
 
-    def test_unknown_verdict_maps_to_unknown(self, workspace: Path) -> None:
+    def test_unrecognized_verdict_maps_to_unknown(self, workspace: Path) -> None:
+        """A garbled verdict string is still a data-quality signal."""
         _write_verify_state(workspace, "sess_1", {"last_verdict": "banana"})
         summary = hook_mod.build_summary_from_sources(
             workspace=workspace, session_id="sess_1", run_id="run_1"
         )
         assert summary.final_status == TrajectoryStatus.UNKNOWN
+
+    # ------------------------------------------------------------
+    # F.14 — STOP-hook default status semantics
+    # ------------------------------------------------------------
+
+    def test_no_verify_state_defaults_to_success(self, workspace: Path) -> None:
+        """STOP fires only on FINISHED — missing verify → SUCCESS."""
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.SUCCESS
+
+    def test_no_step_verdict_defaults_to_success(self, workspace: Path) -> None:
+        """``no-step`` means verify was silent, not that the run failed."""
+        _write_verify_state(workspace, "sess_1", {"last_verdict": "no-step"})
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.SUCCESS
+
+    def test_skip_verdict_defaults_to_success(self, workspace: Path) -> None:
+        _write_verify_state(workspace, "sess_1", {"last_verdict": "skip"})
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.SUCCESS
+
+    def test_error_verdict_still_maps_to_failed(self, workspace: Path) -> None:
+        """An explicit ``error`` verdict must remain a hard failure."""
+        _write_verify_state(workspace, "sess_1", {"last_verdict": "error"})
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.FAILED
+
+    def test_sidecar_final_status_override_wins(self, workspace: Path) -> None:
+        """F.15 producers can force an explicit terminal state."""
+        _write_verify_state(workspace, "sess_1", {"last_verdict": "pass"})
+        _write_sidecar(workspace, "sess_1", {"final_status": "aborted"})
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.ABORTED
+
+    def test_sidecar_final_status_ignored_when_malformed(
+        self, workspace: Path
+    ) -> None:
+        """A garbage override does not corrupt the row."""
+        _write_verify_state(workspace, "sess_1", {"last_verdict": "pass"})
+        _write_sidecar(workspace, "sess_1", {"final_status": "not-a-status"})
+        summary = hook_mod.build_summary_from_sources(
+            workspace=workspace, session_id="sess_1", run_id="run_1"
+        )
+        assert summary.final_status == TrajectoryStatus.SUCCESS
 
     def test_sidecar_populates_signal_fields(self, workspace: Path) -> None:
         _write_sidecar(
@@ -215,13 +276,19 @@ class TestBuildSummaryFromSources:
         assert summary.diffs[0].path == "ok.py"
 
     def test_malformed_verify_state_treated_as_empty(self, workspace: Path) -> None:
+        """A garbled verify-state file is equivalent to an absent one.
+
+        Under F.14 that means the STOP-hook default (SUCCESS) applies
+        — not UNKNOWN. UNKNOWN is reserved for a well-formed file
+        containing an unrecognized verdict string.
+        """
         state_dir = workspace / hook_mod.STATE_DIR
         state_dir.mkdir(parents=True, exist_ok=True)
         (state_dir / hook_mod.VERIFY_STATE_FILE).write_text("not json {{")
         summary = hook_mod.build_summary_from_sources(
             workspace=workspace, session_id="sess_1", run_id="run_1"
         )
-        assert summary.final_status == TrajectoryStatus.UNKNOWN
+        assert summary.final_status == TrajectoryStatus.SUCCESS
 
 
 # ---------------------------------------------------------------------------
