@@ -197,3 +197,20 @@ Both servers boot without auth/RBAC/LMS scaffolding. **User to reload http://loc
   - `GET http://localhost:8081/api/runs 200 application/json` body: `{"data":[],"pageInfo":{"total":0,"page":1,"pageSize":20},"stub":true}`
 - Prior terminal 500s were stale-tab noise (browser held pre-fix JS).
 - **Step 2 DoD MET:** auth/RBAC/LMS stripped, BFF boots, frontend boots, /runs renders with real BFF data.
+
+## 2026-08-02 22:30 EDT — Stage 3: real conversation lifecycle wired
+- **Scope (from Forge-OH-Action-Plan-v4.md § Step 3):** wire `POST /runs` and `GET /runs/{id}` to real agent-server calls; add Socket.IO event relay; resolve `openhands_client` and `useRunStream.ts` duplicates.
+- **Files added:**
+  - `bff/services/event_relay.py` — asyncio background poll task per conversation. Polls `GET /api/conversations/{id}/events/search` and `GET /api/conversations/{id}` for status. Poll cadence: 500ms while active (`running`/`waiting_for_confirmation`), 2s idle, self-stops on terminal (`finished`/`error`/`stuck`/`deleting`). Forwards each event to Socket.IO room `conversationId=<cid>` as `oh-event`; forwards status transitions as `oh-status`.
+- **Files modified:**
+  - `bff/routers/runs.py` — full rewrite. `GET /runs` translates agent-server ConversationInfo list into RunSummary list. `POST /runs` routes via `model_router`, calls `POST /api/conversations` (with `initial_message.content[].text`, `agent.llm.model=openai/<tag>`, base_url=`http://localhost:11434/v1`, api_key=`ollama`, usage_id=`colossus-ollama`, native_tool_calling=false, tools=`terminal`+`file_editor`+`task_tracker`+`browser_tool_set`, kind=Agent, workspace.kind=LocalWorkspace), then `POST /api/conversations/{id}/run`, then `start_relay(cid)`. `GET /runs/{id}` returns real ConversationInfo → RunSummary. `GET /runs/{id}/events` proxies `events/search`. Deferred stubs (compare/plan/files/artifacts/commands/traces/lifecycle) kept as-is per plan.
+  - `bff/main.py` — imports `event_relay`, wires `sio` via `event_relay.set_sio(sio)`, adds Socket.IO handlers `connect`/`subscribe`/`unsubscribe` that join `conversationId=<cid>` rooms and start relays on demand. Shutdown hook calls `event_relay.shutdown_all()`.
+- **Files deleted (duplicates resolved):**
+  - `bff/services/openhands_client.py` — shim removed; canonical is `bff/openhands_client.py` (already imported everywhere in bff/main.py).
+  - `src/lib/hooks/useRunStream.ts` — duplicate removed; run-detail page imports from `src/lib/streaming/useRunStream.ts` (survivor).
+  - `src/tests/unit/useRunStream.test.ts` and `src/tests/unit/useRunStream-stale-closure.test.ts` — pointed at the deleted duplicate; obsolete.
+- **Status mapping (agent-server → RunSummary.status):**
+  - `idle` → `queued`, `running` → `running`, `paused` → `paused`, `waiting_for_confirmation` → `awaiting_approval`, `finished` → `succeeded`, `error`/`stuck`/`deleting` → `failed`.
+- **Design decisions locked:** `run_id == conversation_id` (identity, no SQLite); stateless BFF (list runs = query agent-server); model_router shim retained; per-run workspace dirs `workspace/runs/<cid>/` (currently emitted as `workspace/runs/pending` — agent-server will overwrite with its own persistence_dir).
+- **Definition of Done not yet met** — requires manual browser verification of full flow (see SESSION_HANDOFF.md).
+

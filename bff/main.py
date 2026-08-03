@@ -34,6 +34,7 @@ from bff.routers import (
 )
 from bff.openhands_client import startup as oh_startup, shutdown as oh_shutdown
 from bff.services import episodic_memory
+from bff.services import event_relay
 
 
 @asynccontextmanager
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
     await episodic_memory.init_db(app)
     yield
     # Graceful shutdown.
+    await event_relay.shutdown_all()
     await oh_shutdown()
     await episodic_memory.close_db(app)
 
@@ -79,6 +81,45 @@ app.include_router(settings.router, prefix="/api")
 app.include_router(workspaces.router, prefix="/api")
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+
+# Wire Socket.IO server into the event relay before any conversation task runs.
+event_relay.set_sio(sio)
+
+
+# -----------------------------------------------------------------------------
+# Socket.IO handlers — subscribe/unsubscribe to per-conversation rooms.
+# Frontend contract (src/lib/streaming/useRunStream.ts):
+#   client connects with query ?conversationId=<uuid>
+#   client emits 'subscribe' with {conversationId} to join a room
+#   client emits 'unsubscribe' to leave
+# -----------------------------------------------------------------------------
+
+@sio.event
+async def connect(sid, environ, auth):  # noqa: ARG001
+    # Query string carries conversationId=<uuid>.
+    qs = environ.get("QUERY_STRING", "")
+    from urllib.parse import parse_qs
+    params = parse_qs(qs)
+    cid = (params.get("conversationId") or [None])[0]
+    if cid:
+        await sio.enter_room(sid, f"conversationId={cid}")
+        event_relay.start_relay(cid)
+
+
+@sio.event
+async def subscribe(sid, data):
+    cid = (data or {}).get("conversationId")
+    if cid:
+        await sio.enter_room(sid, f"conversationId={cid}")
+        event_relay.start_relay(cid)
+
+
+@sio.event
+async def unsubscribe(sid, data):
+    cid = (data or {}).get("conversationId")
+    if cid:
+        await sio.leave_room(sid, f"conversationId={cid}")
+
 
 # ASGI entry-point: app_with_sio wraps the FastAPI app so Socket.IO
 # upgrade requests are intercepted before reaching FastAPI.
