@@ -57,6 +57,20 @@ export default [
       'src/tests/**',
       '**/*.test.ts',
       '**/*.test.tsx',
+      // Python virtual environments — never lint vendored JS shipped inside
+      // pip packages (litellm swagger, lmnr SDK, etc).
+      '.oh-venv/**',
+      '.venv/**',
+      'venv/**',
+      '**/*.min.js',
+      '**/*.min.cjs',
+      '**/*.bundle.js',
+      'playwright-report/**',
+      'playwright-artifacts/**',
+      'test-results/**',
+      'coverage/**',
+      '.cov-html-bff/**',
+      'storybook-static/**',
     ],
   },
 ];
