@@ -1,7 +1,6 @@
 """Loop Guard — detects repetitive agent action cycles and suggests escalation."""
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque
 
 
 @dataclass
@@ -13,7 +12,7 @@ class ActionFingerprint:
 
 class LoopGuard:
     def __init__(self, window: int = 5, threshold: int = 3) -> None:
-        self.history: Deque[str] = deque(maxlen=window)
+        self.history: deque[str] = deque(maxlen=window)
         self.threshold = threshold
 
     def fingerprint(self, fp: ActionFingerprint) -> str:

@@ -6,7 +6,7 @@ Used by:
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -17,7 +17,7 @@ async def fetch_all_events(run_id: str) -> list[dict[str, Any]]:
     """Page through /api/conversations/{run_id}/events/search (limit=100)."""
     client = get_client()
     items: list[dict[str, Any]] = []
-    page_id: Optional[str] = None
+    page_id: str | None = None
     # Safety cap on total pages
     for _ in range(200):
         params: dict[str, Any] = {"limit": 100, "sort_order": "TIMESTAMP"}
@@ -28,7 +28,7 @@ async def fetch_all_events(run_id: str) -> list[dict[str, Any]]:
                 f"/api/conversations/{run_id}/events/search",
                 params=params,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
         if resp.status_code == 404:
             raise HTTPException(status_code=404, detail="run not found")

@@ -20,7 +20,7 @@ Frontend contract (src/lib/schemas/trace.ts):
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Tool → kind mapping. Anything not listed maps to 'tool'.
@@ -68,7 +68,7 @@ _KIND_MAP: dict[str, str] = {
 }
 
 
-def _kind_for(tool: Optional[str]) -> str:
+def _kind_for(tool: str | None) -> str:
     if not tool:
         return "internal"
     if tool.startswith("mcp_"):
@@ -76,7 +76,7 @@ def _kind_for(tool: Optional[str]) -> str:
     return _KIND_MAP.get(tool, "tool")
 
 
-def _duration_ms(start: Optional[str], end: Optional[str]) -> Optional[int]:
+def _duration_ms(start: str | None, end: str | None) -> int | None:
     if not start or not end:
         return None
     try:
@@ -91,7 +91,7 @@ def _duration_ms(start: Optional[str], end: Optional[str]) -> Optional[int]:
         return None
 
 
-def _observation_status(observation: Any) -> tuple[str, Optional[str]]:
+def _observation_status(observation: Any) -> tuple[str, str | None]:
     """Return (status, error_message)."""
     if not isinstance(observation, dict):
         return ("ok", None)
@@ -109,7 +109,7 @@ def _observation_status(observation: Any) -> tuple[str, Optional[str]]:
 
 def _tool_span(
     action: dict[str, Any],
-    observation_event: Optional[dict[str, Any]],
+    observation_event: dict[str, Any] | None,
     trace_id: str,
 ) -> dict[str, Any]:
     action_id = action.get("id") or ""
@@ -150,7 +150,7 @@ def _tool_span(
     }
 
 
-def _extract_llm_usage(msg: dict[str, Any]) -> tuple[Optional[int], Optional[int]]:
+def _extract_llm_usage(msg: dict[str, Any]) -> tuple[int | None, int | None]:
     """Best-effort extraction of {input,output} token usage from a MessageEvent."""
     llm_msg = msg.get("llm_message") or {}
     usage = (

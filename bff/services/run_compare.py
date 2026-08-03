@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from bff.services.action_reconstruction import build_artifacts
-
 
 _LANG_BY_EXT: dict[str, str] = {
     ".py": "python", ".ts": "typescript", ".tsx": "tsx", ".js": "javascript",
@@ -52,7 +51,7 @@ def _paths_from_events(events: list[dict[str, Any]], run_id: str) -> set[str]:
     return {a["path"] for a in arts if a.get("path")}
 
 
-def _read_text_safe(root: Optional[str], rel_or_abs: str) -> Optional[str]:
+def _read_text_safe(root: str | None, rel_or_abs: str) -> str | None:
     """Read a file for content-diff purposes.
 
     `rel_or_abs` is the path recorded in the ActionEvent — usually absolute
@@ -71,8 +70,7 @@ def _read_text_safe(root: Optional[str], rel_or_abs: str) -> Optional[str]:
         root_p = Path(root)
         rel = rel_or_abs.lstrip("/")
         # Strip leading 'workspace/' if the path uses that convention.
-        if rel.startswith("workspace/"):
-            rel = rel[len("workspace/"):]
+        rel = rel.removeprefix("workspace/")
         candidates.append(root_p / rel)
     for c in candidates:
         try:
@@ -83,7 +81,7 @@ def _read_text_safe(root: Optional[str], rel_or_abs: str) -> Optional[str]:
     return None
 
 
-def _diff_counts(a: Optional[str], b: Optional[str]) -> tuple[int, int]:
+def _diff_counts(a: str | None, b: str | None) -> tuple[int, int]:
     """Return (additions, deletions) for unified diff a→b."""
     if a is None and b is None:
         return (0, 0)
@@ -105,8 +103,8 @@ def compare_runs(
     fork_run_id: str,
     base_events: list[dict[str, Any]],
     fork_events: list[dict[str, Any]],
-    base_working_dir: Optional[str],
-    fork_working_dir: Optional[str],
+    base_working_dir: str | None,
+    fork_working_dir: str | None,
 ) -> dict[str, Any]:
     base_paths = _paths_from_events(base_events, base_run_id)
     fork_paths = _paths_from_events(fork_events, fork_run_id)

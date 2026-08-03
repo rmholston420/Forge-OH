@@ -13,13 +13,15 @@ CRITICAL — two constraints that must never be changed without a migration plan
    servers, plugins, etc.) is process-local.  Do not scale workers until
    state is externalised.
 """
-from contextlib import asynccontextmanager
 import os
+from contextlib import asynccontextmanager
 
+import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import socketio
 
+from bff.openhands_client import shutdown as oh_shutdown
+from bff.openhands_client import startup as oh_startup
 from bff.routers import (
     agent_presets,
     mcp,
@@ -32,9 +34,7 @@ from bff.routers import (
     settings,
     workspaces,
 )
-from bff.openhands_client import startup as oh_startup, shutdown as oh_shutdown
-from bff.services import episodic_memory
-from bff.services import event_relay
+from bff.services import episodic_memory, event_relay
 
 
 @asynccontextmanager
@@ -102,7 +102,7 @@ def _extract_cid(source: dict) -> str | None:
 
 
 @sio.event
-async def connect(sid, environ, auth):  # noqa: ARG001
+async def connect(sid, environ, auth):
     from urllib.parse import parse_qs
     params = parse_qs(environ.get("QUERY_STRING", ""))
     # parse_qs returns lists; flatten first-value.

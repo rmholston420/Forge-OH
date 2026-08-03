@@ -22,7 +22,6 @@ from fastapi import APIRouter
 from bff.services.event_fetch import fetch_all_events
 from bff.services.trace_reconstruction import build_spans, build_trace_summary
 
-
 router = APIRouter(prefix="/observability", tags=["observability"])
 
 

@@ -28,13 +28,12 @@ Design notes:
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from bff.openhands_client import get_client
-
 
 router = APIRouter(prefix="/secrets", tags=["secrets"])
 
@@ -63,12 +62,12 @@ def _to_ref(item: dict[str, Any]) -> dict[str, Any]:
 class CreateSecretBody(BaseModel):
     # Frontend contract sends {name, value, description?}. Legacy stub accepted
     # {key, rawValue, scope} — support that too for backward compatibility.
-    name: Optional[str] = None
-    value: Optional[str] = None
-    description: Optional[str] = None
+    name: str | None = None
+    value: str | None = None
+    description: str | None = None
     # Legacy shape
-    key: Optional[str] = None
-    rawValue: Optional[str] = None
+    key: str | None = None
+    rawValue: str | None = None
 
 
 class RotateSecretBody(BaseModel):
@@ -94,7 +93,7 @@ async def _upstream_list() -> list[dict[str, Any]]:
     return payload.get("secrets") or []
 
 
-async def _upstream_create(name: str, value: str, description: Optional[str]) -> None:
+async def _upstream_create(name: str, value: str, description: str | None) -> None:
     client = get_client()
     resp = await client.put(
         "/api/settings/secrets",
@@ -118,7 +117,7 @@ async def _upstream_delete(name: str) -> None:
 # ---------------------------------------------------------------------------
 
 @router.get("")
-async def list_secrets(scope: Optional[str] = None) -> list[dict[str, Any]]:
+async def list_secrets(scope: str | None = None) -> list[dict[str, Any]]:
     """List secrets (metadata only).
 
     The 'scope' query param is accepted for frontend compatibility but has no

@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import json
 import time
-import aiosqlite
 from pathlib import Path
+
+import aiosqlite
 from fastapi import FastAPI
 
 DB_PATH = Path("data/episodic_memory.db")

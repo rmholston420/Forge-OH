@@ -20,8 +20,8 @@ Fields used from the observation:
 from __future__ import annotations
 
 import difflib
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 _MUTATING_COMMANDS = {"create", "str_replace", "insert", "undo_edit"}
 
@@ -62,7 +62,7 @@ def _guess_language(path: str) -> str:
     return _LANGUAGE_BY_EXT.get(ext, "plaintext")
 
 
-def _is_binary_text(text: Optional[str]) -> bool:
+def _is_binary_text(text: str | None) -> bool:
     if text is None:
         return False
     # OpenHands FileEditorObservation returns strings; a null byte or
@@ -70,7 +70,7 @@ def _is_binary_text(text: Optional[str]) -> bool:
     return "\x00" in text
 
 
-def _line_stats(original: Optional[str], modified: Optional[str]) -> tuple[int, int]:
+def _line_stats(original: str | None, modified: str | None) -> tuple[int, int]:
     """Return (additions, deletions) using unified line diff."""
     orig_lines = (original or "").splitlines()
     mod_lines = (modified or "").splitlines()
@@ -89,12 +89,12 @@ def _line_stats(original: Optional[str], modified: Optional[str]) -> tuple[int, 
 @dataclass
 class _FileState:
     path: str
-    original: Optional[str] = None  # content BEFORE first mutation in this run
-    modified: Optional[str] = None  # content AFTER last mutation
+    original: str | None = None  # content BEFORE first mutation in this run
+    modified: str | None = None  # content AFTER last mutation
     prev_exist_at_first_touch: bool = False
     touched: bool = False
 
-    def apply(self, command: str, old_content: Optional[str], new_content: Optional[str], prev_exist: bool) -> None:
+    def apply(self, command: str, old_content: str | None, new_content: str | None, prev_exist: bool) -> None:
         if not self.touched:
             # First time we see this path in the run
             self.prev_exist_at_first_touch = bool(prev_exist)
@@ -168,7 +168,7 @@ def build_summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def build_file_diff(events: list[dict[str, Any]], path: str) -> Optional[dict[str, Any]]:
+def build_file_diff(events: list[dict[str, Any]], path: str) -> dict[str, Any] | None:
     state = reconstruct(events)
     fs = state.get(path)
     if fs is None:

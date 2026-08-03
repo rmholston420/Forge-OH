@@ -22,7 +22,8 @@ All three functions operate on the same in-memory events list returned by
 from __future__ import annotations
 
 import os
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 # Tool-name buckets ---------------------------------------------------------
 _BASH_TOOLS = {"execute_bash", "terminal", "bash", "run_bash", "start_bash_command"}

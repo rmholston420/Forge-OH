@@ -29,13 +29,12 @@ Reshape upstream MCPServer + settings_key → frontend McpServer:
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from bff.openhands_client import get_client
-
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -95,13 +94,13 @@ def _reshape(name: str, server: dict[str, Any]) -> dict[str, Any]:
 class RegisterMcpRequest(BaseModel):
     name: str
     transport: str = "stdio"           # 'stdio' | 'http' | 'sse'
-    url: Optional[str] = None
-    command: Optional[str] = None
-    args: Optional[list[str]] = None
-    env: Optional[dict[str, str]] = None
+    url: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    env: dict[str, str] | None = None
     enabled: bool = True
-    description: Optional[str] = None
-    headers: Optional[dict[str, str]] = None
+    description: str | None = None
+    headers: dict[str, str] | None = None
 
 
 # ---------------------------------------------------------------------------

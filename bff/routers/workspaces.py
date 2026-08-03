@@ -28,7 +28,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -55,40 +55,40 @@ class Workspace(BaseModel):
     id: str
     name: str
     path: str
-    parentPath: Optional[str] = None
+    parentPath: str | None = None
     type: Literal["local"] = "local"  # kept for existing UI schema
     # Legacy fields the UI may still read; safe defaults.
     status: Literal["idle", "active", "error", "provisioning"] = "idle"
-    createdAt: Optional[str] = None
-    updatedAt: Optional[str] = None
+    createdAt: str | None = None
+    updatedAt: str | None = None
     runCount: int = 0
     diskUsageMb: float = 0.0
     diskLimitMb: float = 2048.0
-    envVars: List[dict] = []
-    agentPresetId: Optional[str] = None
+    envVars: list[dict] = []
+    agentPresetId: str | None = None
 
 
 class CreateWorkspaceRequest(BaseModel):
     name: str
-    path: Optional[str] = None  # absolute path; if omitted, derived from name under DEFAULT_ROOT
-    parentPath: Optional[str] = None
+    path: str | None = None  # absolute path; if omitted, derived from name under DEFAULT_ROOT
+    parentPath: str | None = None
     # Ignored (kept so existing UI POSTs don't 422 during transition):
-    description: Optional[str] = None
+    description: str | None = None
     type: Literal["local"] = "local"
-    envVars: List[dict] = []
-    agentPresetId: Optional[str] = None
+    envVars: list[dict] = []
+    agentPresetId: str | None = None
 
 
 class UpdateWorkspaceRequest(BaseModel):
-    name: Optional[str] = None
-    path: Optional[str] = None
-    parentPath: Optional[str] = None
+    name: str | None = None
+    path: str | None = None
+    parentPath: str | None = None
 
 
 class TestConnectionResult(BaseModel):
     ok: bool
-    latencyMs: Optional[float] = None
-    error: Optional[str] = None
+    latencyMs: float | None = None
+    error: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -111,19 +111,19 @@ def _to_bff(item: dict) -> Workspace:
     )
 
 
-async def _list_agent_workspaces() -> List[dict]:
+async def _list_agent_workspaces() -> list[dict]:
     """Return raw agent-server WorkspaceItems."""
     client = get_client()
     try:
         r = await client.get("/api/workspaces")
         r.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server workspace list failed: {exc}") from exc
     data = r.json() or {}
     return list(data.get("workspaces", []))
 
 
-async def _get_agent_workspace_by_id(workspace_id: str) -> Optional[dict]:
+async def _get_agent_workspace_by_id(workspace_id: str) -> dict | None:
     for w in await _list_agent_workspaces():
         if w.get("id") == workspace_id:
             return w
@@ -135,8 +135,8 @@ async def _get_agent_workspace_by_id(workspace_id: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=List[Workspace])
-async def list_workspaces() -> List[Workspace]:
+@router.get("", response_model=list[Workspace])
+async def list_workspaces() -> list[Workspace]:
     items = await _list_agent_workspaces()
     return [_to_bff(w) for w in items]
 
@@ -170,7 +170,7 @@ async def create_workspace(body: CreateWorkspaceRequest) -> Workspace:
     try:
         r = await client.post("/api/workspaces", json={"workspaces": [item]})
         r.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server workspace create failed: {exc}") from exc
 
     # Look up the freshly added item (agent-server may normalize fields).
@@ -198,7 +198,7 @@ async def update_workspace(workspace_id: str, body: UpdateWorkspaceRequest) -> W
             raise HTTPException(502, f"agent-server delete during update failed: {dr.text[:200]}")
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server delete failed: {exc}") from exc
 
     # Re-add with same id, new name/path.
@@ -209,7 +209,7 @@ async def update_workspace(workspace_id: str, body: UpdateWorkspaceRequest) -> W
     try:
         r = await client.post("/api/workspaces", json={"workspaces": [item]})
         r.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server re-add failed: {exc}") from exc
 
     return _to_bff(item)
@@ -224,7 +224,7 @@ async def delete_workspace(workspace_id: str) -> dict:
     try:
         r = await client.delete("/api/workspaces", params={"path": ws["path"]})
         r.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server delete failed: {exc}") from exc
     return {"ok": True}
 

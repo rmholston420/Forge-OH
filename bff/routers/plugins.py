@@ -26,13 +26,12 @@ Frontend `Plugin` shape (src/lib/schemas/plugin.ts):
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from bff.openhands_client import get_client
-
 
 router = APIRouter(prefix="/plugins", tags=["plugins"])
 
@@ -75,13 +74,13 @@ def _to_marketplace(u: dict[str, Any]) -> dict[str, Any]:
 class InstallBody(BaseModel):
     # Frontend may send just an id/name; we translate to the upstream {source, ref, repo_path}
     # request. Accept both shapes for compatibility.
-    source: Optional[str] = None
-    ref: Optional[str] = None
-    repo_path: Optional[str] = None
+    source: str | None = None
+    ref: str | None = None
+    repo_path: str | None = None
     force: bool = False
     # Legacy shape from src/features/plugins/api.ts InstallPlugin
-    id: Optional[str] = None
-    name: Optional[str] = None
+    id: str | None = None
+    name: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,6 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 
 def _utc_now_iso() -> str:
@@ -14,8 +13,8 @@ def _utc_now_iso() -> str:
 @dataclass
 class RunMetadata:
     run_id: str
-    title: Optional[str] = None
-    task: Optional[str] = None
+    title: str | None = None
+    task: str | None = None
     created_at: str = ""
 
 
@@ -48,8 +47,8 @@ class RunMetadataStore:
         self,
         run_id: str,
         *,
-        title: Optional[str] = None,
-        task: Optional[str] = None,
+        title: str | None = None,
+        task: str | None = None,
     ) -> RunMetadata:
         existing = self.get(run_id)
         created_at = existing.created_at if existing else _utc_now_iso()
@@ -76,7 +75,7 @@ class RunMetadataStore:
             created_at=created_at,
         )
 
-    def get(self, run_id: str) -> Optional[RunMetadata]:
+    def get(self, run_id: str) -> RunMetadata | None:
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -97,6 +96,6 @@ class RunMetadataStore:
             created_at=row["created_at"],
         )
 
-    def get_title(self, run_id: str) -> Optional[str]:
+    def get_title(self, run_id: str) -> str | None:
         record = self.get(run_id)
         return record.title if record else None

@@ -10,9 +10,10 @@ TODO(foh-phase2):
 - Revisit API shape (filters, pagination, unread counts)
 
 """
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
-from typing import Literal, Optional
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -29,7 +30,7 @@ class NotificationOut(BaseModel):
     type: Literal["info", "success", "warning", "error", "run_event"]
     title: str
     body: str
-    runId: Optional[str] = None
+    runId: str | None = None
     read: bool = False
     createdAt: str
 

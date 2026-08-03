@@ -7,9 +7,10 @@ Never hardcode port numbers here — use settings.openhands_base_url.
 """
 from __future__ import annotations
 
-import httpx
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+
+import httpx
 
 from .settings import get_settings
 

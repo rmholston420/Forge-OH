@@ -22,6 +22,7 @@ http://localhost:11434/v1); the /api/tags health probe uses OLLAMA_URL
 from __future__ import annotations
 
 import os
+
 import httpx
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")

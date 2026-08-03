@@ -1,9 +1,9 @@
+from datetime import datetime, timezone
+from typing import Literal
+from uuid import uuid4
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
-from uuid import uuid4
-from datetime import datetime, timezone
-
 
 router = APIRouter(prefix='/agent-presets', tags=['agent-presets'])
 
@@ -19,7 +19,7 @@ class LoopGuardConfig(BaseModel):
 class AgentPreset(BaseModel):
     id:            str
     name:          str
-    description:   Optional[str]       = None
+    description:   str | None       = None
     systemPrompt:  str                 = ''
     model:         ModelId             = 'gpt-4o'
     maxSteps:      int                 = 100
@@ -35,7 +35,7 @@ class AgentPreset(BaseModel):
 
 class CreateRequest(BaseModel):
     name:          str
-    description:   Optional[str]       = None
+    description:   str | None       = None
     systemPrompt:  str                 = ''
     model:         ModelId             = 'gpt-4o'
     maxSteps:      int                 = 100
@@ -48,16 +48,16 @@ class CreateRequest(BaseModel):
 
 class UpdateRequest(BaseModel):
     """All fields optional — only provided fields are merged."""
-    name:          Optional[str]       = None
-    description:   Optional[str]       = None
-    systemPrompt:  Optional[str]       = None
-    model:         Optional[ModelId]   = None
-    maxSteps:      Optional[int]       = None
-    maxCost:       Optional[float]     = None
-    temperature:   Optional[float]     = None
-    topP:          Optional[float]     = None
-    toolAllowlist: Optional[list[str]] = None
-    loopGuard:     Optional[LoopGuardConfig] = None
+    name:          str | None       = None
+    description:   str | None       = None
+    systemPrompt:  str | None       = None
+    model:         ModelId | None   = None
+    maxSteps:      int | None       = None
+    maxCost:       float | None     = None
+    temperature:   float | None     = None
+    topP:          float | None     = None
+    toolAllowlist: list[str] | None = None
+    loopGuard:     LoopGuardConfig | None = None
 
 
 def _now() -> str:

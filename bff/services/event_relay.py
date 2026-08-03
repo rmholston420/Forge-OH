@@ -147,7 +147,7 @@ async def _run_loop(cid: str) -> None:
     except asyncio.CancelledError:
         log.info("relay[%s]: cancelled", cid)
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.exception("relay[%s]: crashed: %s", cid, exc)
     finally:
         _tasks.pop(cid, None)

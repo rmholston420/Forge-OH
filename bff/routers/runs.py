@@ -38,7 +38,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -51,7 +51,7 @@ from bff.services.action_reconstruction import (
 )
 from bff.services.event_relay import start_relay
 from bff.services.file_diff_reconstruction import build_file_diff, build_summaries
-from bff.services.model_router import route_request, ModelUnavailableError
+from bff.services.model_router import ModelUnavailableError, route_request
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -65,12 +65,12 @@ class CreateRunRequest(BaseModel):
     title: str
     agentPresetId: str
     workspaceId: str
-    taskPrompt: Optional[str] = None
-    taskComplexity: Optional[str] = None
-    contextLength: Optional[int] = None
+    taskPrompt: str | None = None
+    taskComplexity: str | None = None
+    contextLength: int | None = None
     # Stage 1E: when true, agent will pause before every tool call for HITL
     # approve/reject. Backed by APPROVAL_GATE feature flag in the frontend.
-    requireApproval: Optional[bool] = False
+    requireApproval: bool | None = False
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +241,7 @@ async def create_run(body: CreateRunRequest) -> dict:
     try:
         create_resp = await client.post("/api/conversations", json=create_body)
         create_resp.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.exception("create_run: /api/conversations failed")
         raise HTTPException(status_code=502, detail=f"agent-server create failed: {exc}") from exc
 
@@ -300,7 +300,9 @@ async def compare_runs(
     base: str = Query(..., description="Base run ID"),
     fork: str = Query(..., description="Fork run ID"),
 ) -> dict:
-    from bff.services.run_compare import compare_runs as _do_compare  # local import to avoid cycles
+    from bff.services.run_compare import (
+        compare_runs as _do_compare,  # local import to avoid cycles
+    )
     client = get_client()
 
     base_events = await _fetch_all_events(base)
@@ -336,7 +338,7 @@ async def compare_runs(
 async def get_run(run_id: str) -> dict:
     try:
         resp = await get_client().get(f"/api/conversations/{run_id}")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="run not found")
@@ -353,7 +355,7 @@ async def get_run(run_id: str) -> dict:
 @router.get("/runs/{run_id}/events")
 async def get_run_events(
     run_id: str,
-    page_id: Optional[str] = Query(None),
+    page_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=100),
 ) -> dict:
     params: dict[str, Any] = {"limit": limit, "sort_order": "TIMESTAMP"}
@@ -364,7 +366,7 @@ async def get_run_events(
             f"/api/conversations/{run_id}/events/search",
             params=params,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="run not found")
@@ -385,7 +387,7 @@ async def get_run_plan(run_id: str) -> dict:
 
 # _fetch_all_events was moved to bff.services.event_fetch for reuse by the
 # observability router; this thin alias keeps existing call sites working.
-from bff.services.event_fetch import fetch_all_events as _fetch_all_events  # noqa: E402
+from bff.services.event_fetch import fetch_all_events as _fetch_all_events
 
 
 @router.get("/runs/{run_id}/files")
@@ -423,7 +425,9 @@ async def get_run_commands(run_id: str) -> dict:
 @router.get("/runs/{run_id}/traces")
 async def get_run_traces(run_id: str) -> dict:
     """Return spans for the given run (single trace per conversation)."""
-    from bff.services.trace_reconstruction import build_spans  # local import (avoids cycle at module load)
+    from bff.services.trace_reconstruction import (
+        build_spans,  # local import (avoids cycle at module load)
+    )
 
     events = await _fetch_all_events(run_id)
     spans = build_spans(events, run_id)
@@ -437,7 +441,7 @@ async def get_run_traces(run_id: str) -> dict:
 async def _call_lifecycle(
     run_id: str,
     subpath: str,
-    json_body: Optional[dict] = None,
+    json_body: dict | None = None,
 ) -> dict:
     """POST to `/api/conversations/{run_id}/{subpath}` on agent-server.
 
@@ -448,7 +452,7 @@ async def _call_lifecycle(
     url = f"/api/conversations/{run_id}/{subpath}"
     try:
         resp = await client.post(url, json=json_body if json_body is not None else {})
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="run not found")
@@ -467,7 +471,7 @@ async def _call_lifecycle(
 
 
 class RejectRunRequest(BaseModel):
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @router.post("/runs/{run_id}/pause")
@@ -533,7 +537,7 @@ async def stop_run(run_id: str) -> dict:
     client = get_client()
     try:
         conv_resp = await client.get(f"/api/conversations/{run_id}")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
     if conv_resp.status_code == 404:
         raise HTTPException(status_code=404, detail="run not found")
@@ -563,7 +567,7 @@ async def approve_run(run_id: str) -> dict:
 
 
 @router.post("/runs/{run_id}/reject")
-async def reject_run(run_id: str, body: Optional[RejectRunRequest] = None) -> dict:
+async def reject_run(run_id: str, body: RejectRunRequest | None = None) -> dict:
     # Reject flow — verified against agent-server 1.40.0:
     #   respond_to_confirmation {accept: False} declines the pending tool call
     #   and returns the conversation to `idle` (not a terminal state). To match
@@ -583,7 +587,7 @@ async def reject_run(run_id: str, body: Optional[RejectRunRequest] = None) -> di
     # Try /interrupt unconditionally with tolerance for 400 (idle/finished),
     # since polling status first introduces a race between respond and check.
     client = get_client()
-    interrupt_note: Optional[str] = None
+    interrupt_note: str | None = None
     try:
         r = await client.post(f"/api/conversations/{run_id}/interrupt")
         if r.status_code < 400:
@@ -614,7 +618,7 @@ async def fork_run(run_id: str) -> dict:
     client = get_client()
     try:
         resp = await client.post(f"/api/conversations/{run_id}/fork")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="run not found")

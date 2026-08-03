@@ -8,19 +8,20 @@ shadowing the `get_settings` name imported from bff.settings (Pydantic
 Settings singleton). Previously the collision caused the GET /api/settings
 endpoint to return the Pydantic Settings object instead of SettingsResponse.
 """
+from typing import Literal
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Literal, Optional
 
 from bff.services.model_router import (
-    OLLAMA_URL,
-    VLLM_URL,
-    PRIMARY_MODEL,
     FAST_MODEL,
-    ollama_health_check,
-    vllm_health_check,
-    route_request,
+    OLLAMA_URL,
+    PRIMARY_MODEL,
+    VLLM_URL,
     ModelUnavailableError,
+    ollama_health_check,
+    route_request,
+    vllm_health_check,
 )
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -47,22 +48,22 @@ class SettingsResponse(BaseModel):
 
 
 class SettingsPatch(BaseModel):
-    theme: Optional[Literal["system", "light", "dark"]] = None
-    accentColor: Optional[Literal["teal", "blue", "purple", "orange", "gold", "green"]] = None
-    fontSize: Optional[Literal["sm", "md", "lg"]] = None
-    defaultModel: Optional[str] = None
-    defaultAgentPreset: Optional[str] = None
-    maxConcurrentRuns: Optional[int] = None
-    autoApprove: Optional[bool] = None
-    streamingEnabled: Optional[bool] = None
-    keyboardShortcuts: Optional[KeyboardShortcuts] = None
+    theme: Literal["system", "light", "dark"] | None = None
+    accentColor: Literal["teal", "blue", "purple", "orange", "gold", "green"] | None = None
+    fontSize: Literal["sm", "md", "lg"] | None = None
+    defaultModel: str | None = None
+    defaultAgentPreset: str | None = None
+    maxConcurrentRuns: int | None = None
+    autoApprove: bool | None = None
+    streamingEnabled: bool | None = None
+    keyboardShortcuts: KeyboardShortcuts | None = None
 
 
 class RoutingProbe(BaseModel):
     taskComplexity: str
     contextLength: int
-    selected: Optional[str] = None
-    error: Optional[str] = None
+    selected: str | None = None
+    error: str | None = None
 
 
 class ModelRoutingStatus(BaseModel):
