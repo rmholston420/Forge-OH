@@ -25,29 +25,18 @@ const routes: { path: string; expect: RegExp }[] = [
   { path: '/runs/compare',      expect: /No runs selected|feature-flag|Fork action/i },
 ];
 
-// Next.js dev-mode compiles routes on first hit. If a spec lands on a
-// route while it's still compiling, Next serves a transient "This page
-// couldn't load" placeholder. We retry once after a reload to give the
-// compiler time to finish before failing.
-const PRECOMPILE_STALL = /This page couldn[\u2019']?t load/i;
-
 for (const r of routes) {
   test(`route ${r.path} renders without application error`, async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('pageerror', (err) => consoleErrors.push(String(err)));
 
     await page.goto(r.path);
-
-    // Retry once if we hit the Next dev-mode compile placeholder.
-    const bodyText = (await page.locator('body').textContent()) ?? '';
-    if (PRECOMPILE_STALL.test(bodyText)) {
-      await page.waitForTimeout(1500);
-      await page.reload();
-    }
-
     await expect(page).not.toHaveURL(/\/404/);
     await expect(page.locator('body')).not.toContainText('Application error');
     await expect(page.locator('body')).not.toContainText('unhandled');
+    // Fail fast if the Next.js dev overlay is showing a Runtime error.
+    await expect(page.getByRole('dialog', { name: /Runtime\s+\w+Error/i }))
+      .toHaveCount(0);
 
     // Route-specific content assertion.
     await expect(page.locator('body')).toContainText(r.expect);

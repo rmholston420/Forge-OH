@@ -10,6 +10,8 @@ const TRANSPORT_ICON: Record<Plugin['transport'], string> = {
   http: '🌐',
 };
 
+const DEFAULT_TRANSPORT: Plugin['transport'] = 'stdio';
+
 const STATUS_CLASS: Record<Plugin['status'], string> = {
   enabled: 'enabled',
   disabled: 'disabled',
@@ -25,6 +27,17 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin }) => {
   const toggleMutation = useTogglePlugin();
   const uninstallMutation = useUninstallPlugin();
   const pingMutation = usePingPlugin();
+
+  // Defensive defaults — the BFF's Plugin envelope currently omits
+  // transport/capabilities/toolCount for OpenHands 1.40.0 responses.
+  // Treat every optional/derived field as possibly missing so a partial
+  // payload never crashes the page.
+  const transport: Plugin['transport'] = plugin.transport ?? DEFAULT_TRANSPORT;
+  const capabilities: string[] = Array.isArray(plugin.capabilities)
+    ? plugin.capabilities
+    : [];
+  const toolCount: number =
+    typeof plugin.toolCount === 'number' ? plugin.toolCount : 0;
 
   const handleToggle = () => {
     toggleMutation.mutate({ id: plugin.id, enabled: plugin.status !== 'enabled' });
@@ -44,7 +57,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin }) => {
   return (
     <article className={styles.card}>
       <div className={styles.header}>
-        <span className={styles.icon} aria-hidden="true">{TRANSPORT_ICON[plugin.transport]}</span>
+        <span className={styles.icon} aria-hidden="true">{TRANSPORT_ICON[transport]}</span>
         <div className={styles.info}>
           <span className={styles.name}>{plugin.name}</span>
           <span className={styles.version}>v{plugin.version}</span>
@@ -68,7 +81,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin }) => {
       )}
 
       <div className={styles.caps}>
-        {plugin.capabilities.map((cap) => (
+        {capabilities.map((cap) => (
           <span key={cap} className={styles.cap}>{cap}</span>
         ))}
         <span className={[
@@ -80,8 +93,8 @@ export const PluginCard: React.FC<PluginCardProps> = ({ plugin }) => {
       </div>
 
       <dl className={styles.meta}>
-        <dt>Transport</dt><dd>{plugin.transport}</dd>
-        {plugin.toolCount > 0 && <><dt>Tools</dt><dd>{plugin.toolCount}</dd></>}
+        <dt>Transport</dt><dd>{transport}</dd>
+        {toolCount > 0 && <><dt>Tools</dt><dd>{toolCount}</dd></>}
         {plugin.command && <><dt>Command</dt><dd className={styles.code}>{plugin.command}</dd></>}
         {plugin.url && <><dt>URL</dt><dd className={styles.code}>{plugin.url}</dd></>}
       </dl>

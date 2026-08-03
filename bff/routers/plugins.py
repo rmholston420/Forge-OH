@@ -43,15 +43,53 @@ router = APIRouter(prefix="/plugins", tags=["plugins"])
 
 
 def _to_plugin(u: dict[str, Any]) -> dict[str, Any]:
-    """Reshape agent-server InstalledPluginResponse into a frontend `Plugin`."""
+    """Reshape agent-server InstalledPluginResponse into a frontend `Plugin`.
+
+    The frontend `Plugin` schema (src/lib/schemas/plugin.ts) requires
+    `transport` and `capabilities` and reads `toolCount`. Upstream
+    responses may omit these, so we synthesize sane defaults instead of
+    letting them be undefined — an undefined `capabilities` will crash
+    `PluginCard`'s render.
+    """
     installed_at = u.get("installed_at")
+
+    # Transport: derive from what upstream tells us (command, url, sse),
+    # falling back to stdio which is the safe default for MCP servers.
+    transport = u.get("transport")
+    if not transport:
+        if u.get("url"):
+            transport = "sse" if u.get("sse") else "http"
+        else:
+            transport = "stdio"
+
+    caps_raw = u.get("capabilities") or u.get("skills") or []
+    capabilities: list[str] = []
+    for c in caps_raw:
+        if isinstance(c, str):
+            capabilities.append(c)
+        elif isinstance(c, dict):
+            name = c.get("name") or c.get("id") or c.get("title")
+            if isinstance(name, str) and name:
+                capabilities.append(name)
+
+    tools = u.get("tools") or []
+    tool_count = u.get("tool_count")
+    if not isinstance(tool_count, int):
+        tool_count = len(tools) if isinstance(tools, list) else 0
+
     return {
         "id": u.get("name"),
         "name": u.get("name"),
         "version": u.get("version") or "0.0.0",
         "description": u.get("description"),
-        "author": None,  # upstream doesn't expose an author field
+        "author": u.get("author"),
         "status": "enabled" if u.get("enabled", True) else "disabled",
+        "transport": transport,
+        "capabilities": capabilities,
+        "toolCount": tool_count,
+        "command": u.get("command"),
+        "args": u.get("args"),
+        "url": u.get("url"),
         "installedAt": installed_at,
         "updatedAt": installed_at,  # upstream has no separate updatedAt
     }

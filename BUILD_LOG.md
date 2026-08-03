@@ -882,3 +882,36 @@ Fixed critical + high issues from the 26-shot Playwright visual tour (branch `ag
   - `src/tests/e2e/visual-tour.spec.ts` — same guard for the marketplace
     screenshot step; added `expect` to the imports.
 - Verified: local `tsc --noEmit` passes.
+
+## 2026-08-03 06:31 EDT — hotfix: /plugins runtime crash from missing capabilities/transport
+- Stage: Step 7 (post-Slice B hotfix #2)
+- Root cause (real this time, verified from Playwright's captured DOM):
+  the /plugins Next.js dev overlay dialog showed
+  `Runtime TypeError: Cannot read properties of undefined (reading 'map')`
+  at src/components/domain/PluginCard.tsx:71 \u2014
+  `plugin.capabilities.map(...)`. The BFF's `_to_plugin` reshaper never
+  populated `transport`, `capabilities`, `toolCount` (all required or
+  read by the frontend Plugin schema/component). Fine when
+  `plugins.length === 0` (EmptyState renders instead), but the moment
+  upstream returns one installed plugin the render crashes.
+- Fix: two layers of defense.
+  1. BFF `_to_plugin` now backfills `transport` (derived from url/sse
+     hints, defaults to stdio), `capabilities` (normalises str + dict
+     forms), `toolCount` (from `tool_count` or `len(tools)`), plus
+     `command/args/url/author` passthroughs.
+  2. `PluginCard.tsx` treats every optional field as possibly missing
+     with `Array.isArray` guards and typed defaults \u2014 so even a
+     malformed payload never crashes the page.
+- E2E: replaced my earlier "compile race" retry with a direct
+  assertion that no `Runtime *Error` dialog is on screen. That would
+  have caught this immediately.
+- Tests: added `TestToPluginReshaper` \u2014 4 pure-Python cases proving
+  defaults, dict/str normalisation, transport inference. All pass.
+- Files:
+  - `bff/routers/plugins.py::_to_plugin`
+  - `bff/tests/test_plugins_router.py` \u2014 TestToPluginReshaper
+  - `src/components/domain/PluginCard.tsx`
+  - `src/tests/e2e/nav-routes.spec.ts` \u2014 dev-overlay dialog assertion
+  - `src/tests/e2e/plugins.spec.ts` \u2014 removed placeholder-retry hack
+
+## 2026-08-03 06:31 EDT \u2014 DEBUG_LOG entry (see DEBUG_LOG.md)
