@@ -2016,3 +2016,90 @@ end-to-end (backend + frontend + hook + widget + docs + E2E).
 **Recommendations completed:** Rec #1 (RepoGraph, Slice D) + Rec #2
 (VerifyLoop, Slice E) + Rec #3 (Trajectory Memory, Slice F) all
 shipped and tagged.
+
+## 2026-08-03 09:55 EDT — Slice F.9: Runtime hook wiring (verify + trajectory)
+
+**Stage:** Post-Slice-F runtime plumbing. Not a new recommendation —
+wires the two STOP hooks (Slice E verify + Slice F trajectory) into
+every conversation the BFF creates on the agent-server.
+
+**Motivation:**
+Before this change, both hooks were fully implemented, tested, and
+documented — but nothing actually invoked them on live agent activity.
+The OpenHands SDK's ``LocalConversation`` only runs a hook if the
+conversation's ``hook_config`` is populated at create time; there is
+no auto-load of ``.openhands/hooks.json`` inside ``event_service.py``.
+
+**Files created:**
+- ``bff/services/hook_config.py`` — ``build_hook_config()`` returns a
+  plain dict with both hooks under a single ``stop`` matcher, in the
+  order verify → trajectory (verify must run first so the trajectory
+  hook can read verify-state.json). Python interpreter chosen via
+  ``FORGE_OH_HOOK_PYTHON`` env override or ``sys.executable`` fallback
+  (which on Colossus is ``.oh-venv/bin/python`` — the exact venv
+  where ``openhands_tools_ext`` is installed).
+- ``.openhands/hooks.json`` — canonical workspace hook config in the
+  SDK's snake_case format. Validated with ``HookConfig.load()``. Ships
+  as a discoverable, editable source of truth alongside the inline
+  BFF injection.
+- ``bff/tests/test_hook_config.py`` — 10 tests: 9 direct
+  ``build_hook_config()`` assertions (ordering, timeouts, command
+  paths, env override, SDK model validation, parity with
+  ``.openhands/hooks.json``) + 1 integration test that stubs the
+  agent-server client and asserts the outbound ``POST /api/conversations``
+  body carries ``hook_config`` with the right hook names in the right
+  order.
+
+**Files modified:**
+- ``bff/routers/runs.py`` — added ``"hook_config": build_hook_config()``
+  to the ``create_body`` sent to ``POST /api/conversations``. Both
+  hooks are attached to every conversation the BFF creates.
+
+**How it works end-to-end:**
+1. User creates a run via BFF ``POST /api/runs``.
+2. BFF ``create_run`` builds the create_body with ``hook_config``
+   attached and posts it to agent-server ``POST /api/conversations``.
+3. Agent-server persists ``hook_config`` on the ``StoredConversation``
+   (see ``openhands.agent_server.models:207``).
+4. When ``LocalConversation`` is instantiated on first run
+   (``event_service.py:980``), the hook_config is passed to the SDK.
+5. On agent STOP, the SDK spawns ``verify.hook`` as a subprocess (stdin
+   = HookEvent JSON, env = OPENHANDS_PROJECT_DIR + OPENHANDS_SESSION_ID);
+   verify writes ``$OPENHANDS_PROJECT_DIR/.forge-oh/verify-state.json``
+   with pass/fail verdict.
+6. SDK then spawns ``trajectory.hook`` as a second subprocess. It reads
+   verify-state.json + the optional sidecar and writes a trajectory
+   record to ``~/.forge-oh/trajectories.db`` (or ``FORGE_OH_TRAJECTORY_DB``).
+7. Frontend widget queries the BFF's ``POST /api/trajectories/search``
+   on the next run's Overview tab and proactively surfaces the top-k
+   related past runs.
+
+**Test totals at F.9:**
+- Backend: 270 passed (was 260, +10) in the offline-safe suite.
+- 14 pre-existing failures remain — all require a live agent-server or
+  MCP endpoint on localhost (test_plugins_router, test_observability_router,
+  test_mcp_router). Confirmed unchanged by ``git stash``. Not our
+  regressions.
+- Frontend: unchanged (838 passed, 1 pre-existing jsdom flake).
+
+**Stop-condition status:** Hooks now run against live agent activity.
+On the next agent STOP event on Colossus, both hooks will fire — verify
+first, trajectory second — and populate the memory DB automatically.
+
+**How to sanity-check on Colossus after pulling:**
+```
+cd ~/dev/forge-oh
+git pull --ff-only
+# Restart BFF so the changed router is picked up:
+scripts/forge-down.sh && scripts/forge-up.sh
+# Start a real run in the UI; on completion look for:
+tail -f ~/dev/forge-oh/workspaces/*/\.forge-oh/verify-state.json
+ls -la ~/.forge-oh/trajectories.db  # should grow after each run
+```
+
+**Deferred (still not blocking):**
+- Sidecar producer for ``.forge-oh/trajectory-sidecar.json`` — the
+  hook already degrades gracefully when it's absent, so trajectory
+  writes work today but with fewer fields.
+- Retention policy for ``trajectories.db``.
+- Indexer drain schedule.

@@ -1,0 +1,21 @@
+{
+  "stop": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "name": "forge-oh-verify",
+          "command": "python -m openhands_tools_ext.verify.hook",
+          "timeout": 120
+        },
+        {
+          "type": "command",
+          "name": "forge-oh-trajectory",
+          "command": "python -m openhands_tools_ext.trajectory.hook",
+          "timeout": 60
+        }
+      ]
+    }
+  ]
+}

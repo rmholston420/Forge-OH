@@ -53,6 +53,7 @@ from bff.services.action_reconstruction import (
 from bff.services.event_normalize import normalize_events
 from bff.services.event_relay import start_relay
 from bff.services.file_diff_reconstruction import build_file_diff, build_summaries
+from bff.services.hook_config import build_hook_config
 from bff.services.model_router import ModelUnavailableError, route_request
 
 log = logging.getLogger(__name__)
@@ -245,6 +246,11 @@ async def create_run(body: CreateRunRequest) -> dict:
             "kind": "Agent",
         },
         "title": body.title,
+        # Slice F.8 runtime wiring: register verify + trajectory STOP hooks
+        # on every conversation. Verify runs first (writes verify-state.json);
+        # trajectory second (reads it + the sidecar). Both are subprocess
+        # hooks; failures are non-blocking by SDK contract.
+        "hook_config": build_hook_config(),
     }
 
     try:
