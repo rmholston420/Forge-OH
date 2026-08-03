@@ -1,0 +1,17 @@
+{
+  "cell": "c02",
+  "role": "coder",
+  "runtime": "vllm",
+  "model": "c02_coder_vllm_qwen3coder_awq",
+  "profile": "coder",
+  "runs": 3,
+  "latency_min_s": 2.3497912883758545,
+  "latency_med_s": 2.4805424213409424,
+  "latency_max_s": 2.5580666065216064,
+  "completion_tokens": 432,
+  "prompt_tokens": 597,
+  "tokens_per_s_med": 174.16,
+  "finish_reason": "stop",
+  "content": "1. **Implement POST /runs to call agent-server**  \n   - `bff/routers/runs.py`  \n   - This commit establishes the core backend integration by replacing the stub `POST /runs` with a real HTTP request to the OpenHands agent-server, enabling actual task submission.\n\n2. **Add GET /runs/{run_id} logic for session status**  \n   - `bff/routers/runs.py`  \n   - This ensures that run details can be fetched from the agent-server, which is necessary for populating the frontend run detail page with live data instead of stub values.\n\n3. **Refactor duplicate openhands_client modules**  \n   - `bff/openhands_client.py`  \n   - `bff/services/openhands_client.py`  \n   - This resolves the duplication between two client implementations, ensuring clean and consistent communication with the agent server moving forward.\n\n4. **Fix useRunStream hook duplication**  \n   - `lib/hooks/useRunStream.ts`  \n   - `lib/streaming/useRunStream.ts`  \n   - Removing one of the duplicated hooks centralizes the streaming logic and prevents conflicts in frontend behavior.\n\n5. **Wire up Socket.IO relay in BFF main module**  \n   - `bff/main.py`  \n   - Establishes the WebSocket forwarding mechanism so browser clients receive real-time updates from the agent-server through the backend.\n\n6. **Update frontend to render live events from stream**  \n   - `src/pages/RunDetailPage.tsx`  \n   - `src/components/EventTimeline.tsx`  \n   - Replaces stubbed event rendering with dynamic display of real action/observation events streamed via Socket.IO.\n\n7. **Remove stub flag from endpoints**  \n   - `bff/routers/runs.py`  \n   - Ensures all responses now reflect actual runtime behavior rather than placeholder data, completing the transition away from stubs.\n\n8. **Verify end-to-end functionality manually**  \n   - *(No file changes)*  \n   - Validates that the full flow works as expected: submitting a task \u2192 viewing it in Runs list \u2192 observing live events on the Run Detail page.",
+  "reasoning_content": ""
+}

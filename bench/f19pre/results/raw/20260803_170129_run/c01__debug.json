@@ -1,0 +1,17 @@
+{
+  "cell": "c01",
+  "role": "coder",
+  "runtime": "ollama",
+  "model": "qwen3-coder:30b",
+  "profile": "coder",
+  "runs": 3,
+  "latency_min_s": 0.432513952255249,
+  "latency_med_s": 0.43961000442504883,
+  "latency_max_s": 0.5275821685791016,
+  "completion_tokens": 102,
+  "prompt_tokens": 296,
+  "tokens_per_s_med": 232.02,
+  "finish_reason": "stop",
+  "content": "1. The root cause is that `require_role` middleware imports were removed but still referenced in `runs.py` and `workspaces.py`.\n\n2. Fix commands:\n```bash\nsed -i '12d' bff/routers/runs.py\nsed -i '8d' bff/routers/workspaces.py\n```\n\n3. Verification command:\n```bash\nuvicorn bff.main:app_with_sio --port 8081 --log-level error\n```",
+  "reasoning_content": ""
+}

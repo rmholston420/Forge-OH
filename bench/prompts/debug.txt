@@ -1,0 +1,20 @@
+CONTEXT: Forge-OH is a FastAPI BFF + Next.js 16 frontend wrapping OpenHands. Per Forge-OH-Action-Plan-v4.md Step 2, auth/RBAC is being stripped for single-user local use. The following files were deleted:
+- bff/middleware/rbac.py
+- bff/routers/auth.py
+- bff/routers/lms.py
+
+After the deletion, `uvicorn bff.main:app_with_sio --port 8081` fails to start with:
+
+  ImportError: cannot import name 'require_role' from 'bff.middleware.rbac'
+  (traceback shows bff/routers/runs.py line 12, and bff/routers/workspaces.py line 8)
+
+TASK: Diagnose the exact root cause and produce the minimal set of edits to make the app boot cleanly. Do not add stubs, do not re-create the deleted files, do not add feature flags. Output must be:
+
+1. One-sentence root cause.
+2. Exact commands (sed/grep patterns or code diffs) to fix runs.py and workspaces.py.
+3. One verification command to confirm the fix worked.
+
+Ground rules:
+- The deletion is intentional and final — the fix removes the dependency, not restores it.
+- Do not touch any file not directly involved in the ImportError.
+- Do not add comments explaining what you removed.

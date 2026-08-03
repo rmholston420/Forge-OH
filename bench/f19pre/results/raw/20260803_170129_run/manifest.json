@@ -1,0 +1,12 @@
+{
+  "ts": "20260803_175759",
+  "cells": [
+    "c06"
+  ],
+  "runs": 3,
+  "results_index": [
+    "c06__arch",
+    "c06__debug",
+    "c06__plan"
+  ]
+}

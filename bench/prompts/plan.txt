@@ -1,0 +1,26 @@
+CONTEXT: Forge-OH-Action-Plan-v4.md Step 3 is the highest-priority vertical slice: replace stub `POST /runs` in `bff/routers/runs.py` with a real call to the OpenHands agent-server running at `http://127.0.0.1:8090`, plus wire the WebSocket event relay and the run-detail page's live event timeline. The OpenHands agent-server is up and its OpenAPI spec is available at `http://127.0.0.1:8090/openapi.json`. The model behind the agent is `qwen3.6:35b-a3b` via Ollama.
+
+The Step 3 spec requires ALL of the following to be considered done, in ONE work session, backend + frontend together:
+- `POST /runs` calls the agent-server's real conversation-create endpoint (route determined from openapi.json), passing `body.taskPrompt`.
+- `GET /runs/{run_id}` returns real conversation/session status.
+- Socket.IO relay in `bff/main.py` forwards agent-server WebSocket events to the browser.
+- The `bff/openhands_client.py` vs `bff/services/openhands_client.py` duplicate is resolved (keep one, delete the other, fix imports).
+- The `useRunStream.ts` duplicate (`lib/hooks/` vs `lib/streaming/`) is resolved the same way.
+- Frontend run-detail page renders real status and streams real Action/Observation events (no stub data path remaining).
+- The stub `"stub": True` return value is deleted from the affected endpoints.
+- Manual verification passes: user submits a task from the running UI, sees it in Runs list, watches events populate.
+
+TASK: Produce an ordered, executable plan of atomic commits that gets from the current state (stubs, both duplicates present, no real agent-server call) to the done state above. Each commit must:
+- Have a one-line commit message in imperative mood.
+- List exact files touched (paths only, no code).
+- Be small enough to test independently: `uvicorn ... && npm run dev` must still boot after each commit.
+- Not undo or contradict any prior commit in the sequence.
+
+Constraints:
+- No `.github/workflows/*` changes.
+- No new tests written in this slice — manual browser verification only.
+- No branch/PR; work directly on `main`.
+- Do not include commits that touch files outside Step 3's scope (no `workspaces.py`, no `files/diff` endpoints, no lifecycle controls — those are Steps 4-6).
+- The final commit in the sequence must be the one that first makes end-to-end manual verification pass.
+
+Output format: numbered list, each item = commit message + files touched + one-sentence rationale for why this commit is where it is in the sequence.

@@ -1,0 +1,17 @@
+{
+  "cell": "c04",
+  "role": "coder",
+  "runtime": "vllm",
+  "model": "c04_coder_vllm_qwen36_nvfp4",
+  "profile": "coder_nothink",
+  "runs": 3,
+  "latency_min_s": 0.9410159587860107,
+  "latency_med_s": 1.1660003662109375,
+  "latency_max_s": 1.3434464931488037,
+  "completion_tokens": 304,
+  "prompt_tokens": 309,
+  "tokens_per_s_med": 260.72,
+  "finish_reason": "stop",
+  "content": "1. The `runs.py` and `workspaces.py` routers still contain import statements for `require_role` from the deleted `bff.middleware.rbac` module, causing an ImportError at startup.\n\n2. ```bash\n# Fix bff/routers/runs.py: Remove the import line and any usage of require_role decorator if present\nsed -i '/from bff.middleware.rbac import require_role/d' bff/routers/runs.py\ngrep -n 'require_role' bff/routers/runs.py | grep -v '^#' | while read line; do\n  linenum=$(echo \"$line\" | cut -d: -f1)\n  sed -i \"${linenum}s/@require_role.*//g\" bff/routers/runs.py\ndone\n\n# Fix bff/routers/workspaces.py: Remove the import line and any usage of require_role decorator if present\nsed -i '/from bff.middleware.rbac import require_role/d' bff/routers/workspaces.py\ngrep -n 'require_role' bff/routers/workspaces.py | grep -v '^#' | while read line; do\n  linenum=$(echo \"$line\" | cut -d: -f1)\n  sed -i \"${linenum}s/@require_role.*//g\" bff/routers/workspaces.py\ndone\n```\n\n3. `uvicorn bff.main:app_with_sio --port 8081`",
+  "reasoning_content": ""
+}

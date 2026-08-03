@@ -1,0 +1,20 @@
+CONTEXT: Forge-OH-Action-Plan-v4.md line 41 documents six duplicate file pairs from a stale refactor. One of them:
+
+  bff/openhands_client.py           (flat, at bff/ root)
+  bff/services/openhands_client.py  (in the services/ layer)
+
+Both files exist in the current repo. Only one should survive. The repo layout convention (per the same plan and general FastAPI+services-layer practice):
+- `bff/routers/*.py` — HTTP route handlers, thin
+- `bff/services/*.py` — business logic and external-system clients (already contains `model_router.py`, `episodic_memory.py`, both "fully real, working code")
+- `bff/*.py` — app entrypoint (`main.py`), config (`settings.py`), cross-cutting concerns
+
+Step 3 of the plan will wire `bff/routers/runs.py` to call the OpenHands agent-server via this client. The client will be imported by routers.
+
+TASK: Decide which file to keep and which to delete, and justify the choice in 3-5 sentences. Then produce:
+
+1. The chosen file path (kept) and the deleted file path.
+2. A grep pattern to find all imports of the deleted path across the repo.
+3. A sed/one-liner to rewrite those imports to point at the kept path.
+4. One reason this decision is correct that references the actual layered-architecture convention above, not a general preference.
+
+Do not propose keeping both. Do not propose renaming to a third path. Do not propose merging the two files.
