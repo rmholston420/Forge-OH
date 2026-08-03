@@ -2517,3 +2517,8 @@ Slice F.16-UI (always-visible GPU strip):
 - New: `src/components/navigation/GpuStrip.tsx` + `GpuStrip.module.css`. Client component, polls `GET /api/gpu` every 2s (matches BFF poller), renders four color-coded chips: temp / util / VRAM / power. Uses snapshot's `warn_c`/`cutoff_c`/`critical_c` bands for temperature (52/83/88 on the 5090); percentage chips warn at 85/90 and go crit at their respective cutoffs; power warns at 90% of cutoff, crit at cutoff. Reduced-motion-safe (crit pulse disabled under `prefers-reduced-motion: reduce`). Falls back to a single grey "GPU n/a" chip when the BFF is down or `available=false`.
 - Wired into every dashboard route via `src/app/(dashboard)/layout.tsx` — mounted in the Topbar `actions` slot so it appears on Runs, Workspaces, Observability, Plugins, Secrets, Settings, etc.
 - No new backend work — reuses the existing `/api/gpu` snapshot.
+
+## 2026-08-03 11:56 EDT — G.1 verified passing; GPU-strip screenshot spec
+
+- G.1 fully green on Colossus (31.0s). Forge-OH end-to-end proof: agent read the task, wrote a new pytest case with the correct producer event shape, saved it, and the new case passes in isolation. Slice complete.
+- New: `src/tests/e2e/gpu-strip.spec.ts`. Loads `/runs`, waits for `/api/gpu` response, screenshots the strip element and the full header to `screenshots/gpu-strip-{chip,header}.png`. When run with `PLAYWRIGHT_GPU_STRIP_PUSH=1`, the spec auto-commits and pushes the screenshots to origin/main (no manual step required per user's instruction).
