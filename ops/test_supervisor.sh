@@ -80,18 +80,34 @@ STUB
 }
 
 _stub_systemctl() {
-    # Args: DIR HAS_OLLAMA_UNIT (0|1). Create systemctl stub.
-    local dir="$1" has="$2"
+    # Args: DIR HAS_SYS_OLLAMA_UNIT (0|1) [HAS_USER_OLLAMA_UNIT (0|1)]. Create
+    # systemctl stub that also tracks --user vs system scope.
+    #
+    # HAS_USER_OLLAMA_UNIT defaults to 0 (backwards compat with existing tests).
+    local dir="$1" has_sys="$2" has_user="${3:-0}"
     cat > "$dir/systemctl" <<STUB
 #!/usr/bin/env bash
+# Detect --user flag (may appear before the subcommand)
+SCOPE=system
+if [ "\$1" = "--user" ]; then
+    SCOPE=user
+    shift
+fi
 if [ "\$1" = "list-unit-files" ]; then
-    if [ "$has" = "1" ]; then
+    if [ "\$SCOPE" = "system" ] && [ "$has_sys" = "1" ]; then
+        echo "ollama.service enabled enabled"
+    fi
+    if [ "\$SCOPE" = "user" ] && [ "$has_user" = "1" ]; then
         echo "ollama.service enabled enabled"
     fi
     exit 0
 fi
 if [ "\$1" = "stop" ] && [ "\$2" = "ollama" ]; then
-    echo "STUB_SYSTEMCTL_STOP_CALLED" >> "$dir/.calls"
+    if [ "\$SCOPE" = "system" ]; then
+        echo "STUB_SYSTEMCTL_STOP_CALLED" >> "$dir/.calls"
+    else
+        echo "STUB_SYSTEMCTL_USER_STOP_CALLED" >> "$dir/.calls"
+    fi
     exit 0
 fi
 exit 0
@@ -142,9 +158,14 @@ STUB
 }
 
 _stub_ss() {
-    local dir="$1"
-    cat > "$dir/ss" <<'STUB'
+    # Args: DIR [LISTENING (0|1)]. Default: not listening on :11434.
+    # When LISTENING=1, ss -lntp prints a line matching ':11434 '.
+    local dir="$1" listening="${2:-0}"
+    cat > "$dir/ss" <<STUB
 #!/usr/bin/env bash
+if [ "$listening" = "1" ]; then
+    echo 'LISTEN 0      4096       127.0.0.1:11434      0.0.0.0:*    users:(("ollama",pid=999,fd=4))'
+fi
 exit 0
 STUB
     chmod +x "$dir/ss"
@@ -302,10 +323,80 @@ test_stop_ollama_no_op_when_unit_absent() {
     local dir out
     dir=$(_setup_stub_dir)
     _full_stub_dir "$dir"
-    _stub_systemctl "$dir" 0  # override: no ollama unit installed
+    _stub_systemctl "$dir" 0 0  # override: no ollama unit in either scope
     out=$(PATH="$dir:$PATH" bash -c "source '$SUPERVISOR' 2>/dev/null; _stop_ollama" 2>&1)
     _check "prints 'not running' when unit absent + pkill finds nothing" \
         "echo '$out' | grep -q 'not running'" "output: $out"
+    rm -rf "$dir"
+}
+
+test_stop_ollama_stops_user_scope_unit() {
+    # Regression guard for DEBUG_LOG 2026-08-04 02:42 EDT: on Colossus,
+    # Ollama was running as a user-scope systemd unit while the system-scope
+    # unit reported inactive. The pre-fix supervisor only stopped the system
+    # scope, missing the user-scope Ollama entirely.
+    echo "test_stop_ollama_stops_user_scope_unit"
+    local dir
+    dir=$(_setup_stub_dir)
+    _full_stub_dir "$dir"
+    _stub_systemctl "$dir" 0 1  # override: no system unit, but user unit exists
+    PATH="$dir:$PATH" bash -c "source '$SUPERVISOR' 2>/dev/null; _stop_ollama" >/dev/null 2>&1
+    _check "user-scope systemctl stop was invoked" \
+        "grep -q STUB_SYSTEMCTL_USER_STOP_CALLED '$dir/.calls'" \
+        "calls: $(cat "$dir/.calls" 2>/dev/null || echo none)"
+    _check "system-scope systemctl stop was NOT invoked (no system unit)" \
+        "! grep -q STUB_SYSTEMCTL_STOP_CALLED '$dir/.calls'" \
+        "calls: $(cat "$dir/.calls" 2>/dev/null || echo none)"
+    rm -rf "$dir"
+}
+
+test_stop_ollama_stops_both_scopes_when_both_present() {
+    echo "test_stop_ollama_stops_both_scopes_when_both_present"
+    local dir
+    dir=$(_setup_stub_dir)
+    _full_stub_dir "$dir"
+    _stub_systemctl "$dir" 1 1  # both scopes have the unit
+    PATH="$dir:$PATH" bash -c "source '$SUPERVISOR' 2>/dev/null; _stop_ollama" >/dev/null 2>&1
+    _check "system-scope systemctl stop was invoked" \
+        "grep -q STUB_SYSTEMCTL_STOP_CALLED '$dir/.calls'" \
+        "calls: $(cat "$dir/.calls" 2>/dev/null || echo none)"
+    _check "user-scope systemctl stop was invoked" \
+        "grep -q STUB_SYSTEMCTL_USER_STOP_CALLED '$dir/.calls'" \
+        "calls: $(cat "$dir/.calls" 2>/dev/null || echo none)"
+    rm -rf "$dir"
+}
+
+test_cmd_check_flags_ollama_listener_when_present() {
+    # DEBUG_LOG 2026-08-04 02:42 EDT: cmd_check must surface the presence of
+    # an Ollama listener on :11434 even when the system-scope unit is
+    # inactive, because the listener may belong to a user-scope Ollama.
+    echo "test_cmd_check_flags_ollama_listener_when_present"
+    local dir out
+    dir=$(_setup_stub_dir)
+    _full_stub_dir "$dir"
+    _stub_nvidia_smi_free "$dir" 30000  # plenty of VRAM — result=OK
+    _stub_ss "$dir" 1                    # override: :11434 is listening
+    out=$(PATH="$dir:$PATH" bash "$SUPERVISOR" check 2>&1)
+    _check "cmd_check reports ollama_listener PRESENT" \
+        "echo '$out' | grep -q 'ollama_listener: PRESENT'" \
+        "output: $out"
+    _check "cmd_check still reports OK when VRAM sufficient" \
+        "echo '$out' | grep -q 'result        : OK'" \
+        "output: $out"
+    rm -rf "$dir"
+}
+
+test_cmd_check_reports_ollama_listener_absent() {
+    echo "test_cmd_check_reports_ollama_listener_absent"
+    local dir out
+    dir=$(_setup_stub_dir)
+    _full_stub_dir "$dir"
+    _stub_nvidia_smi_free "$dir" 30000
+    _stub_ss "$dir" 0  # default: not listening
+    out=$(PATH="$dir:$PATH" bash "$SUPERVISOR" check 2>&1)
+    _check "cmd_check reports ollama_listener absent" \
+        "echo '$out' | grep -q 'ollama_listener: absent'" \
+        "output: $out"
     rm -rf "$dir"
 }
 
@@ -349,8 +440,12 @@ test_free_gpu_waits_then_succeeds
 test_free_gpu_skips_ollama_when_env_set
 test_stop_ollama_calls_systemctl_when_unit_exists
 test_stop_ollama_no_op_when_unit_absent
+test_stop_ollama_stops_user_scope_unit
+test_stop_ollama_stops_both_scopes_when_both_present
 test_cmd_check_reports_short
 test_cmd_check_reports_ok
+test_cmd_check_flags_ollama_listener_when_present
+test_cmd_check_reports_ollama_listener_absent
 
 echo "----"
 echo "PASS: $PASS  FAIL: $FAIL"

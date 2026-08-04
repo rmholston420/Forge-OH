@@ -1,83 +1,82 @@
-# SESSION_HANDOFF — 2026-08-04 02:24 EDT
+# SESSION_HANDOFF — 2026-08-04 02:47 EDT
 
 ## Current stage / component
-Post-G.1 hardening. G.1 merged to main (`d36e72a`). Supervisor
-GPU-tenancy discipline merged to main (`117e263`). Slice
-`vllm-primary-selfeval-verification` in flight; code changes complete
-locally, Colossus verification pending. Forge-OH-Action-Plan-v4 has no
-formal stage number for this work — treat it as an F.19-post hotfix
-sequence.
-
-## Correction to previous handoff
-
-The previous handoff (and the pre-compaction summary that seeded it)
-claimed the G.1 slice landed a code-default change from
-`qwen3-coder:30b` to `qwen3-coder:32k` in `bff/services/model_router.py`.
-**That claim was false.** Git history confirms: `d36e72a` (the G.1
-merge) does not touch line 107 of `model_router.py`; the default
-remained `qwen3-coder:30b`. The green G.1 cycle passed only because
-the operator had `LLM_CODER_OLLAMA_FALLBACK=qwen3-coder:32k` exported
-in the shell that started the BFF. The code-default change is being
-landed correctly in the current slice.
+F.19-post hotfix sequence, step 2 of the queued sequence just landed
+locally (not yet merged): ADR-0001 amendment + supervisor user-scope
+hygiene bundled slice. Forge-OH-Action-Plan-v4 has no formal stage
+number for this work.
 
 ## What was completed this session
 
-**Prior slices (already merged to main):**
-1. G.1 self-eval harness (`d36e72a`). Cycle passed on Ollama
-   fallback via shell env override `qwen3-coder:32k`.
-2. Supervisor GPU-tenancy discipline (`117e263`, PR #1). 14/14
-   offline tests pass on audit checkout AND Colossus. Manual c04
-   launch clean.
+**Prior merged slices (main tip = `29ff23a`):**
+1. G.1 self-eval harness (`d36e72a`).
+2. Supervisor GPU-tenancy discipline (`117e263`, PR #1). 14/14 tests.
+3. Code-default fix `qwen3-coder:30b` → `qwen3-coder:32k` in
+   `bff/services/model_router.py` (`dcdcc6b`, PR #2).
+4. vLLM-primary verification green on Colossus, logged in BUILD_LOG
+   (`a698bd2`). 3/3 smoke tasks in 81s, all served by vLLM `:8501`.
+5. DEBUG_LOG entry (`29ff23a`) identifying Ollama on `:11434` as a
+   user-scope systemd unit (invisible to `systemctl is-active ollama`
+   in system scope). 0 MiB VRAM at the time — did not affect the
+   verified cycle.
 
-**Current slice (`slice/vllm-primary-selfeval-verification`, not
-yet merged):**
-3. `bff/services/model_router.py` line 106-114: code default for
-   `LLM_CODER_OLLAMA_FALLBACK` changed from `qwen3-coder:30b`
-   → `qwen3-coder:32k`. Comment added referencing ADR-009 §2 and
-   the num_ctx rationale.
-4. `bff/tests/test_model_router.py`: two new regression tests
-   (`test_coder_ollama_fallback_defaults_to_32k`,
-   `test_coder_ollama_fallback_env_override_wins`). All 18 tests
-   in the file pass locally.
-5. SESSION_HANDOFF corrected (this file).
+**Current slice (`slice/adr-0001-amend-plus-supervisor-hygiene`,
+NOT yet committed):**
+6. `.openhands/decisions/001-use-ollama-first.md` — STATUS
+   AMENDMENT block at top; status →
+   `Amended · superseded by ADR-009 for F.19+ router`. Original text
+   preserved.
+7. `.openhands/context/decisions/001-use-ollama-first.md` —
+   redirect-only amendment pointing to canonical copy + ADR-009.
+8. `docs/adr/009-local-llm-selection.md` — Related line now
+   explicitly says it supersedes ADR-001.
+9. `ops/vllm_supervisor.sh` — `_stop_ollama` also runs
+   `systemctl --user stop ollama` when the user-scope unit exists;
+   `cmd_check` surfaces `ollama_listener: PRESENT on :11434` when
+   `ss -lntp` matches.
+10. `ops/test_supervisor.sh` — 4 new tests (7 new assertions);
+    stub signatures extended. **21/21 tests PASS** (was 14/14).
+11. BUILD_LOG appended (this slice entry).
+12. SESSION_HANDOFF overwritten (this file).
 
 ## What remains before Definition of Done
-1. Commit the slice branch, push, PR, squash-merge to main, delete
-   branch.
-2. On Colossus: `git pull origin main`, restart BFF pointed at vLLM
-   primary (`VLLM_SUPERVISOR_ENABLED=1`, no `LLM_CODER_OLLAMA_FALLBACK`
-   override).
-3. Run one full smoke cycle (`smoke-add-two`,
-   `smoke-reverse-string`, `smoke-json-roundtrip`).
-4. Verify every trajectory shows model tag `qwen3.6-35b-nvfp4`
-   (i.e. c04), NOT `qwen3-coder:32k`.
-5. Confirm Ollama systemd stayed stopped throughout (supervisor
-   holds GPU tenancy discipline).
+1. Commit slice branch, push, PR, squash-merge to main, delete branch.
+2. On Colossus: `git pull origin main`; supervisor + ADR changes now
+   in place. No BFF restart required (this slice does not change
+   any runtime code paths).
+3. Optional / deferred: exercise the user-scope stop path on Colossus
+   by deliberately starting a user-scope Ollama and running the
+   supervisor's `check` cmd. Offline stubs already cover the
+   behavior; on-host verification is nice-to-have, not blocking.
 
 ## Open questions / ambiguity
-None open for this slice. Next slice after this one is the
-ADR-0001 amendment (ollama-first → vllm-primary supersession).
+None open for this slice.
 
 ## Exact next action
-1. Commit + push slice branch, PR, squash-merge to main.
-2. On Colossus, restart BFF with `VLLM_SUPERVISOR_ENABLED=1` and
-   run the smoke cycle (paste block supplied in-session).
-3. Verify c04 routing via trajectory inspection.
-4. Log green cycle in BUILD_LOG.
+1. Commit + push slice branch.
+2. Open PR, squash-merge, delete branch.
+3. On Colossus, `git pull origin main`.
+4. Proceed to step 3 of the queued sequence:
+   `slice/selfeval-frontend-polish` — first write a short scope doc
+   listing the current `/selfeval` + `/selfeval/[date]` pages
+   (from `src/app/selfeval/**`) + a fresh Playwright screenshot for
+   the operator to review, get approval, THEN execute the polish
+   + Playwright visual/workflow checks.
+
+## Queued sequence status
+1. **[DONE]** Step 1: vLLM-primary verification (`dcdcc6b` + `a698bd2`).
+2. **[COMPLETE — awaiting merge]** Step 2: ADR-0001 amendment +
+   supervisor user-scope hygiene (this slice).
+3. **[NEXT]** Step 3: Self-Eval frontend polish scope doc → approval
+   → polish → Playwright visual + workflow verification.
 
 ## State of Colossus at session close
-- `forge-vllm-coder` container: `Up ~20 minutes` on `:8501`
-  (VRAM ~28 GB used).
-- Ollama systemd: stopped.
-- BFF `:8081`: last started with `LLM_CODER_OLLAMA_FALLBACK=qwen3-coder:32k
-  VLLM_SUPERVISOR_ENABLED=0`. After this slice merges + Colossus
-  pulls main:
-  - `LLM_CODER_OLLAMA_FALLBACK` env override no longer required
-    (code default is now `qwen3-coder:32k`).
-  - `VLLM_SUPERVISOR_ENABLED=1` MUST be set for vLLM-primary routing.
-- Router should route to vLLM `:8501` on the next request
-  (cache miss → `_supervisor_ensure coder` → sees `:8501` live →
-  no-op).
+- `forge-vllm-coder` container: expected `Up` on `:8501` (unchanged
+  from last verified state).
+- Ollama on `:11434`: user-scope systemd unit, idle listener, 0 MiB
+  VRAM (documented in DEBUG_LOG `29ff23a`). Supervisor now knows
+  how to stop it if it ever holds VRAM.
+- BFF `:8081`: still running with `VLLM_SUPERVISOR_ENABLED=1`.
 
 ## Push credentials
 `api_credentials=["github"]` — commit as

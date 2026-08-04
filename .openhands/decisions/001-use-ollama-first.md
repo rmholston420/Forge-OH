@@ -1,6 +1,21 @@
 # ADR 001: Use Ollama-First, vLLM Fallback Routing
 
-**Status:** Accepted  
+> **STATUS AMENDMENT (2026-08-04):** This ADR is **AMENDED · superseded
+> by ADR-009 for the F.19+ two-role router**. From F.19-pre onward, the
+> Coder/Planner router in `bff/services/model_router.py` uses **vLLM as
+> the primary backend** (`qwen3.6-35b-nvfp4` for Coder, `qwen3-thinking-2507-awq`
+> for Planner) with Ollama as the fallback. See
+> [`docs/adr/009-local-llm-selection.md`](../../docs/adr/009-local-llm-selection.md)
+> for the bench evidence (F.19-pre 8-cell matrix) and the exact model /
+> quantization / port assignments. The GPU-tenancy discipline that makes
+> this swap safe is codified in `ops/vllm_supervisor.sh` and verified by
+> `ops/test_supervisor.sh` (21/21 offline tests).
+>
+> This ADR is preserved unedited below for historical context (F.15 era).
+> Do NOT rely on the routing policy stated in the "Decision" section for
+> F.19+ work — use ADR-009.
+
+**Status:** Amended · superseded by ADR-009 for F.19+ router  
 **Date:** 2026-07
 
 ## Context

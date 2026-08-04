@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-08-03
 - **Slice:** F.19-pre (path-D v2 blocker) — Forge-OH-Action-Plan-v4
-- **Related:** [BUILD_LOG.md](../../BUILD_LOG.md), [PORTING_LEDGER.md](../../PORTING_LEDGER.md); supersedes the F.15 default of `qwen3-coder:30b` + `qwen3.6:35b-a3b` on Ollama for the two-role router.
+- **Related:** [BUILD_LOG.md](../../BUILD_LOG.md), [PORTING_LEDGER.md](../../PORTING_LEDGER.md); **supersedes [ADR-001 (Ollama-First, vLLM Fallback Routing)](../../.openhands/decisions/001-use-ollama-first.md)** for the F.19+ two-role router, and supersedes the F.15 default of `qwen3-coder:30b` + `qwen3.6:35b-a3b` on Ollama.
 - **Note on numbering:** The F.19-pre plan initially referred to this decision as "ADR-0007", but `007-verify-loop.md` already exists. Numbering resumes at 009.
 
 ## Context
