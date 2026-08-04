@@ -3566,3 +3566,26 @@ live cycle on Colossus is green.
 **Stop condition:** Slice G.1 complete when a live cycle on Colossus runs
 green (at least one task reaches `passed` verdict). Not yet met.
 
+
+## 2026-08-03 22:38 EDT — Slice G.1 hotfix: orphan next-server reap + honest status
+
+**Stage:** G.1 (post-restart-script live test).
+**Files touched:**
+- `scripts/forge-down.sh` (+ `kill_by_pattern` step for `next-server`, `pnpm.*dev`, `uvicorn.*bff.main`, `openhands.agent_server`)
+- `scripts/forge-status.sh` (any_bad=1 when listening but no pidfile + no PID-on-port)
+
+**Bug observed on Colossus (2026-08-03 22:32 EDT restart):** after
+`forge-restart.sh --status`, Next.js showed `listen=yes / pidfile=- /
+onport=-`. The `pnpm dev` parent was killed via pidfile, but its detached
+`next-server` child survived and re-bound :3000 before `kill_port`
+ran. Status still reported "✅ all three healthy" \u2014 which was a lie.
+
+**Fixes:**
+1. `forge-down.sh` now runs a `pgrep -f` pattern sweep after the pidfile
+   pass and before `kill_port`. Catches detached grandchildren by argv.
+2. `forge-status.sh` now flags `listening=yes` combined with no pidfile
+   and no discoverable PID as unhealthy. No more false green.
+
+**Stop condition:** unchanged. Slice G.1 still awaits one green live
+self-eval cycle.
+

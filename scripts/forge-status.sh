@@ -65,8 +65,16 @@ row() {
     match="$(green 'match')"
   elif [ "$pf_pid" = "-" ] || [ "$port_pid" = "-" ]; then
     match="$(yellow 'n/a')"
+    # Listening on the port with NO pidfile AND NO discoverable PID means an
+    # orphaned or externally-launched process is holding it. That is not a
+    # healthy state for a component we claim to manage — flag it red so
+    # `forge-restart.sh --status` and CI-style checks don't gloss over it.
+    if [ "$listening" = "$(green 'yes')" ]; then
+      any_bad=1
+    fi
   else
     match="$(yellow 'mismatch')"
+    any_bad=1
   fi
   printf '  %-14s :%-5s  listen=%-4s  pidfile=%-8s  alive=%-16s  onport=%-8s  %s\n' \
     "$name" "$port" "$listening" "$pf_pid" "$pf_alive" "$port_pid" "$match"
