@@ -866,3 +866,36 @@ citing this DEBUG_LOG entry as a regression guard.
 
 **Verified:** locally re-read the 6 call sites; will re-verify prod
 build on Colossus in the same slice.
+
+## 2026-08-04 03:04 EDT — .gitignore 'tests/' silently swallows src/tests/e2e/*
+
+**Symptom:**
+```
+$ npx playwright test src/tests/e2e/selfeval.spec.ts --reporter=list
+Error: No tests found.
+Make sure that arguments are regular expressions matching test files.
+```
+File visibly present on disk, but `git ls-files src/tests/e2e/` did
+not list it, and it never landed on Colossus.
+
+**Affected stage/plugin/port:** F.19-post — `slice/selfeval-frontend-polish`
+frontend Playwright verification.
+
+**Root cause:** `.gitignore` line 57 has `tests/` as a "local scratch
+helpers" ignore rule. Because gitignore matches path components
+anywhere in the tree, this ignores `src/tests/` too. Existing specs
+were tracked because they had been `git add -f`'d earlier; new specs
+added via `git add -A` are silently skipped.
+
+**Fix applied:** always use `git add -f src/tests/e2e/*.spec.ts` for
+new Playwright specs. Do NOT relax the top-level `tests/` ignore
+rule — it exists to keep triage scratch out of the repo.
+
+**Files changed:** `src/tests/e2e/selfeval.spec.ts` force-added.
+
+**Verified:** `git ls-files src/tests/e2e/selfeval.spec.ts` now returns
+the file. Push landed on origin as `e630f86`.
+
+**Regression guard:** any future slice that touches Playwright specs
+must `git add -f` explicitly and grep `git ls-files` after commit to
+confirm the file is tracked.
