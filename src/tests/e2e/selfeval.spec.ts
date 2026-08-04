@@ -86,16 +86,18 @@ test.describe('Self-Eval page smoke', () => {
     const row = page.getByRole('row').filter({ hasText: date }).first();
     await expect(row).toBeVisible();
 
-    // "Open →" link on that row navigates to /selfeval/[date]. Use
-    // Promise.all to race the click and the navigation — Next.js's client
-    // router uses history.pushState, which page.waitForURL sometimes misses
-    // when the assertion is set up after the click has already resolved.
+    // "Open →" link on that row navigates to /selfeval/[date]. Use a
+    // predicate URL matcher instead of a regex — the previous template
+    // literal produced an invalid regex (`\?` inside `${}` collapsed to a
+    // literal `?` after `(?:`, which is a RegExp syntax error).
     await Promise.all([
-      page.waitForURL(new RegExp(`/selfeval/${date}(?:\?|$)`), { timeout: 10_000 }),
+      page.waitForURL((url) => url.pathname === `/selfeval/${date}`, {
+        timeout: 10_000,
+      }),
       row.getByRole('link', { name: /Open/i }).click(),
     ]);
     await expect(
-      page.getByRole('heading', { name: new RegExp(`Cycle: ${date}`) }),
+      page.getByRole('heading', { name: `Cycle: ${date}` }),
     ).toBeVisible({ timeout: 10_000 });
   });
 
