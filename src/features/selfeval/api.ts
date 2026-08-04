@@ -21,12 +21,15 @@ export interface CycleListItem {
 
 export interface TaskOutcome {
   task_id: string;
-  run_id: string | null;
+  // BFF harness emits '' when creation failed, not null. Kept as string.
+  run_id: string;
   verdict: 'passed' | 'failed' | 'timeout' | 'error';
-  reason: string | null;
-  duration_sec: number | null;
+  duration_sec: number;
+  // Renamed 2026-08-04: prior `final_status` did not match harness output.
+  trajectory_status: string | null;
   verify_verdict: string | null;
-  final_status: string | null;
+  // Renamed 2026-08-04: prior `reason` did not match harness output.
+  failure_detail: string;
 }
 
 export interface CycleSummary {
@@ -69,27 +72,39 @@ async function _json<T>(r: Response): Promise<T> {
     const text = await r.text();
     throw new Error(`HTTP ${r.status}: ${text}`);
   }
-  return r.json();
+  return r.json() as Promise<T>;
 }
 
+// NOTE: `.then(_json)` cannot infer the generic `T` on _json<T>, so TS falls
+// back to `unknown` and every fetch* return type explodes. Pass the generic
+// explicitly via an arrow wrapper so each call site pins its own T.
+// Regression guard: slice/selfeval-frontend-polish rebuild on Colossus hit
+// "Type 'unknown' is not assignable to type '{ cycles: CycleListItem[]; }'".
+
 export const fetchCycles = (): Promise<{ cycles: CycleListItem[] }> =>
-  fetch(`${BASE}/api/selfeval/cycles`).then(_json);
+  fetch(`${BASE}/api/selfeval/cycles`).then((r) => _json<{ cycles: CycleListItem[] }>(r));
 
 export const fetchCycle = (filename: string): Promise<CycleSummary> =>
-  fetch(`${BASE}/api/selfeval/cycles/${encodeURIComponent(filename)}`).then(_json);
+  fetch(`${BASE}/api/selfeval/cycles/${encodeURIComponent(filename)}`).then((r) =>
+    _json<CycleSummary>(r),
+  );
 
 export const fetchProposals = (
   date?: string,
 ): Promise<{ proposals: ProposalListItem[] }> => {
   const qs = date ? `?date=${encodeURIComponent(date)}` : '';
-  return fetch(`${BASE}/api/selfeval/proposals${qs}`).then(_json);
+  return fetch(`${BASE}/api/selfeval/proposals${qs}`).then((r) =>
+    _json<{ proposals: ProposalListItem[] }>(r),
+  );
 };
 
 export const fetchProposal = (filename: string): Promise<Proposal> =>
-  fetch(`${BASE}/api/selfeval/proposals/${encodeURIComponent(filename)}`).then(_json);
+  fetch(`${BASE}/api/selfeval/proposals/${encodeURIComponent(filename)}`).then((r) =>
+    _json<Proposal>(r),
+  );
 
 export const fetchStatus = (): Promise<RunStatus> =>
-  fetch(`${BASE}/api/selfeval/status`).then(_json);
+  fetch(`${BASE}/api/selfeval/status`).then((r) => _json<RunStatus>(r));
 
 export const postRun = (): Promise<RunResponse> =>
-  fetch(`${BASE}/api/selfeval/run`, { method: 'POST' }).then(_json);
+  fetch(`${BASE}/api/selfeval/run`, { method: 'POST' }).then((r) => _json<RunResponse>(r));

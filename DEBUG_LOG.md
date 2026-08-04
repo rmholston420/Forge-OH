@@ -828,3 +828,133 @@ check `systemctl --user is-active <unit>` in addition to
 `systemctl is-active <unit>`. A user-scope unit is invisible to
 `systemctl` without the `--user` flag but still owns processes and
 ports.
+
+## 2026-08-04 03:00 EDT — .then(_json) generic inference collapses to unknown
+
+**Symptom:**
+```
+Type 'unknown' is not assignable to type '{ cycles: CycleListItem[]; }'.
+  74 |
+  75 | export const fetchCycles = (): Promise<{ cycles: CycleListItem[] }> =>
+> 76 |   fetch(`${BASE}/api/selfeval/cycles`).then(_json);
+     |   ^
+Next.js build worker exited with code: 1 and signal: null
+```
+
+**Affected stage/plugin/port:** F.19-post — `slice/selfeval-frontend-polish`
+prod `npm run build` on Colossus. Frontend only; BFF untouched.
+
+**Root cause:** `src/features/selfeval/api.ts` defines
+`async function _json<T>(r: Response): Promise<T>`. When passed as
+`.then(_json)`, TypeScript cannot infer `T` from context — it falls
+back to `unknown`, which then can't unify with the declared
+`Promise<{cycles: CycleListItem[]}>` return of `fetchCycles`. Same
+bug on all five call sites (`fetchCycles`, `fetchCycle`,
+`fetchProposals`, `fetchProposal`, `fetchStatus`, `postRun`).
+
+Why prior G.1 build passed on Colossus: unknown. The G.1 build never
+actually ran a strict prod build against this file until my slice
+touched adjacent files that changed which pages consume these
+generics. Suspect the earlier lax build didn't surface the inference
+gap because the consumers were less strictly typed.
+
+**Fix applied:** wrap each `.then(_json)` with `.then((r) => _json<T>(r))`
+so the generic is pinned per-call-site. Added an inline comment
+citing this DEBUG_LOG entry as a regression guard.
+
+**Files changed:** `src/features/selfeval/api.ts`.
+
+**Verified:** locally re-read the 6 call sites; will re-verify prod
+build on Colossus in the same slice.
+
+## 2026-08-04 03:04 EDT — .gitignore 'tests/' silently swallows src/tests/e2e/*
+
+**Symptom:**
+```
+$ npx playwright test src/tests/e2e/selfeval.spec.ts --reporter=list
+Error: No tests found.
+Make sure that arguments are regular expressions matching test files.
+```
+File visibly present on disk, but `git ls-files src/tests/e2e/` did
+not list it, and it never landed on Colossus.
+
+**Affected stage/plugin/port:** F.19-post — `slice/selfeval-frontend-polish`
+frontend Playwright verification.
+
+**Root cause:** `.gitignore` line 57 has `tests/` as a "local scratch
+helpers" ignore rule. Because gitignore matches path components
+anywhere in the tree, this ignores `src/tests/` too. Existing specs
+were tracked because they had been `git add -f`'d earlier; new specs
+added via `git add -A` are silently skipped.
+
+**Fix applied:** always use `git add -f src/tests/e2e/*.spec.ts` for
+new Playwright specs. Do NOT relax the top-level `tests/` ignore
+rule — it exists to keep triage scratch out of the repo.
+
+**Files changed:** `src/tests/e2e/selfeval.spec.ts` force-added.
+
+**Verified:** `git ls-files src/tests/e2e/selfeval.spec.ts` now returns
+the file. Push landed on origin as `e630f86`.
+
+**Regression guard:** any future slice that touches Playwright specs
+must `git add -f` explicitly and grep `git ls-files` after commit to
+confirm the file is tracked.
+
+## 2026-08-04 03:10 EDT — Next.js 16 dynamic route params silently render undefined
+
+**Symptom:**
+Navigating to `/selfeval/2026-08-04` produced `<h1>Cycle: </h1>` (empty
+date), the useCycle query never fired (filename resolved to
+`-selfeval.json` which the enabled guard `Boolean(filename)` rejected),
+KPIs never appeared, and the outcomes table never rendered. Three
+Playwright Tier-2 tests failed as a result.
+
+**Affected stage/plugin/port:** F.19-post — slice/selfeval-frontend-polish.
+`src/app/(dashboard)/selfeval/[date]/page.tsx`.
+
+**Root cause:** Next.js 16 changed dynamic-route `params` from a plain
+object to a `Promise<{...}>`. The route wrapper's synchronous signature
+`{ params }: { params: { date: string } }` type-checked (because TS
+sees `params` as any at runtime), but `params.date` was `undefined`.
+The canonical unwrap for other client routes in this app is
+`src/app/(dashboard)/runs/[runId]/page.tsx`:
+
+```tsx
+params: Promise<{ runId: string }>;
+const { runId } = React.use(params);
+```
+
+**Fix applied:** rewrote the wrapper to accept `Promise<{ date: string }>`
+and unwrap via `React.use(params)`.
+
+**Files changed:** `src/app/(dashboard)/selfeval/[date]/page.tsx`.
+
+**Regression guard:** any future dynamic App Router page in this repo
+MUST use the `Promise<{...}>` + `React.use()` pattern.
+
+## 2026-08-04 03:11 EDT — TaskOutcome type diverged from harness output
+
+**Symptom:** verdict badges rendered but trajectory-status dots never
+appeared; `.reasonCell` always showed `—` even for failed cycles.
+
+**Affected stage/plugin/port:** F.19-post — slice/selfeval-frontend-polish.
+`src/features/selfeval/api.ts`, `SelfEvalDatePage.tsx`.
+
+**Root cause:** pre-existing `TaskOutcome` TS type declared fields
+`final_status: string | null` and `reason: string | null`. Actual BFF
+JSON (via `openhands_tools_ext/selfeval/harness.py`) emits
+`trajectory_status: str | None` and `failure_detail: str`. The TS
+type was invented in G.1 before the Python dataclass was named — never
+caught because no populated cycle detail was ever rendered until now.
+
+**Fix applied:** aligned `TaskOutcome` fields with harness dataclass
+(`trajectory_status`, `failure_detail`, `run_id: string` not nullable,
+`duration_sec: number` not nullable). Updated all consumers in
+`SelfEvalDatePage.tsx`.
+
+**Files changed:** `src/features/selfeval/api.ts`,
+`src/features/selfeval/SelfEvalDatePage.tsx`.
+
+**Regression guard:** when adding new BFF-shape TS types, mirror the
+Python dataclass exactly. When possible, generate the TS from the
+Pydantic schema.
