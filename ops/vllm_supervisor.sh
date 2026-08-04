@@ -107,14 +107,24 @@ _stop_ollama() {
     # Stop the Ollama service and any lingering ollama runner processes so
     # VRAM is fully released before vLLM tries to grab 0.9 of the card.
     # No-op on machines without Ollama installed. Idempotent.
+    #
+    # DEBUG_LOG 2026-08-04 02:42 EDT: on Colossus, Ollama can be running as a
+    # user-scope systemd unit (`systemctl --user is-active ollama`) while the
+    # system-scope unit reports `inactive`. `systemctl stop ollama` never
+    # touches the user-scope unit. We now try BOTH scopes, plus the pkill
+    # belt-and-braces path.
     if [ "$SKIP_OLLAMA_STOP" = "1" ]; then
         echo "[supervisor] VLLM_SKIP_OLLAMA_STOP=1 — skipping Ollama stop"
         return 0
     fi
     local stopped=0
-    # systemd unit (preferred path on Colossus)
+    # system-scope systemd unit (preferred path on Colossus)
     if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q '^ollama\.service'; then
         sudo -n systemctl stop ollama >/dev/null 2>&1 && stopped=1 || true
+    fi
+    # user-scope systemd unit (the case discovered in DEBUG_LOG 2026-08-04 02:42 EDT)
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user list-unit-files 2>/dev/null | grep -q '^ollama\.service'; then
+        systemctl --user stop ollama >/dev/null 2>&1 && stopped=1 || true
     fi
     # Belt-and-braces: kill any residual ollama processes even if systemctl
     # wasn't available or the unit isn't installed. Ollama's runner keeps
@@ -284,6 +294,13 @@ cmd_up() {
 cmd_check() {
     # Dry-run the GPU-tenancy discipline without launching anything. Useful
     # for pre-flight verification and for the supervisor test script.
+    #
+    # DEBUG_LOG 2026-08-04 02:42 EDT: on Colossus, Ollama can be running as a
+    # user-scope systemd unit whose port 11434 listener is invisible to
+    # `systemctl is-active ollama` (system scope). We surface a warning if
+    # port 11434 is listening; the operator can decide whether that Ollama
+    # instance is idle (0 MiB VRAM — fine) or holding a model (VRAM
+    # contention — will fail the free-memory precondition).
     local free
     free=$(_gpu_free_mib)
     if [ -z "$free" ]; then
@@ -293,6 +310,14 @@ cmd_check() {
     fi
     echo "free_mib      : $free"
     echo "required_mib  : $MIN_FREE_MIB"
+    # Ollama listener check (best-effort; ss may not be installed)
+    if command -v ss >/dev/null 2>&1; then
+        if ss -lntp 2>/dev/null | grep -q ':11434 '; then
+            echo "ollama_listener: PRESENT on :11434 (check user-scope + system-scope units before c04 launch)"
+        else
+            echo "ollama_listener: absent"
+        fi
+    fi
     if [ "$free" -ge "$MIN_FREE_MIB" ]; then
         echo "result        : OK (>= required)"
         return 0

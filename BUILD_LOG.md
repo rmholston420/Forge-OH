@@ -3876,3 +3876,72 @@ precondition. See DEBUG_LOG entry 2026-08-04 02:40 EDT.
 **Next slice queued:** `slice/adr-0001-amend-supersede` — amend
 ADR-0001 (ollama-first) with a status block marking it superseded
 by ADR-009 for the F.19+ router. Doc-only, no code, no port.
+
+## 2026-08-04 02:47 EDT — slice/adr-0001-amend-plus-supervisor-hygiene
+
+**Stage / component:** F.19-post hotfix sequence — ADR-0001
+amendment + supervisor user-scope hygiene (bundled). Doc + supervisor
+change, no port, no plugin.
+
+**Files touched:**
+- `.openhands/decisions/001-use-ollama-first.md` — added STATUS
+  AMENDMENT block at top; status changed to
+  `Amended · superseded by ADR-009 for F.19+ router`. Original
+  decision text preserved unchanged below the amendment block.
+- `.openhands/context/decisions/001-use-ollama-first.md` — added
+  redirect note pointing to the canonical ADR-001 copy in
+  `.openhands/decisions/` and to ADR-009. Historical scaffold copy;
+  no code depends on it.
+- `docs/adr/009-local-llm-selection.md` — strengthened the
+  **Related** line to explicitly note ADR-009 supersedes ADR-001
+  (in addition to the F.15 default it already superseded).
+- `ops/vllm_supervisor.sh` — `_stop_ollama` now attempts BOTH
+  system-scope (`sudo systemctl stop ollama`) AND user-scope
+  (`systemctl --user stop ollama`) unit stops before the pkill
+  belt-and-braces path. `cmd_check` prints
+  `ollama_listener: PRESENT on :11434 (check user-scope + system-scope
+  units before c04 launch)` when `ss -lntp | grep ':11434 '` matches,
+  and `ollama_listener: absent` otherwise. Preserves prior
+  behavior when `ss` is not installed. Rationale documented inline
+  citing DEBUG_LOG 2026-08-04 02:42 EDT.
+- `ops/test_supervisor.sh` — extended `_stub_systemctl` to a third
+  argument tracking user-scope unit presence and to record
+  `STUB_SYSTEMCTL_USER_STOP_CALLED` distinctly from the
+  system-scope call. Extended `_stub_ss` to a second argument
+  controlling whether the stub prints a `:11434` listener line.
+  Added 4 new tests (7 new assertions):
+  `test_stop_ollama_stops_user_scope_unit`,
+  `test_stop_ollama_stops_both_scopes_when_both_present`,
+  `test_cmd_check_flags_ollama_listener_when_present`,
+  `test_cmd_check_reports_ollama_listener_absent`. Existing tests
+  updated where the stub signature changed (single-argument callers
+  still work — third arg defaults to 0).
+
+**Ports / adapters affected:** none. Supervisor is out-of-band tooling.
+
+**ADRs / ledgers updated:**
+- ADR-001 amended (see file list).
+- ADR-009 Related line strengthened.
+- PORTING_LEDGER.md: no change (no vendored code involved).
+
+**Tests:**
+- `ops/test_supervisor.sh` offline suite: **21/21 PASS** (was 14/14
+  before this slice — +7 new assertions from 4 new tests, plus the
+  2 pre-existing `_stop_ollama` tests still pass with the updated
+  stub signature).
+
+**Definition of Done:** slice branch complete, tests green, ADR
+amendments filed per kosmos-adr-authoring (STATUS AMENDMENT block
+at top, original text preserved), supervisor now handles the
+user-scope Ollama case observed in DEBUG_LOG 2026-08-04 02:42 EDT.
+
+**Stop condition:** amendments filed + supervisor tests green.
+Colossus verification of the user-scope stop path deferred to next
+session (would require deliberately starting a user-scope Ollama on
+Colossus, which the operator may not want; the offline stubs cover
+the behavior).
+
+**Next slice queued:** `slice/selfeval-frontend-polish` — write a
+short scope doc (current `/selfeval` + `/selfeval/[date]` pages +
+fresh Playwright screenshot), get user approval, then execute the
+frontend polish + Playwright visual + workflow verification.
