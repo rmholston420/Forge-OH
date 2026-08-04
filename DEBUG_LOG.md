@@ -623,3 +623,74 @@ inline comment references this DEBUG_LOG timestamp).
 - `bff/tests/test_event_relay_yield.py` (NEW, 3 regression tests).
 - DEBUG_LOG.md (this entry).
 - BUILD_LOG.md (2026-08-03 23:45 EDT entry).
+
+## 2026-08-04 02:03 EDT — vLLM coder Exited(1) at launch: GPU contention, not quant flag
+
+**Symptom:**
+Right after the G.1 merge to main, `ops/vllm_launch_coder.sh` (via
+supervisor `up coder`) launched the container and it `Exited(1)`
+within seconds. `docker logs forge-vllm-coder`:
+
+    ValueError: Free memory on device cuda:0 (24.85/31.39 GiB) on
+    startup is less than desired GPU memory utilization (0.9, 28.25
+    GiB). Decrease GPU memory utilization or reduce GPU memory used
+    by other processes.
+
+**Initial misdiagnosis:** looked like a `--quantization modelopt_fp4`
+resolution failure (checkpoint config declares `MIXED_PRECISION`,
+launcher passes `modelopt_fp4`). Was tempted to pin vLLM to `0.10.2`
+(the F.19-pre bench version). Rejected — see ADR-009 §5 / DEBUG_LOG
+older entry: `v0.10.2` does not recognize the `qwen3_5_moe` arch and
+cannot run c04 or c08 at all. Docker `:latest` (currently `0.26.0`)
+correctly auto-detected the mixed-precision quant and resolved to
+`quantization=modelopt_mixed`. The launch flags were fine.
+
+**Actual root cause:** pure GPU contention. Ollama was still holding
+~6.5 GB of VRAM at the moment `docker run` executed. vLLM `0.26.0`
+refuses to launch when
+`memory.free < gpu-memory-utilization × total`. Neither the launcher
+scripts nor `ops/vllm_supervisor.sh` stopped Ollama or verified
+`memory.free` before invoking `docker run`; the discipline lived only
+in the `forge-oh-llm-serving` skill notes.
+
+**Fix applied (slice `vllm-supervisor-gpu-discipline`):**
+- `ops/vllm_supervisor.sh` gained `_stop_ollama` + `_free_gpu_for_vllm`
+  helpers and calls them in `cmd_up` between `_stop_role` and
+  `_launch`.
+- Helpers are idempotent and no-op on machines without Ollama.
+- `VLLM_MIN_FREE_MIB` (default 28000), `VLLM_GPU_FREE_TIMEOUT`
+  (default 30), `VLLM_SKIP_OLLAMA_STOP` env knobs added.
+- New `check` subcommand for dry-run verification.
+- Library-mode guard so `ops/test_supervisor.sh` can
+  source the file.
+
+**Verification path when debugging a similar future crash:**
+1. `nvidia-smi --query-compute-apps=pid,process_name,used_memory
+   --format=csv,noheader` — expect ONE python process (the vLLM
+   container's engine); if two show up, someone else is holding
+   VRAM.
+2. `ops/vllm_supervisor.sh check` — new dry-run subcommand
+   reports free vs required VRAM with exit 0/1.
+3. `docker logs forge-vllm-coder 2>&1 | grep -iE 'free memory|quant|
+   error'` — first 20 lines usually tell the whole story.
+4. If the log shows `Free memory on device` → GPU-contention path
+   (this bug's family). Fix via `_free_gpu_for_vllm`. Do NOT
+   downgrade vLLM or change `--quantization`.
+5. If the log shows `Unknown quantization method` → auto-detect
+   failed. Read `~/models/<dir>/hf_quant_config.json` and pass
+   explicit `--quantization <method>`. Different bug family.
+
+**Also learned:**
+- Ollama's `systemctl stop` does not reliably release VRAM held by
+  the runner subprocess on all setups; `pkill -f 'ollama runner'`
+  is required belt-and-braces.
+- `--gpu-memory-utilization 0.9` on a 31.39 GiB card = 28.25 GiB
+  required free. Rounded down to 28000 MiB (28.13 GiB) for the
+  supervisor's `VLLM_MIN_FREE_MIB` default.
+
+**Files changed:**
+- `ops/vllm_supervisor.sh` (helpers + guard + check subcommand).
+- `ops/test_supervisor.sh` (NEW, 14 tests).
+- `docs/adr/009-local-llm-selection.md` (Follow-up 5).
+- DEBUG_LOG.md (this entry), BUILD_LOG.md (2026-08-04 02:03 EDT).
+

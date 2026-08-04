@@ -43,6 +43,27 @@
 #                      launcher scripts. Override for out-of-tree tests.
 #   VLLM_READY_TIMEOUT default 420 (seconds). Bounded wait for the
 #                      newly-launched role's /v1/models to return data.
+#   VLLM_MIN_FREE_MIB  default 28000 (MiB). Minimum free VRAM required
+#                      before launching a vLLM role. Matches
+#                      --gpu-memory-utilization 0.90 on a 31 GiB card
+#                      (0.90 * 31.4 * 1024 ≈ 28900 MiB, rounded down
+#                      to 28000 for safety). If less than this is free
+#                      after Ollama stop + wait, cmd_up aborts.
+#   VLLM_GPU_FREE_TIMEOUT default 30 (seconds). Bounded wait for VRAM
+#                      to drop below the min-free threshold after
+#                      stopping Ollama and any prior vLLM container.
+#   VLLM_SKIP_OLLAMA_STOP default 0. Set to 1 to skip the Ollama stop
+#                      step (useful when the caller has already stopped
+#                      it, or on a machine without Ollama installed).
+
+# ADR-009 §5 / DEBUG_LOG 2026-08-04 01:49 EDT:
+# Ollama holds ~5-22 GB VRAM depending on the model tag it last loaded.
+# vLLM 0.26.0 refuses to launch with --gpu-memory-utilization 0.90 if
+# free VRAM < 28.25 GiB, with a hard ValueError: "Free memory on device
+# cuda:0 (X/31.39 GiB) on startup is less than desired GPU memory
+# utilization". The supervisor MUST stop Ollama and confirm VRAM is
+# actually free before invoking a launcher; leaving this to the launcher
+# scripts was the root cause of the F.19-post crash chain.
 
 # NOTE: no `set -e` at top level (per user preference — paste-block safe).
 
@@ -59,6 +80,11 @@ CODER_LAUNCHER="$SCRIPT_DIR/vllm_launch_coder.sh"
 PLANNER_LAUNCHER="$SCRIPT_DIR/vllm_launch_planner.sh"
 VLLM_STOP="$FORGE_OH_ROOT/scripts/vllm_stop.sh"
 
+# GPU-tenancy discipline (ADR-009 §5).
+MIN_FREE_MIB="${VLLM_MIN_FREE_MIB:-28000}"
+GPU_FREE_TIMEOUT="${VLLM_GPU_FREE_TIMEOUT:-30}"
+SKIP_OLLAMA_STOP="${VLLM_SKIP_OLLAMA_STOP:-0}"
+
 # Docker container names (must match launcher scripts).
 CODER_CONTAINER="${FORGE_VLLM_CODER_CONTAINER:-forge-vllm-coder}"
 PLANNER_CONTAINER="${FORGE_VLLM_PLANNER_CONTAINER:-forge-vllm-planner}"
@@ -66,6 +92,74 @@ PLANNER_CONTAINER="${FORGE_VLLM_PLANNER_CONTAINER:-forge-vllm-planner}"
 mkdir -p "$HOME/.forge-oh"
 
 # --- Helpers ---------------------------------------------------------------
+
+_gpu_free_mib() {
+    # Print MiB of free VRAM on cuda:0. Empty string if nvidia-smi unavailable.
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo ""
+        return 0
+    fi
+    nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null \
+        | head -1 | tr -d ' '
+}
+
+_stop_ollama() {
+    # Stop the Ollama service and any lingering ollama runner processes so
+    # VRAM is fully released before vLLM tries to grab 0.9 of the card.
+    # No-op on machines without Ollama installed. Idempotent.
+    if [ "$SKIP_OLLAMA_STOP" = "1" ]; then
+        echo "[supervisor] VLLM_SKIP_OLLAMA_STOP=1 — skipping Ollama stop"
+        return 0
+    fi
+    local stopped=0
+    # systemd unit (preferred path on Colossus)
+    if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q '^ollama\.service'; then
+        sudo -n systemctl stop ollama >/dev/null 2>&1 && stopped=1 || true
+    fi
+    # Belt-and-braces: kill any residual ollama processes even if systemctl
+    # wasn't available or the unit isn't installed. Ollama's runner keeps
+    # weights in VRAM independently of the parent process on some setups.
+    if command -v pkill >/dev/null 2>&1; then
+        pkill -x ollama >/dev/null 2>&1 && stopped=1 || true
+        pkill -f 'ollama runner' >/dev/null 2>&1 && stopped=1 || true
+    fi
+    if [ $stopped -eq 1 ]; then
+        echo "[supervisor] Ollama stopped (VRAM release pending)"
+    else
+        echo "[supervisor] Ollama not running (nothing to stop)"
+    fi
+    return 0
+}
+
+_free_gpu_for_vllm() {
+    # Ensure enough VRAM is free to start a vLLM role at --gpu-memory-utilization 0.9.
+    # Steps:
+    #   1. Stop Ollama (unless VLLM_SKIP_OLLAMA_STOP=1).
+    #   2. Poll free VRAM until >= MIN_FREE_MIB or GPU_FREE_TIMEOUT elapses.
+    # Returns 0 on success, 1 on timeout or nvidia-smi unavailable.
+    _stop_ollama
+    local free waited=0
+    while [ $waited -le "$GPU_FREE_TIMEOUT" ]; do
+        free=$(_gpu_free_mib)
+        if [ -z "$free" ]; then
+            echo "[supervisor] WARN: nvidia-smi unavailable — cannot verify VRAM free; proceeding" >&2
+            return 0
+        fi
+        if [ "$free" -ge "$MIN_FREE_MIB" ]; then
+            echo "[supervisor] GPU ready: ${free} MiB free (>= ${MIN_FREE_MIB} required)"
+            return 0
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    free=$(_gpu_free_mib)
+    echo "[supervisor] TIMEOUT: only ${free:-unknown} MiB free after ${GPU_FREE_TIMEOUT}s (need ${MIN_FREE_MIB}). Something else is holding VRAM." >&2
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        echo "[supervisor] Processes on GPU:" >&2
+        nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader >&2 || true
+    fi
+    return 1
+}
 
 _probe_ready() {
     # Args: PORT. Returns 0 if /v1/models returns 200 with data.
@@ -169,12 +263,14 @@ cmd_up() {
         coder)
             _stop_role "planner"
             _stop_role "coder"  # kill any prior coder container/socket too
+            _free_gpu_for_vllm || return 1
             _launch "$CODER_LAUNCHER" "$CODER_LOG" || return 1
             _wait_ready "$CODER_PORT" "coder" || return 1
             ;;
         planner)
             _stop_role "coder"
             _stop_role "planner"
+            _free_gpu_for_vllm || return 1
             _launch "$PLANNER_LAUNCHER" "$PLANNER_LOG" || return 1
             _wait_ready "$PLANNER_PORT" "planner" || return 1
             ;;
@@ -183,6 +279,28 @@ cmd_up() {
             return 2
             ;;
     esac
+}
+
+cmd_check() {
+    # Dry-run the GPU-tenancy discipline without launching anything. Useful
+    # for pre-flight verification and for the supervisor test script.
+    local free
+    free=$(_gpu_free_mib)
+    if [ -z "$free" ]; then
+        echo "nvidia-smi: unavailable"
+        echo "result    : SKIP (cannot verify)"
+        return 0
+    fi
+    echo "free_mib      : $free"
+    echo "required_mib  : $MIN_FREE_MIB"
+    if [ "$free" -ge "$MIN_FREE_MIB" ]; then
+        echo "result        : OK (>= required)"
+        return 0
+    fi
+    echo "result        : SHORT ($((MIN_FREE_MIB - free)) MiB below requirement)"
+    echo "processes_on_gpu:"
+    nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader
+    return 1
 }
 
 cmd_ensure() {
@@ -226,11 +344,17 @@ cmd_status() {
 
 # --- Dispatch --------------------------------------------------------------
 
+# Library mode: if this file is being sourced (not executed directly),
+# expose the helpers but skip the CLI dispatch. Used by the offline test
+# suite (ops/tests/test_vllm_supervisor.sh).
+(return 0 2>/dev/null) && return 0
+
 case "${1:-}" in
     up)     shift; cmd_up "${1:-}" ;;
     ensure) shift; cmd_ensure "${1:-}" ;;
     down)   cmd_down ;;
     status) cmd_status ;;
+    check)  cmd_check ;;
     *)
         cat >&2 <<USAGE
 vLLM swap-on-demand supervisor (ADR-009 §3a).
@@ -241,9 +365,15 @@ Usage:
   $0 down                    Stop both roles.
   $0 status                  Print live role. Exit: 0=coder 1=planner
                              2=none 3=broken/both.
+  $0 check                   Dry-run GPU-tenancy discipline: print free
+                             VRAM vs required and exit 0 if enough is
+                             free, 1 otherwise. Does NOT stop Ollama
+                             or launch anything.
 
 Env: VLLM_CODER_PORT (default 8501), VLLM_PLANNER_PORT (8511),
-     VLLM_READY_TIMEOUT (420s), VLLM_CODER_LOG, VLLM_PLANNER_LOG.
+     VLLM_READY_TIMEOUT (420s), VLLM_CODER_LOG, VLLM_PLANNER_LOG,
+     VLLM_MIN_FREE_MIB (28000), VLLM_GPU_FREE_TIMEOUT (30s),
+     VLLM_SKIP_OLLAMA_STOP (0).
 USAGE
         exit 2
         ;;

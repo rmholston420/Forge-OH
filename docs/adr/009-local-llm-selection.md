@@ -265,6 +265,66 @@ Captured for future launchers, and appended to `DEBUG_LOG.md` under
 
    Revisit only if a concrete Docker limitation is observed.
 
+5. **Supervisor GPU-tenancy discipline — landed 2026-08-04 (post-G.1).**
+
+   Symptom that motivated this: after G.1 merged to main, the coder
+   vLLM container `forge-vllm-coder` `Exited(1)` immediately with
+   `ValueError: Free memory on device cuda:0 (24.85/31.39 GiB) on
+   startup is less than desired GPU memory utilization (0.9, 28.25
+   GiB)`. Root cause was pure GPU contention — Ollama was still
+   holding ~6.5 GB VRAM at the moment `ops/vllm_launch_coder.sh`
+   ran `docker run`. The launcher scripts and `ops/vllm_supervisor.sh`
+   did NOT stop Ollama or verify `memory.free` before invoking
+   `docker run`; the discipline lived only in the `forge-oh-llm-serving`
+   skill notes.
+
+   Decision: encode the discipline in `ops/vllm_supervisor.sh`
+   itself. The supervisor is the swap orchestrator per §3a; managing
+   GPU tenancy across all launcher paths (direct CLI, BFF cache-miss
+   `ensure`, systemd) is its job.
+
+   Implementation (`slice/vllm-supervisor-gpu-discipline`, PR into
+   main):
+     - New helper `_stop_ollama()` — idempotent, no-ops if Ollama
+       unit is not installed. Combines `sudo systemctl stop ollama`
+       (when the unit is present) with `pkill -x ollama` and
+       `pkill -f 'ollama runner'` as belt-and-braces.
+     - New helper `_free_gpu_for_vllm()` — calls `_stop_ollama`,
+       then polls `nvidia-smi --query-gpu=memory.free` every 2s
+       until `>= VLLM_MIN_FREE_MIB` (default 28000 MiB ≈ 0.9 × 31.4 GiB
+       card) or `VLLM_GPU_FREE_TIMEOUT` (default 30s) elapses.
+       Returns non-zero on timeout so `cmd_up` short-circuits
+       before `docker run` can crash.
+     - `cmd_up coder` and `cmd_up planner` now call
+       `_free_gpu_for_vllm` between `_stop_role` and `_launch`.
+     - New CLI subcommand `check` — dry-runs the discipline
+       (reports free vs required VRAM, exits 0/1) without
+       stopping Ollama or launching anything. Useful for the
+       DEBUG_LOG cold-boot sequence and for CI-free verification.
+     - New env knobs: `VLLM_MIN_FREE_MIB`, `VLLM_GPU_FREE_TIMEOUT`,
+       `VLLM_SKIP_OLLAMA_STOP` (for machines without Ollama
+       installed or when the caller has already stopped it).
+     - Offline test suite `ops/test_supervisor.sh`
+       (14 cases, all pass) exercises the helpers with PATH-injected
+       stubs for `nvidia-smi`, `systemctl`, `sudo`, `pkill`, `docker`,
+       `fuser`, `ss`, `curl`. Supervisor gained a library-mode
+       guard (`(return 0 2>/dev/null) && return 0` before dispatch)
+       so tests can source it without triggering the CLI usage
+       branch.
+
+   Consequences:
+     - `cmd_up` is idempotent w.r.t. Ollama state: caller does not
+       need to pre-stop Ollama; the supervisor handles it.
+     - `_free_gpu_for_vllm` requires `sudo -n` (passwordless) to stop
+       Ollama via systemd. On Colossus this is already configured. On
+       a machine without passwordless sudo, `pkill` still runs and
+       usually suffices for a user-run `ollama serve` process.
+     - No changes to `ops/vllm_launch_coder.sh` or
+       `ops/vllm_launch_planner.sh`. The launchers stay focused on
+       `docker run` construction; policy lives in the supervisor.
+     - Reversibility: setting `VLLM_SKIP_OLLAMA_STOP=1` restores the
+       pre-slice behavior for callers that need it.
+
 ---
 
 _Bench methodology, per-prompt scoring, and length-ceiling forensics
