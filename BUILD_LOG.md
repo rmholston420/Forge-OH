@@ -3614,3 +3614,37 @@ returned empty even when a listener was present.
 **Stop condition:** unchanged. Slice G.1 still awaits one green live
 self-eval cycle.
 
+
+## 2026-08-03 22:42 EDT — Slice G.1 hotfix³: forge-doctor.sh + honest transport error + colossus-ops skill update
+
+**Stage:** G.1.
+**Files touched:**
+- `scripts/forge-doctor.sh` (NEW) — one-shot read-only diagnostic (env, port health, HTTP probes, workspaces, presets, selfeval unit + latest cycle, filtered log tails).
+- `openhands_tools_ext/selfeval/harness.py` — transport error now includes exception class name (fixes empty `transport error:` seen on Colossus 22:37 cycle where every task hit exactly 30.0s ReadTimeout with no diagnosable message).
+- `docs/skills-index.md` — reflect the triage playbook added to `forge-oh-colossus-ops`.
+- `.skills` (skill save via pplx-tool) — `forge-oh-colossus-ops` v2: correct :3000 vs :3100 semantics, `app_with_sio` entrypoint, forge-{up,down,restart,status,doctor} recipes table, and runtime triage playbook covering orphan next-server, `agentPresetId` 422, empty `transport error:`, `assumed-child` status semantics.
+
+**Ports/adapters:** none changed. Skill and doctor are read-only overlays.
+
+**Bug root cause (Colossus 22:37 run):** every task's `POST /api/runs`
+timed out at exactly 30.0s with an empty `transport error:` message.
+The empty message was `httpx.ReadTimeout.__str__()` being blank; the
+timeout itself is a separate diagnostic still open — likely BFF
+synchronously calling agent-server (:8090) during run creation and
+either agent-server is not accepting or the BFF handler is stuck. Next
+cycle should surface `transport error (ReadTimeout): ...` and paired
+BFF-log evidence in `forge-doctor.sh` section 7.
+
+**Skill update rationale:** rmholston asked for a "world-class engineer"
+credit spend; codifying the runtime-triage recipes we just derived into
+the auto-loading skill means the next session doesn't re-derive
+`kill_by_pattern`, `is_descendant`, `agentPresetId` resolution, or the
+`app_with_sio` entrypoint from scratch.
+
+**Test summary:** 55/55 still passing.
+
+**Stop condition:** Slice G.1 still awaits one green live self-eval
+cycle. Next diagnostic path: run `forge-doctor.sh` immediately after the
+next `systemctl --user start forge-oh-selfeval.service` and paste
+sections 3, 5, 6, 7 to close the 30.0s-timeout diagnosis.
+

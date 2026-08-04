@@ -132,7 +132,11 @@ async def _create_run(
     try:
         resp = await client.post("/api/runs", json=body, timeout=30.0)
     except httpx.HTTPError as exc:
-        return "", f"transport error: {exc}"
+        # ReadTimeout/ConnectTimeout override __str__ to be empty when no
+        # message is set. Always include the exception class so the
+        # failure_detail is diagnosable in the summary/proposal.
+        detail = str(exc) or repr(exc) or exc.__class__.__name__
+        return "", f"transport error ({exc.__class__.__name__}): {detail}"
     if resp.status_code >= 400:
         return "", f"BFF returned {resp.status_code}: {resp.text[:200]}"
     data = (resp.json() or {}).get("data") or {}

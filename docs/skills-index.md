@@ -16,7 +16,7 @@ Two scopes are relevant to Forge-OH:
 | Name | Purpose | Load when |
 | ---- | ------- | --------- |
 | `forge-oh-slice-driver` | Non-negotiable protocol for every build slice: SESSION_HANDOFF entry, scope restatement, BUILD_LOG append, PORTING_LEDGER update, SESSION_HANDOFF rewrite, commit + push. | Every session that touches BUILD_LOG.md, DEBUG_LOG.md, SESSION_HANDOFF.md, or PORTING_LEDGER.md. |
-| `forge-oh-colossus-ops` | Colossus paths, ports, systemd unit conventions, restart recipes. | Anything touching Colossus paths, port numbers, service management, or Colossus-specific hardware. |
+| `forge-oh-colossus-ops` | Colossus paths, ports, forge-up/down/restart/status/doctor scripts, and runtime triage playbook (Next.js orphan reap, agentPresetId 422, `transport error:` diagnosis). | Anything touching Colossus paths, port numbers, service management, restart scripts, or a runtime-symptom the triage playbook covers. |
 | `forge-oh-debug-driver` | DEBUG_LOG.md-first bug investigation: search prior symptoms before re-diagnosing. | Before investigating any new error or unexpected behavior. |
 | `forge-oh-llm-serving` | Local vLLM stack: coder vs planner containers, model routing, GPU budget on the RTX 5090. | Anything touching the coder or planner service, model choice, or the model-router adapter. |
 | `forge-oh-porting` | Vendor-first workflow: verifying licenses, recording ports in PORTING_LEDGER.md, tracking modifications. | Before vendoring OSS code; when updating PORTING_LEDGER.md. |
