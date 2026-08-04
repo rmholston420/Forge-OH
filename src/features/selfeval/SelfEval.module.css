@@ -1,0 +1,353 @@
+/*
+ * SelfEval feature styles (slice/selfeval-frontend-polish).
+ *
+ * All page-level chrome for /selfeval and /selfeval/[date]. Tokens sourced
+ * from src/styles/theme.css. Do NOT hard-code colors here — reference
+ * --color-* variables so light/dark theme swaps work.
+ *
+ * Class-name scope: CSS-Module (hashed at build). Reference via
+ *   import styles from './SelfEval.module.css';
+ *   <div className={styles.page}>...
+ */
+
+/* ─────────────────────────────────────────────────────────────
+ * Page shells
+ * ────────────────────────────────────────────────────────────*/
+
+.page,
+.datePage {
+  padding: var(--space-6);
+  color: var(--color-text-primary);
+  font-family: var(--font-ui);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.header h2,
+.page h2,
+.datePage h2 {
+  margin: var(--space-6) 0 var(--space-3);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.backLink {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--font-size-meta);
+}
+
+.backLink:hover {
+  color: var(--color-text-primary);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Live-cycle rail (visible while status.running === true)
+ * ────────────────────────────────────────────────────────────*/
+
+.liveRail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+}
+
+.liveRailDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-state-running);
+  box-shadow: 0 0 0 4px rgba(90, 156, 255, 0.15);
+  animation: pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveRailDot { animation: none; }
+}
+
+.liveRailLabel {
+  font-weight: 500;
+}
+
+.liveRailMeta {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-meta);
+  margin-left: auto;
+}
+
+/* Cycle-finished one-shot notice (shown for ~10s after running -> false) */
+.finishedNotice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: rgba(53, 196, 124, 0.10);
+  border: 1px solid rgba(53, 196, 124, 0.35);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+}
+
+.finishedNoticeFailed {
+  background: rgba(240, 97, 107, 0.10);
+  border-color: rgba(240, 97, 107, 0.35);
+}
+
+.finishedNoticeDismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-meta);
+  padding: 0 var(--space-2);
+}
+
+.finishedNoticeDismiss:hover { color: var(--color-text-primary); }
+
+/* ─────────────────────────────────────────────────────────────
+ * Data table (cycle history, task outcomes)
+ * ────────────────────────────────────────────────────────────*/
+
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-body);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.dataTable thead {
+  background: var(--color-bg-surface-elevated);
+}
+
+.dataTable th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  font-weight: 500;
+  font-size: var(--font-size-meta);
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-default);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dataTable td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
+  vertical-align: top;
+}
+
+.dataTable tbody tr:last-child td { border-bottom: none; }
+
+.dataTable tbody tr:hover { background: var(--color-bg-surface-elevated); }
+
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.taskId {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px var(--space-2);
+  background: var(--color-bg-surface-elevated);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+}
+
+.reasonCell {
+  color: var(--color-text-muted);
+  max-width: 320px;
+  font-size: var(--font-size-meta);
+}
+
+.rowLink {
+  color: var(--color-text-accent);
+  text-decoration: none;
+  font-size: var(--font-size-meta);
+}
+
+.rowLink:hover { text-decoration: underline; }
+
+/* ─────────────────────────────────────────────────────────────
+ * KPI grid (cycle detail top strip)
+ * ────────────────────────────────────────────────────────────*/
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.kpiCard {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.kpiLabel {
+  display: block;
+  font-size: var(--font-size-meta);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-1);
+}
+
+.kpiValue {
+  display: block;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Trajectory status dot (cycle detail table)
+ * ────────────────────────────────────────────────────────────*/
+
+.trajectoryStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-meta);
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+}
+
+.trajectoryDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.trajectoryDotFinished { background: var(--color-state-success); }
+.trajectoryDotTimedOut { background: var(--color-state-warning); }
+.trajectoryDotErrored  { background: var(--color-state-error); }
+
+/* ─────────────────────────────────────────────────────────────
+ * Proposals section
+ * ────────────────────────────────────────────────────────────*/
+
+.proposalList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.proposalCard {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.proposalCard[open] {
+  background: var(--color-bg-surface-elevated);
+}
+
+.proposalCardSummary {
+  cursor: pointer;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-meta);
+  color: var(--color-text-primary);
+  list-style: none;
+  outline: none;
+}
+
+.proposalCardSummary::-webkit-details-marker { display: none; }
+
+.proposalCardSummary::before {
+  content: '▸ ';
+  color: var(--color-text-muted);
+  display: inline-block;
+  transition: transform var(--motion-fast) var(--motion-easing);
+}
+
+.proposalCard[open] .proposalCardSummary::before {
+  transform: rotate(90deg);
+}
+
+.proposalBody {
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
+  overflow-x: auto;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Empty & error states
+ * ────────────────────────────────────────────────────────────*/
+
+.emptyState {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface);
+  border: 1px dashed var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+.errorBanner {
+  padding: var(--space-3) var(--space-4);
+  background: rgba(240, 97, 107, 0.10);
+  border: 1px solid rgba(240, 97, 107, 0.35);
+  border-radius: var(--radius-md);
+  color: var(--color-text-error);
+  margin-bottom: var(--space-4);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Responsive: collapse KPI grid on narrow viewports
+ * ────────────────────────────────────────────────────────────*/
+
+@media (max-width: 720px) {
+  .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
