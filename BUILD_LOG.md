@@ -3675,3 +3675,60 @@ bash scripts/forge-doctor.sh | tail -80
 cat docs/selfeval/2026-08-04-selfeval.json | jq '.tasks_passed, .tasks_failed, .tasks_timed_out, .tasks_errored'
 ```
 Expected: at least one `tasks_passed > 0` OR (if the model actually fails) `tasks_failed > 0` — either way, no more `transport error (ReadTimeout)` verdicts.
+
+
+## 2026-08-03 23:45 EDT — Slice G.1 hotfix⁵: unblock event loop in EventRelay._run_loop
+
+**Stage:** G.1.
+**Files touched:**
+- `bff/services/event_relay.py` — per-event branch inside `_run_loop`:
+  wrap `sidecar_producers.update_from_event(...)` in
+  `await asyncio.to_thread(...)`, add unconditional
+  `await asyncio.sleep(0)` yield-point. Inline comment cross-references
+  DEBUG_LOG 2026-08-03 23:40 EDT.
+- `bff/tests/test_event_relay_yield.py` (NEW) — 3 regression tests:
+  worker-thread execution, non-blocking under load, hazard demo.
+- DEBUG_LOG.md — full root-cause writeup with py-spy dumps.
+- SESSION_HANDOFF.md — overwrite with next-action checklist.
+
+**Bug root cause:** `EventRelay._run_loop` called
+`sidecar_producers.update_from_event` directly on the asyncio event
+loop. That sync path runs `_produce_plan → build_plan` (O(events)) and
+`_rmw` (fsync). Leaked/backlogged conversation `c07b8803` had 500+
+queued events; per-iteration wall time exceeded the harness 90s
+ReadTimeout, so `POST /api/runs` never got CPU. Full analysis in
+DEBUG_LOG 2026-08-03 23:40 EDT.
+
+**Diagnostic method that cracked it:** `py-spy dump --pid <bff>` taken
+twice during a live 90s ReadTimeout window. Both dumps pinned
+MainThread inside `_run_loop`'s call chain. This was decisive after
+three prior diagnostic paths (30s→90s bump, `--reload` disable, log
+grep) all produced the same 90.1s ReadTimeout with no useful
+distinguishing signal.
+
+**Test summary:** New file `test_event_relay_yield.py`, 3 tests. Full
+BFF suite deferred to Colossus run.
+
+**Ports/adapters:** none. Internal service-layer change to how BFF
+schedules sidecar work.
+
+**ADR:** ADR-012 remains Proposed. This fix is orthogonal to it —
+ADR-012 refactors the BFF-agent-server request/response pattern for
+`create_run`; this fix removes CPU/IO contention on the shared event
+loop. Both are needed for full G.1 robustness. Do not ratify ADR-012
+based on this fix alone.
+
+**Stop condition:** After deploying this fix on Colossus, one live
+self-eval cycle must produce non-timeout verdicts (either `passed` or
+model-legitimate `failed`) for G.1 to close. If the cycle still times
+out with the same symptom, the leaked `c07b8803` conversation needs to
+be purged from agent-server + trajectory DB before re-running (both
+paths are documented in SESSION_HANDOFF).
+
+**Follow-ups queued (not this slice):**
+- Cap `sidecar_producers` per-conversation event backlog at ~200 with
+  drop-oldest semantics.
+- Auto-shutdown `EventRelay` for orphan conversations after N idle
+  minutes.
+- Doctor script: add py-spy dump for BFF when a stalled cycle is
+  detected.

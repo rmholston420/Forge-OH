@@ -191,14 +191,29 @@ async def _run_loop(cid: str) -> None:
                 # for the STOP hook to consume. Failure is
                 # swallowed inside update_from_event; this call is
                 # unconditionally safe even when working_dir is "".
+                #
+                # G.1 2026-08-03 bugfix: run in a thread so build_plan
+                # (O(events)) and _rmw (fsync file I/O) don't hog the
+                # asyncio event loop. Symptom: leaked producer with 500+
+                # backlogged events pegged the loop for tens of seconds
+                # per iteration, causing every POST /api/runs from the
+                # self-eval harness to ReadTimeout at 30–90s. py-spy
+                # dumps showed MainThread stuck in build_plan / _rmw.
+                # See DEBUG_LOG 2026-08-03 23:40 EDT.
                 if working_dir and isinstance(ev, dict):
-                    sidecar_producers.update_from_event(
+                    await asyncio.to_thread(
+                        sidecar_producers.update_from_event,
                         cid=cid,
                         workspace=working_dir,
                         # Forge-OH: session_id == conversation id.
                         session_id=cid,
                         event=ev,
                     )
+                # Cooperative yield-point even when sidecar work is
+                # skipped (working_dir empty). Guarantees fair scheduling
+                # of the HTTP request handler no matter how large the
+                # event batch is.
+                await asyncio.sleep(0)
             if next_page:
                 page_id = next_page
 

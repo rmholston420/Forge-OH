@@ -523,3 +523,103 @@ cap can drop back to ≤10s and the regression test flips.
   but the live services write to `~/dev/forge-oh/.forge-logs/*.log`.
   Doctor fix: symlink or walk `/proc/<pid>/fd/1` to find the real log
   target for each service.  Deferred to next slice.
+
+
+## 2026-08-03 23:40 EDT — G.1: event loop hogged by sidecar producers (proper fix)
+
+**Symptom:** After landing the harness 30s→90s timeout bump (22:55 EDT
+entry above), the 22:58 self-eval cycle STILL failed with
+`transport error (ReadTimeout): ReadTimeout('')` at ~90.1s per task.
+Zero `POST /api/runs` entries appeared in the fresh BFF log — as if the
+harness's request bodies never reached the BFF app code. BFF log
+contained 116 copies of
+`sidecar_producers[c07b8803-…]: event buffer capped, dropped 500 oldest events`.
+
+**Affected:** BFF (event loop scheduling). Slice G.1 self-eval harness
+was the visible failure surface, but the underlying bug is a class of
+sidecar-producer-related loop starvation and would eventually hit any
+long-running BFF process with a leaked or high-throughput conversation
+relay.
+
+**Investigation:** `py-spy dump --pid <bff>` taken during a live 90s
+ReadTimeout window, twice, 30 s apart:
+
+Dump 1:
+```
+Thread MainThread (active+gil):
+  build_plan (bff/services/action_reconstruction.py:282)
+  _produce_plan (bff/services/sidecar_producers.py:113)
+  update_from_event (bff/services/sidecar_producers.py:457)
+  _run_loop (bff/services/event_relay.py:195)
+  _run (asyncio/events.py:88)
+  ...
+```
+
+Dump 2:
+```
+Thread MainThread (idle):
+  _rmw (bff/services/sidecar.py:115)
+  update_sidecar (bff/services/sidecar.py:220)
+  update_from_event (bff/services/sidecar_producers.py:474)
+  _run_loop (bff/services/event_relay.py:195)
+  ...
+```
+
+Both dumps show the asyncio event loop's MainThread pinned inside
+`event_relay._run_loop`, which was calling
+`sidecar_producers.update_from_event(...)` **synchronously**. That
+sync path runs `_produce_plan → build_plan` (O(events)) and
+`_rmw → update_sidecar` (fsync + rename), consuming tens of ms per
+event. With ~500 backlogged events for a leaked producer (c07b8803),
+per-iteration wall time exceeded the harness ReadTimeout cap. Uvicorn's
+request handler coroutine never got scheduled during that window,
+so the harness POST hung until it timed out client-side — and the BFF
+log had no record of the request ever entering routing.
+
+**Root cause:** `EventRelay._run_loop` (line 195 of
+`bff/services/event_relay.py`) called
+`sidecar_producers.update_from_event(...)` directly on the asyncio
+event loop with no yield-point between events. Any CPU-bound or
+fsync-heavy sidecar producer would starve every other coroutine on the
+same loop (uvicorn's request handler is on that same loop).
+
+**Fix applied:**
+1. Wrap the sync call in `await asyncio.to_thread(...)` so the plan
+   builder and file-lock/fsync run on a worker thread, not on the
+   event loop.
+2. Add `await asyncio.sleep(0)` per event, unconditionally, so even
+   with sidecar work disabled (`working_dir == ""`) the loop yields to
+   other pending tasks.
+
+Both changes are inside the per-event loop in `_run_loop` (single edit,
+inline comment references this DEBUG_LOG timestamp).
+
+**Regression tests (bff/tests/test_event_relay_yield.py):**
+- `test_update_from_event_runs_in_worker_thread`: fails if the
+  `asyncio.to_thread` wrapping is removed (asserts the sidecar producer
+  is invoked on a non-main thread).
+- `test_slow_producer_does_not_block_event_loop`: kicks off a 200 ms
+  CPU-bound sync call the way the relay does it and asserts a
+  concurrent "request" coroutine schedules in <100 ms.
+- `test_direct_sync_call_would_block_confirms_the_hazard`: documents
+  the hazard (a direct sync call inside a coroutine DOES block a
+  concurrent task); guards against a future revert with a "just call
+  it directly" comment.
+
+**Also learned:**
+- `uvicorn --reload` was NOT the culprit here (was ruled out by
+  restarting without it and reproducing the same 90.1s failure).
+- Doctor script's Section 7/8 grep for `POST /api/runs` missed this
+  because no such line was ever emitted — the request never reached
+  the router. Add a Section that greps `py-spy dump` for MainThread
+  when the doctor detects a stalled cycle. Deferred to next slice.
+- The leaked `c07b8803` conversation is separate work: we should
+  either (a) cap producer backlog at ~200 events with drop-oldest, or
+  (b) shut down relays for orphaned conversations after N idle
+  minutes. Deferred to a follow-up slice.
+
+**Files changed:**
+- `bff/services/event_relay.py` (per-event loop in `_run_loop`).
+- `bff/tests/test_event_relay_yield.py` (NEW, 3 regression tests).
+- DEBUG_LOG.md (this entry).
+- BUILD_LOG.md (2026-08-03 23:45 EDT entry).
