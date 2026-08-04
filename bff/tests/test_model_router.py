@@ -357,3 +357,34 @@ def test_role_route_dataclass_is_frozen():
     )
     with pytest.raises(Exception):
         r.role = "planner"  # type: ignore[misc]
+
+
+def test_coder_ollama_fallback_defaults_to_32k(monkeypatch):
+    """The coder Ollama fallback default MUST be ``qwen3-coder:32k``.
+
+    Regression guard for the post-G.1 fix: ``qwen3-coder:30b`` ships with
+    the stock Ollama Modelfile which pins ``num_ctx=4096``, and the
+    self-eval smoke prompts truncate mid-completion at that budget.
+    The 32k custom Modelfile (same GGUF, ``num_ctx=32768``) is the
+    working fallback. Do not regress the default without also
+    rebuilding the Modelfile on Colossus. See ADR-009 §2 and
+    DEBUG_LOG 2026-08-04 02:03 EDT.
+    """
+    monkeypatch.delenv("LLM_CODER_OLLAMA_FALLBACK", raising=False)
+    import bff.services.model_router as mr
+
+    importlib.reload(mr)
+    assert mr.LLM_CODER_OLLAMA_FALLBACK == "qwen3-coder:32k", (
+        f"expected default 'qwen3-coder:32k', got {mr.LLM_CODER_OLLAMA_FALLBACK!r}"
+    )
+
+
+def test_coder_ollama_fallback_env_override_wins(monkeypatch):
+    """Env override still takes precedence (e.g. for machines without the
+    32k Modelfile rebuilt yet).
+    """
+    monkeypatch.setenv("LLM_CODER_OLLAMA_FALLBACK", "qwen3-coder:custom")
+    import bff.services.model_router as mr
+
+    importlib.reload(mr)
+    assert mr.LLM_CODER_OLLAMA_FALLBACK == "qwen3-coder:custom"

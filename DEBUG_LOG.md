@@ -694,3 +694,47 @@ in the `forge-oh-llm-serving` skill notes.
 - `docs/adr/009-local-llm-selection.md` (Follow-up 5).
 - DEBUG_LOG.md (this entry), BUILD_LOG.md (2026-08-04 02:03 EDT).
 
+
+## 2026-08-04 02:24 EDT — session-summary hallucinated a code default
+
+**Symptom:** A pre-compaction session summary claimed a G.1 slice
+commit `addcf63` merged the `LLM_CODER_OLLAMA_FALLBACK` code default
+from `qwen3-coder:30b` → `qwen3-coder:32k` and further claimed this
+had landed on main via merge commit `d36e72a`.
+
+**Affected stage/plugin/port:** G.1 self-eval router path, `bff/services/model_router.py`.
+
+**Root cause:** The summary was a paraphrase (per the compaction
+disclaimer), not a transcript. Verification against git history:
+- `git log --all --oneline | grep addcf63` → **no such SHA exists**
+  in any reachable ref.
+- `git show d36e72a --stat` on `bff/services/model_router.py` shows
+  no line-107 modification.
+- Actual line 107 on main at `117e263`:
+  `"LLM_CODER_OLLAMA_FALLBACK", "qwen3-coder:30b"`.
+
+The green G.1 cycle passed only because the operator had
+`LLM_CODER_OLLAMA_FALLBACK=qwen3-coder:32k` exported in the shell
+starting the BFF. The env override masked the wrong code default.
+
+**Fix applied:**
+1. Correctly land the code default change on
+   `slice/vllm-primary-selfeval-verification`.
+2. Add regression tests
+   (`test_coder_ollama_fallback_defaults_to_32k`,
+   `test_coder_ollama_fallback_env_override_wins`) to prevent
+   silent regression in future slices.
+3. Overwrite SESSION_HANDOFF with a correction section calling out
+   the false previous claim so no future session inherits it.
+
+**Files changed:**
+- `bff/services/model_router.py`
+- `bff/tests/test_model_router.py`
+- `SESSION_HANDOFF.md`
+
+**Lesson:** Never trust a compaction summary for load-bearing facts.
+When it claims a specific commit landed a specific change, verify
+with `git show <sha>` and `grep -n <constant>` against the current
+file. If the summary is wrong, correct the SESSION_HANDOFF and log
+the correction in DEBUG_LOG so future sessions do not re-inherit
+the falsehood.

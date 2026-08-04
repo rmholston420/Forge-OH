@@ -103,8 +103,14 @@ PRIMARY_CTX_LIMIT = int(os.getenv("PRIMARY_CTX_LIMIT", "28000"))
 LLM_CODER_URL = os.getenv("LLM_CODER_URL", "http://localhost:8501")
 LLM_CODER_MODEL = os.getenv("LLM_CODER_MODEL", "qwen3.6-35b-nvfp4")
 LLM_CODER_MAX_TOKENS = int(os.getenv("LLM_CODER_MAX_TOKENS", "2048"))
+# ADR-009 §2 / DEBUG_LOG 2026-08-04: the `qwen3-coder:30b` Ollama Modelfile
+# ships with `num_ctx=4096`, which is too small for the self-eval smoke
+# prompts (they exceed the budget mid-completion and truncate). The
+# `qwen3-coder:32k` custom Modelfile (same GGUF weights, `num_ctx=32768`)
+# is the working fallback. Env override retained for machines that
+# haven't rebuilt the 32k Modelfile yet.
 LLM_CODER_OLLAMA_FALLBACK = os.getenv(
-    "LLM_CODER_OLLAMA_FALLBACK", "qwen3-coder:30b"
+    "LLM_CODER_OLLAMA_FALLBACK", "qwen3-coder:32k"
 )
 
 LLM_PLANNER_URL = os.getenv("LLM_PLANNER_URL", "http://localhost:8511")
