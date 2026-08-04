@@ -828,3 +828,41 @@ check `systemctl --user is-active <unit>` in addition to
 `systemctl is-active <unit>`. A user-scope unit is invisible to
 `systemctl` without the `--user` flag but still owns processes and
 ports.
+
+## 2026-08-04 03:00 EDT — .then(_json) generic inference collapses to unknown
+
+**Symptom:**
+```
+Type 'unknown' is not assignable to type '{ cycles: CycleListItem[]; }'.
+  74 |
+  75 | export const fetchCycles = (): Promise<{ cycles: CycleListItem[] }> =>
+> 76 |   fetch(`${BASE}/api/selfeval/cycles`).then(_json);
+     |   ^
+Next.js build worker exited with code: 1 and signal: null
+```
+
+**Affected stage/plugin/port:** F.19-post — `slice/selfeval-frontend-polish`
+prod `npm run build` on Colossus. Frontend only; BFF untouched.
+
+**Root cause:** `src/features/selfeval/api.ts` defines
+`async function _json<T>(r: Response): Promise<T>`. When passed as
+`.then(_json)`, TypeScript cannot infer `T` from context — it falls
+back to `unknown`, which then can't unify with the declared
+`Promise<{cycles: CycleListItem[]}>` return of `fetchCycles`. Same
+bug on all five call sites (`fetchCycles`, `fetchCycle`,
+`fetchProposals`, `fetchProposal`, `fetchStatus`, `postRun`).
+
+Why prior G.1 build passed on Colossus: unknown. The G.1 build never
+actually ran a strict prod build against this file until my slice
+touched adjacent files that changed which pages consume these
+generics. Suspect the earlier lax build didn't surface the inference
+gap because the consumers were less strictly typed.
+
+**Fix applied:** wrap each `.then(_json)` with `.then((r) => _json<T>(r))`
+so the generic is pinned per-call-site. Added an inline comment
+citing this DEBUG_LOG entry as a regression guard.
+
+**Files changed:** `src/features/selfeval/api.ts`.
+
+**Verified:** locally re-read the 6 call sites; will re-verify prod
+build on Colossus in the same slice.
