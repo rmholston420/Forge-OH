@@ -21,12 +21,15 @@ export interface CycleListItem {
 
 export interface TaskOutcome {
   task_id: string;
-  run_id: string | null;
+  // BFF harness emits '' when creation failed, not null. Kept as string.
+  run_id: string;
   verdict: 'passed' | 'failed' | 'timeout' | 'error';
-  reason: string | null;
-  duration_sec: number | null;
+  duration_sec: number;
+  // Renamed 2026-08-04: prior `final_status` did not match harness output.
+  trajectory_status: string | null;
   verify_verdict: string | null;
-  final_status: string | null;
+  // Renamed 2026-08-04: prior `reason` did not match harness output.
+  failure_detail: string;
 }
 
 export interface CycleSummary {

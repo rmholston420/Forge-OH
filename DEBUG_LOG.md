@@ -899,3 +899,62 @@ the file. Push landed on origin as `e630f86`.
 **Regression guard:** any future slice that touches Playwright specs
 must `git add -f` explicitly and grep `git ls-files` after commit to
 confirm the file is tracked.
+
+## 2026-08-04 03:10 EDT — Next.js 16 dynamic route params silently render undefined
+
+**Symptom:**
+Navigating to `/selfeval/2026-08-04` produced `<h1>Cycle: </h1>` (empty
+date), the useCycle query never fired (filename resolved to
+`-selfeval.json` which the enabled guard `Boolean(filename)` rejected),
+KPIs never appeared, and the outcomes table never rendered. Three
+Playwright Tier-2 tests failed as a result.
+
+**Affected stage/plugin/port:** F.19-post — slice/selfeval-frontend-polish.
+`src/app/(dashboard)/selfeval/[date]/page.tsx`.
+
+**Root cause:** Next.js 16 changed dynamic-route `params` from a plain
+object to a `Promise<{...}>`. The route wrapper's synchronous signature
+`{ params }: { params: { date: string } }` type-checked (because TS
+sees `params` as any at runtime), but `params.date` was `undefined`.
+The canonical unwrap for other client routes in this app is
+`src/app/(dashboard)/runs/[runId]/page.tsx`:
+
+```tsx
+params: Promise<{ runId: string }>;
+const { runId } = React.use(params);
+```
+
+**Fix applied:** rewrote the wrapper to accept `Promise<{ date: string }>`
+and unwrap via `React.use(params)`.
+
+**Files changed:** `src/app/(dashboard)/selfeval/[date]/page.tsx`.
+
+**Regression guard:** any future dynamic App Router page in this repo
+MUST use the `Promise<{...}>` + `React.use()` pattern.
+
+## 2026-08-04 03:11 EDT — TaskOutcome type diverged from harness output
+
+**Symptom:** verdict badges rendered but trajectory-status dots never
+appeared; `.reasonCell` always showed `—` even for failed cycles.
+
+**Affected stage/plugin/port:** F.19-post — slice/selfeval-frontend-polish.
+`src/features/selfeval/api.ts`, `SelfEvalDatePage.tsx`.
+
+**Root cause:** pre-existing `TaskOutcome` TS type declared fields
+`final_status: string | null` and `reason: string | null`. Actual BFF
+JSON (via `openhands_tools_ext/selfeval/harness.py`) emits
+`trajectory_status: str | None` and `failure_detail: str`. The TS
+type was invented in G.1 before the Python dataclass was named — never
+caught because no populated cycle detail was ever rendered until now.
+
+**Fix applied:** aligned `TaskOutcome` fields with harness dataclass
+(`trajectory_status`, `failure_detail`, `run_id: string` not nullable,
+`duration_sec: number` not nullable). Updated all consumers in
+`SelfEvalDatePage.tsx`.
+
+**Files changed:** `src/features/selfeval/api.ts`,
+`src/features/selfeval/SelfEvalDatePage.tsx`.
+
+**Regression guard:** when adding new BFF-shape TS types, mirror the
+Python dataclass exactly. When possible, generate the TS from the
+Pydantic schema.

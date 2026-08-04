@@ -109,9 +109,10 @@ export default function SelfEvalDatePage({ date }: SelfEvalDatePageProps) {
             </thead>
             <tbody>
               {cycle.outcomes.map((o) => {
-                const dotCls = trajectoryDotClass(o.final_status);
+                const dotCls = trajectoryDotClass(o.trajectory_status);
+                const hasRun = Boolean(o.run_id);
                 return (
-                  <tr key={`${o.task_id}-${o.run_id ?? 'no-run'}`}>
+                  <tr key={`${o.task_id}-${o.run_id || 'no-run'}`}>
                     <td>
                       <code className={styles.taskId}>{o.task_id}</code>
                     </td>
@@ -121,25 +122,25 @@ export default function SelfEvalDatePage({ date }: SelfEvalDatePageProps) {
                       </Badge>
                     </td>
                     <td className={`${styles.numeric} ${styles.mono}`}>
-                      {o.duration_sec != null ? `${o.duration_sec.toFixed(1)}s` : '—'}
+                      {Number.isFinite(o.duration_sec) ? `${o.duration_sec.toFixed(1)}s` : '—'}
                     </td>
                     <td className={styles.mono}>{o.verify_verdict ?? '—'}</td>
                     <td>
-                      {o.final_status ? (
+                      {o.trajectory_status ? (
                         <span className={styles.trajectoryStatus}>
                           <span
                             className={`${styles.trajectoryDot} ${dotCls}`}
                             aria-hidden="true"
                           />
-                          {o.final_status}
+                          {o.trajectory_status}
                         </span>
                       ) : (
                         '—'
                       )}
                     </td>
-                    <td className={styles.reasonCell}>{o.reason ?? '—'}</td>
+                    <td className={styles.reasonCell}>{o.failure_detail || '—'}</td>
                     <td>
-                      {o.run_id ? (
+                      {hasRun ? (
                         <Link href={`/runs/${o.run_id}` as Route} className={styles.rowLink}>
                           Trace →
                         </Link>
