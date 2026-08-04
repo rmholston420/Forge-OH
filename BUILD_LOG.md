@@ -3413,3 +3413,23 @@ in practice (nothing seen through F.19.4).
   - F.19.3 tests + legacy purge  DONE
   - F.19.4 live P1/P2/P3 smoke   DONE
   - F.19.5 native venv           CLOSED (deferred indefinitely)
+
+## 2026-08-03 20:17 EDT — Fixed data.workspaceId path-vs-UUID bug
+
+**Stage:** F.19.4 follow-up (cosmetic bug from Phase 2 smoke).
+
+**Change:** `bff/routers/runs.py`:
+  - New `_workspace_path_to_id_map()` (async, one agent-server list).
+  - New `_resolve_workspace_id(conv, path_to_id)` (safe fallback).
+  - `_conv_to_run_summary` accepts optional map.
+  - `list_runs` / `get_run` build map once per call.
+  - `create_run` overwrites `summary["workspaceId"]` with
+    `body.workspaceId` (no extra call needed on POST path).
+
+**Definition of Done:** `POST /api/runs` echoes the caller's
+`workspaceId` UUID; GET flows also translate `working_dir` to UUID
+when the map contains a match.
+
+**Verify next session on Colossus:**
+  BFF restart, then re-run scripts/f19_smoke_agent.sh; expect
+  data.workspaceId == 18c99443b23c452899010095abd5f29b.

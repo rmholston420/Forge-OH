@@ -427,3 +427,36 @@ If coder still times out at 420s, either the model itself broke on
 Not proactively pinning yet — need to confirm 0.26.0 works first
 (broader compat + qwen3_5_moe support was the reason we moved to
 Docker in the first place).
+
+## 2026-08-03 20:17 EDT — data.workspaceId echoed path instead of UUID
+
+**Symptom:** `POST /api/runs` with body
+`{"workspaceId": "18c99443b23c452899010095abd5f29b", ...}` returned
+`{"data": {"workspaceId": "/home/rmholston/dev/forge-oh", ...}}`.
+The UI expects UUID round-trip; got the resolved filesystem path.
+
+**Affected:** F.19.4 post-close cosmetic bug in `bff/routers/runs.py`.
+
+**Root cause:** Agent-server 1.40.0's ConversationInfo.workspace has
+`working_dir` (a path) and no UUID field. `_conv_to_run_summary`
+mapped `workspaceId = conv.workspace.working_dir` directly. Correct
+for GET flows where BFF has no other information, but wrong for POST
+where the caller already sent the UUID.
+
+**Fix (single file, `bff/routers/runs.py`):**
+1. Added `_workspace_path_to_id_map()`: async helper that lists
+   agent-server workspaces once and builds a `{path: uuid}` map.
+   Safe on failure (returns `{}`).
+2. Added `_resolve_workspace_id(conv, path_to_id)`: takes the map,
+   translates `working_dir` -> UUID, falls back to raw path when
+   the map is empty or path is unknown.
+3. `_conv_to_run_summary` accepts an optional `workspace_path_to_id`
+   arg and uses `_resolve_workspace_id`.
+4. `list_runs` and `get_run` call the map builder once per handler.
+5. `create_run` post-processes: overwrites `summary["workspaceId"]`
+   with `body.workspaceId` when provided (no extra API call needed).
+
+**Files changed:** `bff/routers/runs.py`.
+
+**Retest:** re-run F.19.4 Phase 2 smoke; expect
+`data.workspaceId == 18c99443b23c452899010095abd5f29b`.

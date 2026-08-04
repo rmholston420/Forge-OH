@@ -135,7 +135,52 @@ def _translate_model(route: RoleRoute) -> str:
     return f"openai/{route.model}"
 
 
-def _conv_to_run_summary(conv: dict[str, Any]) -> dict[str, Any]:
+def _resolve_workspace_id(
+    conv: dict[str, Any],
+    path_to_id: dict[str, str] | None,
+) -> str:
+    """Return the UUID for a conv's workspace, falling back to the path.
+
+    Agent-server 1.40.0 populates ``conv.workspace.working_dir`` with the
+    resolved filesystem path, not the workspace UUID. Callers pass a
+    precomputed ``{path: uuid}`` map when available so we can echo the
+    UUID that runs.py originally sent.
+    """
+    ws = conv.get("workspace") or {}
+    working_dir = ws.get("working_dir") or "local"
+    if path_to_id:
+        wid = path_to_id.get(working_dir)
+        if wid:
+            return wid
+    return working_dir
+
+
+async def _workspace_path_to_id_map() -> dict[str, str]:
+    """Build {resolved_path: workspace_id} from agent-server list.
+
+    Used to reverse-map ``conv.workspace.working_dir`` (a filesystem
+    path) back to the workspace UUID that runs.py originally sent.
+    Safe on failure: returns {} so callers fall back to the raw path.
+    """
+    try:
+        from bff.routers.workspaces import _list_agent_workspaces
+        items = await _list_agent_workspaces()
+    except Exception as exc:
+        log.debug("workspace path->id map: %s", exc)
+        return {}
+    m: dict[str, str] = {}
+    for w in items:
+        wid = w.get("id")
+        wpath = w.get("path")
+        if wid and wpath:
+            m[wpath] = wid
+    return m
+
+
+def _conv_to_run_summary(
+    conv: dict[str, Any],
+    workspace_path_to_id: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Translate an agent-server ConversationInfo dict into a RunSummary."""
     cid = conv.get("id", "")
     exec_status = conv.get("execution_status", "idle")
@@ -148,7 +193,7 @@ def _conv_to_run_summary(conv: dict[str, Any]) -> dict[str, Any]:
         "title": conv.get("title") or f"Run {cid[:8] if cid else ''}",
         "status": status,
         "agentPresetName": llm.get("usage_id") or "colossus-ollama",
-        "workspaceId": (conv.get("workspace") or {}).get("working_dir") or "local",
+        "workspaceId": _resolve_workspace_id(conv, workspace_path_to_id),
         "workspaceType": "local",
         "activeTool": None,
         "updatedAt": conv.get("updated_at"),
@@ -188,7 +233,8 @@ async def list_runs(
         convs = payload
     else:
         convs = payload.get("items") or payload.get("data") or payload.get("conversations") or []
-    runs = [_conv_to_run_summary(c) for c in convs]
+    path_to_id = await _workspace_path_to_id_map()
+    runs = [_conv_to_run_summary(c, path_to_id) for c in convs]
     return {
         "data": runs,
         "pageInfo": {"total": len(runs), "page": page, "pageSize": pageSize},
@@ -354,6 +400,10 @@ async def create_run(body: CreateRunRequest) -> dict:
     start_relay(cid)
 
     summary = _conv_to_run_summary(conv)
+    # Caller sent a workspace UUID; agent-server echoes the resolved path
+    # instead. Preserve the caller's UUID in the response.
+    if body.workspaceId:
+        summary["workspaceId"] = body.workspaceId
     summary["routing"] = {
         "taskComplexity": task_complexity,
         "role": role,
@@ -427,7 +477,8 @@ async def get_run(run_id: str) -> dict:
     resp.raise_for_status()
     # Ensure a relay is running (in case BFF restarted after a run began).
     start_relay(run_id)
-    return {"data": _conv_to_run_summary(resp.json())}
+    path_to_id = await _workspace_path_to_id_map()
+    return {"data": _conv_to_run_summary(resp.json(), path_to_id)}
 
 
 # ---------------------------------------------------------------------------
