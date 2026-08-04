@@ -3589,3 +3589,28 @@ ran. Status still reported "✅ all three healthy" \u2014 which was a lie.
 **Stop condition:** unchanged. Slice G.1 still awaits one green live
 self-eval cycle.
 
+
+## 2026-08-03 22:38 EDT — Slice G.1 hotfix²: status handles child processes
+
+**Stage:** G.1.
+**Files touched:** `scripts/forge-status.sh`.
+
+**Bug observed on Colossus (2026-08-03 22:35 EDT restart):** Next.js row
+reported `pidfile=1484074 alive=alive onport=- n/a ❌` even though the
+service was healthy. Root cause: `pnpm dev` (the pidfile PID) execs
+`next dev` which spawns `next-server` — the actual :3000 listener is a
+child, not the pidfile PID. Additionally, some port probes (lsof, ss -p)
+returned empty even when a listener was present.
+
+**Fix:**
+1. `pid_on_port` now falls back through lsof → ss → fuser.
+2. New `is_descendant` walks `/proc/<pid>/status` PPid chain (bounded 20
+   hops). When the port PID is a descendant of the pidfile PID, render
+   `child` (green — still healthy).
+3. When port probes all return empty but the pidfile PID is alive AND
+   the port is listening, render `assumed-child` (yellow, but NOT
+   `any_bad`). Genuinely unknown ownership without listening remains red.
+
+**Stop condition:** unchanged. Slice G.1 still awaits one green live
+self-eval cycle.
+

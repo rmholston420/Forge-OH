@@ -27,14 +27,40 @@ port_listening() {
 }
 
 pid_on_port() {
-  # Print the first PID listening on $1, or empty.
+  # Print the first PID listening on $1, or empty. Tries multiple probes
+  # because each has failure modes (perm-limited lsof, ss without -p priv,
+  # containers with reused inodes).
+  local port="$1" pid=""
   if command -v lsof >/dev/null 2>&1; then
-    lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -n1
-  else
-    ss -ltnp "sport = :$1" 2>/dev/null \
-      | awk 'NR>1' \
-      | grep -oE 'pid=[0-9]+' | head -n1 | cut -d= -f2
+    pid="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -n1)"
   fi
+  if [ -z "$pid" ] && command -v ss >/dev/null 2>&1; then
+    pid="$(ss -ltnp "sport = :$port" 2>/dev/null \
+      | awk 'NR>1' \
+      | grep -oE 'pid=[0-9]+' | head -n1 | cut -d= -f2)"
+  fi
+  if [ -z "$pid" ] && command -v fuser >/dev/null 2>&1; then
+    pid="$(fuser "$port/tcp" 2>/dev/null | awk '{print $1}')"
+  fi
+  printf '%s' "$pid"
+}
+
+is_descendant() {
+  # Return 0 if $2 is a descendant of $1 (or equal). Walks /proc/<pid>/status
+  # PPid chain. Bounded at 20 hops to avoid pathological loops.
+  local ancestor="$1" child="$2" hop=0
+  [ -z "$ancestor" ] || [ -z "$child" ] && return 1
+  while [ "$hop" -lt 20 ]; do
+    if [ "$child" = "$ancestor" ]; then return 0; fi
+    local ppid
+    ppid="$(awk '/^PPid:/ {print $2}' "/proc/$child/status" 2>/dev/null)"
+    if [ -z "$ppid" ] || [ "$ppid" = "0" ] || [ "$ppid" = "1" ]; then
+      return 1
+    fi
+    child="$ppid"
+    hop=$((hop + 1))
+  done
+  return 1
 }
 
 any_bad=0
@@ -63,6 +89,16 @@ row() {
   port_pid="${port_pid:--}"
   if [ "$pf_pid" != "-" ] && [ "$port_pid" != "-" ] && [ "$pf_pid" = "$port_pid" ]; then
     match="$(green 'match')"
+  elif [ "$pf_pid" != "-" ] && [ "$port_pid" != "-" ] && is_descendant "$pf_pid" "$port_pid"; then
+    # Common case for wrapper processes (pnpm dev → next-server, uvicorn
+    # reloader → child worker). The pidfile PID owns the port via a child.
+    match="$(green 'child')"
+  elif [ "$pf_pid" != "-" ] && [ "$port_pid" = "-" ] && [ "$pf_alive" = "$(green 'alive')" ] && [ "$listening" = "$(green 'yes')" ]; then
+    # We can't discover which PID owns the port (lsof/ss/fuser all blank),
+    # but the pidfile process is alive and something IS listening on the
+    # port. Almost always: the listener is a child we can't see because of
+    # permissions/probe limitations. Treat as healthy but flag ambiguity.
+    match="$(yellow 'assumed-child')"
   elif [ "$pf_pid" = "-" ] || [ "$port_pid" = "-" ]; then
     match="$(yellow 'n/a')"
     # Listening on the port with NO pidfile AND NO discoverable PID means an
