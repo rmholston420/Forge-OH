@@ -126,9 +126,34 @@ VLLM_SUPERVISOR_PATH = os.getenv(
 # VLLM_READY_TIMEOUT (default 420s in ops/vllm_supervisor.sh) so we don't
 # kill supervisor mid-wait. 480s = 420 + 60s slop for docker start/stop.
 VLLM_SUPERVISOR_TIMEOUT = float(os.getenv("VLLM_SUPERVISOR_TIMEOUT", "480"))
+# In-request cap on how long route_by_role() will block waiting for the
+# supervisor. G.1 diagnosis (DEBUG_LOG 2026-08-04 00:15 EDT): a broken
+# coder container wedges every POST /api/runs for the full 480s window,
+# so every self-eval task hits ReadTimeout with an empty BFF log. Cap
+# short (default 8s) so the request path degrades to Ollama fallback
+# (coder) or a clean ModelUnavailableError (planner) instead of hanging.
+# The supervisor subprocess keeps running in the background after the
+# cap fires; a subsequent request will see it via _vllm_role_health().
+VLLM_SUPERVISOR_REQUEST_CAP = float(
+    os.getenv("VLLM_SUPERVISOR_REQUEST_CAP", "8")
+)
 # Set to "0" to disable the supervisor call entirely (unit tests, or when
 # operating both roles manually). Router then behaves as "probe-only".
 VLLM_SUPERVISOR_ENABLED = os.getenv("VLLM_SUPERVISOR_ENABLED", "1") == "1"
+
+# Per-role lock: coalesce concurrent _supervisor_ensure() calls. Without
+# this, 3 parallel self-eval tasks each spawn their own vllm_supervisor.sh
+# subprocess and race against the same GPU. Lazy-init on first use so the
+# module remains import-safe outside an event loop.
+_SUPERVISOR_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _supervisor_lock(role: str) -> asyncio.Lock:
+    lock = _SUPERVISOR_LOCKS.get(role)
+    if lock is None:
+        lock = asyncio.Lock()
+        _SUPERVISOR_LOCKS[role] = lock
+    return lock
 
 
 class ModelUnavailableError(RuntimeError):
@@ -223,35 +248,73 @@ async def _vllm_role_health(role_url: str) -> bool:
         return False
 
 
-async def _supervisor_ensure(role: str) -> bool:
+async def _supervisor_ensure(
+    role: str, request_cap: float | None = None
+) -> bool:
     """Ask the swap-on-demand supervisor to bring the requested role up.
 
     Returns True on supervisor exit 0. Disabled (returns False) when
     ``VLLM_SUPERVISOR_ENABLED=0`` or the script is missing — the caller
     then treats it the same as "supervisor could not recover", i.e.
     falls through to Ollama fallback (coder) or raises (planner).
+
+    ``request_cap`` bounds how long THIS call will await the subprocess.
+    Defaults to ``VLLM_SUPERVISOR_REQUEST_CAP`` (8s). When the cap fires,
+    the subprocess is NOT killed — it keeps running in the background so
+    a subsequent request can pick up the ready role via the health probe.
+    Callers running outside a request path (e.g. warm-up scripts) can
+    pass ``request_cap=VLLM_SUPERVISOR_TIMEOUT`` for the old behaviour.
+
+    Concurrent calls for the same role coalesce on a per-role
+    ``asyncio.Lock``. If another coroutine is already waiting on the
+    supervisor when we arrive, we await the lock (respecting the same
+    cap) and then return the result of a fast health probe.
     """
     if not VLLM_SUPERVISOR_ENABLED:
         return False
     if not os.path.exists(VLLM_SUPERVISOR_PATH):
         return False
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            VLLM_SUPERVISOR_PATH,
-            "ensure",
-            role,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+
+    cap = VLLM_SUPERVISOR_REQUEST_CAP if request_cap is None else request_cap
+    lock = _supervisor_lock(role)
+
+    # If another task holds the lock, wait up to `cap` for it and then
+    # trust the health probe rather than spawning our own subprocess.
+    if lock.locked():
         try:
-            await asyncio.wait_for(proc.wait(), timeout=VLLM_SUPERVISOR_TIMEOUT)
+            await asyncio.wait_for(lock.acquire(), timeout=cap)
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
+            return False
+        try:
+            role_url, _, _, _ = (
+                _coder_config() if role == "coder" else _planner_config()
+            )
+            return await _vllm_role_health(role_url)
+        finally:
+            lock.release()
+
+    async with lock:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                VLLM_SUPERVISOR_PATH,
+                "ensure",
+                role,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except Exception:
+            return False
+
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=cap)
+        except asyncio.TimeoutError:
+            # Cap fired. Leave the subprocess running in the background
+            # so a later request can find the role healthy. Do NOT kill
+            # or the coder will never come up under load.
+            return False
+        except Exception:
             return False
         return proc.returncode == 0
-    except Exception:
-        return False
 
 
 def _coder_config() -> tuple[str, str, int, str]:
