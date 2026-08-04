@@ -3321,3 +3321,41 @@ generation on both role ports.
   - F.19.5 native venv unification  deferred
 
 **Next:** F.20 (per Forge-OH-Action-Plan-v4.md) or user's call.
+
+## 2026-08-03 20:12 EDT — Workspace-registration unblock DONE
+
+**Stage:** F.19.4 post-close small unblock.
+
+**What happened:** Created BFF workspace 'forge-oh-smoke' via
+POST /api/workspaces. Discovered an existing 'forge-oh-repo'
+workspace already registered on the agent-server across
+sessions (the "no workspaces" state we thought Phase 2 had was
+a false negative from the broken parser).
+
+**Fixed parser bug in scripts/f19_smoke_agent.sh (59ec6fc):**
+BFF /api/workspaces returns `list[Workspace]` per its
+response_model, not `{workspaces:[...]}`. The smoke script's
+`d.get("workspaces")` was always None, hence the "default"
+fallback every run.
+
+**Re-smoke with fixed parser:**
+  - workspace_id=18c99443... (forge-oh-repo, first in list)
+  - P1 simple->coder  elapsed 292s (cold swap)
+  - P2 medium->coder  elapsed   1s (warm)
+  - P3 planning->planner elapsed 156s (swap)
+  - All 3: status=queued, backend=vllm, real routing.
+
+**Known cosmetic issue (not F.19 scope):** agent-server echoes
+`workspaceId` in the run response as the resolved working_dir
+path (`/home/rmholston/dev/forge-oh`), not the workspace UUID
+that runs.py sent. UI likely expects UUID. Deferred; log for
+later.
+
+**Files added/changed:**
+- ~/dev/forge-oh/workspaces/forge-oh-smoke/ (empty dir)
+- Two workspaces now live on agent-server: forge-oh-repo,
+  forge-oh-smoke
+
+**Definition of Done met.** Real workspace round-trips through
+BFF -> agent-server -> runs. Smoke no longer falls back to
+"default".
