@@ -98,6 +98,17 @@
 
 ---
 
+## Documentation
+
+- [Skills index](docs/skills-index.md) — custom Perplexity Computer skills that
+  assist work on this repo.
+- [ADRs](docs/adr/) — architecture decisions (most recent: ADR-011 on-demand
+  self-eval harness).
+- `BUILD_LOG.md`, `DEBUG_LOG.md` — append-only slice/diagnosis logs.
+- `SESSION_HANDOFF.md` — current in-flight session state.
+
+---
+
 ## Development
 
 ```bash

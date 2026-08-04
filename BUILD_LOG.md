@@ -3444,3 +3444,88 @@ when the map contains a match.
 - P3 role=planner, backend=vllm, baseUrl=:8511, workspaceId=UUID, elapsed=135s (planner swap)
 **Files touched:** none (verification only). Logs: BUILD_LOG.md, SESSION_HANDOFF.md.
 **Stop condition:** cosmetic workspaceId fix (commit abb06f7) confirmed green on all three prompts with real vLLM routing — MET.
+
+## 2026-08-03 21:41 EDT — Audit: frontend-backend parity + Kosmos plugin analysis + ADR-010
+
+**Stage:** Pre-G.1 audit (branch: `audit/frontend-backend-parity`).
+
+**What was audited:**
+- Frontend↔BFF parity across all `/api` routes: which endpoints have GUI
+  surfaces, which don't, which have GUI-only surfaces with no backend.
+- Kosmos plugin candidacy: which Forge-OH modules are ready to lift into
+  Kosmos as-is, which need reshaping, which are Forge-OH-only forever.
+- Missing top-level GUI: Skills, Agents subpanel, MCP tools inventory.
+
+**Deliverables:**
+- `docs/audits/2026-08-03-frontend-backend-parity.md` — endpoint parity matrix.
+- `docs/audits/2026-08-03-kosmos-plugin-analysis.md` — module-by-module
+  lift/reshape/never-lift verdicts.
+- `docs/audits/2026-08-03-gui-gaps.md` — three missing top-level nav items.
+- `docs/adr/010-frontend-parity.md` (Proposed) — proposes the Skills page,
+  MCP tools inventory, and Agents subpanel as follow-up slices.
+
+**Stop condition:** Audit branch pushed to origin
+(`audit/frontend-backend-parity` @ `9058ff6`). MET.
+
+## 2026-08-03 22:13 EDT — Slice G.1: on-demand self-eval harness (backend + GUI + tests)
+
+**Stage:** G.1 (post-F, on-demand self-improvement loop).
+**Branch:** `slice/g1-nightly-harness` (kept name for history; module is `selfeval`).
+**ADR:** ADR-011 (Proposed).
+
+**What was built:**
+- `openhands_tools_ext/selfeval/` module: `manifest.py` (TOML loader +
+  head/random/tag selector), `harness.py` (BFF orchestrator, serial per
+  ADR-009, `_score()` reduces verify+trajectory+BFF+timeout to one of
+  {passed, failed, timeout, error}), `proposer.py` (planner-LLM Markdown fix
+  proposer, never overwrites, ADR-009-compliant defaults), `cli.py`
+  (argparse + env overrides FORGE_SELFEVAL_*), `manifest.toml` (3 starter
+  tasks). Serial execution enforced.
+- `openhands_tools_ext/tests/selfeval/` — 39 tests (16 manifest, 10
+  proposer, 13 harness incl. 3 async). All green under pytest-asyncio.
+- `ops/systemd/forge-oh-selfeval.service` — user-scoped one-shot unit.
+  **No `.timer`** — launches are on-demand only.
+- `ops/systemd/README.md` — install + `systemctl --user start` usage
+  + per-cycle overrides via drop-in.
+- `bff/routers/selfeval.py` — `/cycles`, `/cycles/{filename}`,
+  `/proposals`, `/proposals/{filename}`, `POST /run` (shells out to
+  `systemctl --user start` with asyncio.Lock guard), `GET /status`
+  (in-flight state, reaper). Path-traversal guards on every filename
+  param via `_safe_child()`.
+- `bff/tests/test_selfeval_router.py` — 16 tests covering happy-path,
+  filename validation, traversal-block, 409/502/500 error paths.
+- `bff/main.py` — mounts the new router at `/api`.
+- `src/features/selfeval/` — `api.ts`, `hooks.ts` (React-Query with
+  status polling every 5s while running / 30s while idle), `SelfEvalPage.tsx`
+  (cycle history + Run-now button), `SelfEvalDatePage.tsx` (per-cycle
+  outcome table + collapsible proposals).
+- `src/app/(dashboard)/selfeval/page.tsx` + `[date]/page.tsx` — thin
+  App-Router shims.
+- `src/components/navigation/Sidebar.tsx` — new **Self-Eval** entry (⏰),
+  slot A: after Observability, before Settings.
+- `src/tests/e2e/selfeval.spec.ts` — Playwright smoke (sidebar link,
+  page loads, empty-state or history renders, no runtime error).
+- `docs/adr/011-selfeval-harness.md` — decision + alternatives + DoD.
+- `docs/skills-index.md` + `README.md` — 7 project skills + 2 user
+  skills documented.
+
+**Cadence decision:** Fixed nightly `.timer` **rejected**. Holston has no
+consistent sleep schedule. Only launch surfaces: Run-now button in GUI
+(primary) and `systemctl --user start forge-oh-selfeval.service` (fallback).
+
+**Ports touched:** none. Verify + trajectory + hook + model_router
+subsystems unchanged.
+
+**Kosmos analysis:** Kosmos has `plugins/tektos/eval/` but no on-demand
+launcher and no scheduled runner. Pattern borrowed (one manifest, verdict
+per task, aggregated summary) but no code vendored → no PORTING_LEDGER
+entry required.
+
+**Test summary:** 55/55 passing (39 module + 16 router). Async tests
+green with pytest-asyncio installed.
+
+**Stop condition:** Slice G.1 complete when branch pushed to origin + one
+live cycle executed on Colossus. First half MET this session; live cycle
+requires Colossus (BFF + agent-server + vLLM up).
+
+**Files touched:** see git diff for full list — 20 new files, 3 modified.
