@@ -3732,3 +3732,58 @@ paths are documented in SESSION_HANDOFF).
   minutes.
 - Doctor script: add py-spy dump for BFF when a stalled cycle is
   detected.
+
+## 2026-08-04 02:03 EDT — slice/vllm-supervisor-gpu-discipline landed
+
+**Stage / component:** post-G.1 hardening → vLLM supervisor (ADR-009 §3a
+operator), Forge-OH-Action-Plan-v4 does not yet name a stage for this
+work — treat as F.19-post hotfix.
+
+**What was built:**
+- `ops/vllm_supervisor.sh`: added GPU-tenancy discipline. New helpers
+  `_gpu_free_mib`, `_stop_ollama`, `_free_gpu_for_vllm`. `cmd_up` (both
+  roles) now stops Ollama and confirms `nvidia-smi memory.free` ≥
+  `VLLM_MIN_FREE_MIB` (default 28000 MiB) before invoking the launcher.
+  Timeout `VLLM_GPU_FREE_TIMEOUT` (default 30 s) short-circuits with a
+  process dump so the failure mode is diagnosable instead of an opaque
+  `docker` exit(1). New CLI subcommand `check` runs the discipline in
+  dry-run mode. Library-mode guard `(return 0 2>/dev/null) && return 0`
+  before dispatch so tests can source the file without triggering the
+  usage branch.
+- `ops/test_supervisor.sh`: offline test suite (14 cases,
+  all pass) using PATH-injected stubs for `nvidia-smi`, `systemctl`,
+  `sudo`, `pkill`, `docker`, `fuser`, `ss`, `curl`. Exercises helpers
+  in isolation without touching real GPU or root.
+- `docs/adr/009-local-llm-selection.md`: appended Follow-up 5
+  documenting the supervisor discipline landing.
+
+**Files touched:**
+- `ops/vllm_supervisor.sh` (~90 lines added, dispatch preserved)
+- `ops/test_supervisor.sh` (NEW, ~352 lines)
+- `docs/adr/009-local-llm-selection.md` (Follow-up 5 appended)
+- `BUILD_LOG.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`
+
+**Ports/adapters:** none. `ops/vllm_launch_coder.sh` and
+`ops/vllm_launch_planner.sh` unchanged — launchers stay
+policy-free.
+
+**ADR:** ADR-009 amended (Follow-up 5). No new ADR — this is a
+direct implementation of ADR-009 §3a supervisor scope.
+
+**Bench / verification:**
+- Manual: c04 coder launched fine on Colossus with clean GPU
+  (`nvidia-smi memory.free = 31480 MiB` pre-launch). `/v1/models`
+  returned `qwen3.6-35b-nvfp4`. Inference smoke returned 32 tokens
+  in 21.3 s (first cold request; matches ADR-009 §4 cold-load
+  expectation). VRAM stable at 28349 MiB used / 3799 MiB free —
+  exactly the `--gpu-memory-utilization 0.9` target.
+- Offline tests: 14/14 pass on the local audit checkout.
+
+**Stop condition:** merged to main and pushed. Follow-up work
+queued but not required to close this slice:
+- Update Forge-OH-Action-Plan-v4 with an entry for post-G.1
+  hardening.
+- Consider extending the discipline to a systemd `ExecStartPre`
+  for the vLLM Docker container so kernel-level auto-restart also
+  benefits (currently only manual/BFF paths do).
+
