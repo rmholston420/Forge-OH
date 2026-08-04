@@ -3444,3 +3444,28 @@ when the map contains a match.
 - P3 role=planner, backend=vllm, baseUrl=:8511, workspaceId=UUID, elapsed=135s (planner swap)
 **Files touched:** none (verification only). Logs: BUILD_LOG.md, SESSION_HANDOFF.md.
 **Stop condition:** cosmetic workspaceId fix (commit abb06f7) confirmed green on all three prompts with real vLLM routing — MET.
+
+## 2026-08-03 21:41 EDT — Frontend-backend parity audit + Kosmos plugin analysis
+
+**Stage:** Off-slice — audit branch `audit/frontend-backend-parity`, no code changes.
+**Task:** User asked whether custom skills / Agents / Tools & MCP were missing from the GUI, requested a full backend-vs-frontend parity check, and asked whether Forge-OH should become a Kosmos/Tektos plugin now.
+**Method:**
+- Cloned `rmholston420/Forge-OH` @ `08fa3c4` and `rmholston420/kosmos` @ `c455165` to `/home/user/workspace/audit/`.
+- Enumerated 16 BFF routers (~95 endpoints) against 16 Next.js App Router pages against the Sidebar nav.
+- Inspected Kosmos plugin architecture by reading source only (`ports/`, `plugins/`, `kernel/`, `ui/`) — treated docs/logs as un-trusted for status claims after user correction.
+**Findings (headline):**
+- Sidebar exposes 8 nav items. Three (Agents, Tools & MCP, Metrics) are `<EmptyState/>` stubs on top of fully-implemented BFF routers.
+- Six BFF resources have no sidebar entry (notifications, repograph, trajectories, bash, git, secrets).
+- `bff/routers/agents.py` is a documented dead stub — not wired in `main.py`.
+- `src/app/(dashboard)/settings/secrets/page.tsx` is a duplicate of `/secrets`.
+- No first-class "custom skills" concept in Forge-OH — OpenHands `skills[]` is a Plugin-marketplace field only; slices D/E/F ship as in-repo modules per improvement-slate.
+- Kosmos plugins landed as code: Praxis, Phrouros, Tektos, Zetesis. Gnosis is substantially built but as a kernel-side surrogate (`/api/gnosis/*` + DozerDB corpora + Next.js tab), not yet as `plugins/gnosis/`. Oikos + Koinonia absent.
+- **Recommendation:** NOT NOW on plugin conversion — Tektos already occupies the coding-plugin slot, and Kosmos plugins Forge-OH would benefit from (Gnosis-as-plugin, Koinonia) do not exist as code.
+**Files created (new, all under `docs/`):**
+- `docs/frontend-backend-gap.md` — parity audit + gap categorization (A/B/C/D)
+- `docs/decisions/2026-08-03-frontend-parity-plan.md` — 12 proposed slices F.20–F.31 with sequencing
+- `docs/adr/010-frontend-parity-scope.md` — ADR-010 (Proposed) scoping which stubs get real UIs
+- `docs/kosmos-plugin-analysis.md` — code-only assessment of Kosmos readiness + explicit NOT-NOW recommendation
+**Ports/adapters affected:** none.
+**ADRs updated:** ADR-010 authored (Proposed).
+**Stop condition:** four audit deliverables committed to `audit/frontend-backend-parity` branch — MET.
