@@ -3359,3 +3359,57 @@ later.
 **Definition of Done met.** Real workspace round-trips through
 BFF -> agent-server -> runs. Smoke no longer falls back to
 "default".
+
+## 2026-08-03 20:15 EDT — F.19.5 CLOSED (deferred indefinitely)
+
+**Stage:** F.19.5 native-venv unification.
+
+**Definition of Done:** revised to "documented decision + ADR
+update" rather than pursue the migration.
+
+**Rationale for deferral (measurement-driven):**
+
+F.19.4 Phase 2 gave first real cold-start numbers on Colossus
+with vLLM 0.26.0 in Docker on RTX 5090 (SM_120):
+  - Coder cold swap:  245-292s
+  - Planner cold swap: 141-156s
+  - Warm reuse:       <2s
+
+The original F.19.5 hypothesis was "native venv is ~2x faster
+than Docker cold-start". False. Container startup contributes
+<5s of the total; the remaining ~240s is CUDAgraph compile for
+NVFP4/AWQ quantizations on Blackwell. Native venv would do the
+same CUDAgraph work.
+
+Costs of pursuing anyway:
+  - vLLM 0.10 -> 0.26 upgrade risks breaking F.18's :8500
+    legacy `qwen3-coder-30b` GGUF instance that lives in
+    ~/venv/vllm-new (breaking API changes possible across
+    that many minor versions).
+  - Launcher scripts revert from vetted vllm/vllm-openai
+    Docker image to a bespoke venv install: extra maintenance.
+  - Zero observed Docker downside in F.19.1b through F.19.4:
+    no --ipc=host issues, no VRAM allocator quirks, clean
+    docker rm -f teardown, supervisor swap works cleanly.
+
+**Decision:** Keep Docker permanently for F.19 (coder :8501,
+planner :8511). F.18 :8500 legacy instance stays on native
+venv 0.10.2 (its known-good state). Two codepaths coexist
+without interference (different ports, different processes,
+different vLLM versions).
+
+**Files changed:**
+  - `docs/adr/009-local-llm-selection.md` §5 + §Follow-ups 4
+
+**Revisit trigger:** a concrete Docker limitation is observed
+in practice (nothing seen through F.19.4).
+
+**F.19 status now:** ALL SLICES CLOSED.
+  - F.19.1a supervisor           DONE
+  - F.19.1b Docker smoke         DONE
+  - F.19.2a role API             DONE
+  - F.19.2b runs.py migration    DONE
+  - F.19.2c settings probes      DONE
+  - F.19.3 tests + legacy purge  DONE
+  - F.19.4 live P1/P2/P3 smoke   DONE
+  - F.19.5 native venv           CLOSED (deferred indefinitely)

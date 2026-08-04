@@ -177,10 +177,13 @@ Captured for future launchers, and appended to `DEBUG_LOG.md` under
     cell c08 confirmed). Passing `--quantization awq` breaks it.
   - Rule: check `config.json.quantization_config.format` and set the
     flag only when the format is NOT `compressed-tensors`.
-- **F.19 supervisor uses the Docker image, not the native venv.** The
-  Colossus native venv (`~/venv/vllm-new`, vLLM 0.10.2) predates
-  `qwen3_5_moe` support and cannot run either role model. Native-venv
-  upgrade is tracked in Follow-ups §2 (F.19.5).
+- **F.19 supervisor uses the Docker image permanently, not the native
+  venv.** The Colossus native venv (`~/venv/vllm-new`, vLLM 0.10.2)
+  predates `qwen3_5_moe` support and cannot run either role model.
+  Migration was tracked as Follow-up 4 (F.19.5) but closed as
+  deferred indefinitely after F.19.4 measurements showed Docker
+  cold-start is CUDAgraph-compile-bound, not container-bound; see
+  Follow-ups §4.
 - Usable Blackwell VRAM budget for a single-tenant server is ~30 GiB
   (90% util → 28.25 GiB for weights+cache+activations).
 
@@ -226,15 +229,41 @@ Captured for future launchers, and appended to `DEBUG_LOG.md` under
    `colossus-ops` skill lists :8000). Decision: BFF stays on **8081**
    (already wired end-to-end, F.18c verified). Update
    `colossus-ops` skill in a separate pass.
-4. **F.19.5 native-venv unification** — upgrade
-   `~/venv/vllm-new` to vLLM ≥ 0.26.0 (or replace with a fresh venv)
-   and switch the launcher scripts back to native invocation. Native
-   venv startup is ~2x faster than Docker cold-start and avoids the
-   `--ipc=host` VRAM allocator quirks. Blocking: verify the existing
-   F.18 `qwen3-coder-30b` GGUF instance on :8500 still runs on the
-   upgraded vLLM (breaking API changes possible between 0.10 → 0.26).
-   Until F.19.5, F.19 uses the Docker image; native venv stays on
-   0.10.2 for the F.18 fallback instance.
+4. **F.19.5 native-venv unification — CLOSED as deferred
+   indefinitely (2026-08-03, post-F.19.4).**
+
+   Original hypothesis: native `vllm serve` would be ~2x faster than
+   Docker cold-start and would avoid `--ipc=host` VRAM allocator
+   quirks.
+
+   Measurement (F.19.4 Phase 2 on Colossus with vLLM 0.26.0 in
+   Docker, RTX 5090 SM_120):
+     - Coder cold swap:  245-292s
+     - Planner cold swap: 141-156s
+     - Warm reuse: <2s
+
+   Container startup contributes <5s of the cold-swap time; the
+   dominant cost (>95%) is CUDAgraph compile for the AWQ/NVFP4
+   quantizations on Blackwell. Native venv would produce the same
+   CUDAgraph work and the same 240s cold-swap. The promised ~2x
+   speedup is not real — it would be ~2%.
+
+   Costs of pursuing F.19.5:
+     - vLLM 0.10 → 0.26 upgrade risks breaking the F.18 :8500
+       legacy `qwen3-coder-30b` GGUF instance (breaking API
+       changes documented across that range).
+     - Launcher scripts revert from vetted `vllm/vllm-openai:latest`
+       image to a bespoke venv install; extra maintenance surface.
+     - Zero observed downside to Docker in F.19.1b through F.19.4:
+       no --ipc=host issues, no VRAM allocator quirks, clean stop
+       via `docker rm -f`.
+
+   Decision: keep Docker permanently. F.18 :8500 GGUF instance
+   stays on native venv 0.10.2 (its known-good state). The two
+   codepaths coexist without interference (different ports,
+   different processes, different vLLM versions).
+
+   Revisit only if a concrete Docker limitation is observed.
 
 ---
 
