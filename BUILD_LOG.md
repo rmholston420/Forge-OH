@@ -3787,3 +3787,54 @@ queued but not required to close this slice:
   for the vLLM Docker container so kernel-level auto-restart also
   benefits (currently only manual/BFF paths do).
 
+
+## 2026-08-04 02:24 EDT — slice/vllm-primary-selfeval-verification (code changes)
+
+**Stage / component:** post-G.1 hotfix sequence, no formal stage in
+Forge-OH-Action-Plan-v4.
+
+**What was built:**
+- `bff/services/model_router.py`: `LLM_CODER_OLLAMA_FALLBACK` code
+  default changed from `qwen3-coder:30b` → `qwen3-coder:32k`. This
+  corrects a bug the previous SESSION_HANDOFF (and its pre-compaction
+  summary) incorrectly claimed had already landed in G.1. Git history
+  confirms G.1 (`d36e72a`) did not touch line 107 of `model_router.py`;
+  the green G.1 cycle passed only because the operator had the env
+  override exported.
+
+  Rationale (documented in the code comment): the stock Ollama
+  Modelfile for `qwen3-coder:30b` pins `num_ctx=4096`, which is too
+  small for the self-eval smoke prompts (they truncate). The
+  `qwen3-coder:32k` custom Modelfile uses the same 30B-A3B GGUF
+  weights but `num_ctx=32768` and `num_predict=4096`.
+
+- `bff/tests/test_model_router.py`: two new regression tests
+  guarding the default and the env-override precedence. Full suite
+  now 18/18 passing.
+
+- `SESSION_HANDOFF.md` overwritten with correction section
+  documenting the false claim from the previous handoff.
+
+**Files touched:**
+- `bff/services/model_router.py` (default value + comment)
+- `bff/tests/test_model_router.py` (2 new tests appended)
+- `BUILD_LOG.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`
+
+**Ports/adapters:** none. Code-default change only.
+
+**ADR:** no new ADR. This is a direct implementation of ADR-009 §2
+guidance (fast Coder path needs 32k context on Ollama fallback).
+
+**Stop condition for the slice:**
+- Merged to main.
+- Colossus verifies full smoke cycle passes on vLLM-primary routing
+  (`smoke-add-two`, `smoke-reverse-string`, `smoke-json-roundtrip`)
+  with `VLLM_SUPERVISOR_ENABLED=1` and no env override.
+- Every trajectory shows model tag `qwen3.6-35b-nvfp4` (c04), not
+  `qwen3-coder:32k`.
+- Ollama systemd stays stopped throughout (supervisor discipline).
+
+**Follow-ups queued (not this slice):**
+- ADR-0001 amendment marking ADR-009 as the superseder for the
+  F.19+ router (doc-only slice).
+- Self-eval frontend wire-up + Playwright verification.
