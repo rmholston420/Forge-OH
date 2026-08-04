@@ -460,3 +460,11 @@ where the caller already sent the UUID.
 
 **Retest:** re-run F.19.4 Phase 2 smoke; expect
 `data.workspaceId == 18c99443b23c452899010095abd5f29b`.
+
+## 2026-08-03 20:55 EDT — BFF shutdown mid-smoke (P3 curl rc=143)
+
+**Symptom:** During workspaceId reverify smoke, P3 curl exited with rc=143 (SIGTERM) at 39s, response body was empty; BFF log showed `INFO: Shutting down` immediately before curl died.
+**Affected:** BFF (uvicorn) started with `--reload --reload-dir bff`.
+**Root cause:** uvicorn's `--reload` watcher tripped a reload during the long-running P3 request (planner swap ~135s). The reloader began shutdown; the in-flight request was cancelled, curl saw its socket close and returned 143.
+**Fix:** Restart BFF WITHOUT `--reload` for smoke/production runs. `--reload` is dev-only and can kill long-running vLLM-supervisor requests. Command: `nohup .oh-venv/bin/python .oh-venv/bin/uvicorn bff.main:app_with_sio --host 127.0.0.1 --port 8081 > ~/.forge-oh/bff.log 2>&1 &`
+**Files:** none (operational fix, not code).

@@ -3433,3 +3433,14 @@ when the map contains a match.
 **Verify next session on Colossus:**
   BFF restart, then re-run scripts/f19_smoke_agent.sh; expect
   data.workspaceId == 18c99443b23c452899010095abd5f29b.
+
+## 2026-08-03 20:55 EDT — workspaceId cosmetic fix reverified after container restart
+
+**Stage:** Post-F.19.5, cosmetic follow-up (commit abb06f7).
+**What happened:** Session resumed with both vLLM containers down. Restarted BFF without `--reload` (previous session's reloader shut BFF mid-P3). Brought `forge-vllm-coder` up (~3.5 min cold: weights 13s, torch.compile 28s, CUDAgraph capture ~2 min). Planner container was auto-evicted by supervisor when coder swap started (expected per ADR-009 topology).
+**Smoke result (all green):**
+- P1 role=coder, backend=vllm, baseUrl=:8501, workspaceId=18c99443… UUID, elapsed=241s (cold coder swap)
+- P2 role=coder, backend=vllm, baseUrl=:8501, workspaceId=UUID, elapsed=0s (warm)
+- P3 role=planner, backend=vllm, baseUrl=:8511, workspaceId=UUID, elapsed=135s (planner swap)
+**Files touched:** none (verification only). Logs: BUILD_LOG.md, SESSION_HANDOFF.md.
+**Stop condition:** cosmetic workspaceId fix (commit abb06f7) confirmed green on all three prompts with real vLLM routing — MET.
