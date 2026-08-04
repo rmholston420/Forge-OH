@@ -3945,3 +3945,108 @@ the behavior).
 short scope doc (current `/selfeval` + `/selfeval/[date]` pages +
 fresh Playwright screenshot), get user approval, then execute the
 frontend polish + Playwright visual + workflow verification.
+
+## 2026-08-04 03:14 EDT — Slice `selfeval-frontend-polish` complete
+
+**Stage / plugin / port:** Forge-OH-Action-Plan-v4 Step 3 — Self-Eval GUI
+polish (queued sequence step 3 after vLLM-primary verification + ADR-0001
+amendment).
+
+**What was built or changed:**
+- New `src/features/selfeval/SelfEval.module.css` (354 lines): all
+  page-level chrome for `/selfeval` and `/selfeval/[date]` via CSS Module
+  with theme tokens. Zero hard-coded colors. Respects
+  `prefers-reduced-motion`. 720px responsive breakpoint. Classes:
+  `.page`, `.datePage`, `.header`, `.liveRail{,Dot,Label,Meta}`,
+  `.finishedNotice{,Failed,Dismiss}`, `.dataTable`, `.numeric`, `.mono`,
+  `.taskId`, `.reasonCell`, `.rowLink`, `.kpiGrid`, `.kpiCard`,
+  `.kpiLabel`, `.kpiValue`, `.trajectoryStatus`, `.trajectoryDot{,Finished,TimedOut,Errored}`,
+  `.proposalList`, `.proposalCard{,Summary}`, `.proposalBody`,
+  `.emptyState`, `.errorBanner`, `.backLink`.
+- Refactored `src/features/selfeval/SelfEvalPage.tsx`:
+  - All raw-string classNames replaced with `styles.*` refs (raw
+    strings never resolve to hashed CSS-Module classes).
+  - Uses core `Button` component for Run-now (variant primary, loading
+    flag, aria-label preserved).
+  - New `LiveCycleRail` sub-component: pulsing dot + elapsed counter
+    (client-side `setInterval(1000)` from `status.started_at`),
+    shown only while `status.running === true`. No BFF change.
+  - New `FinishedNotice` sub-component: 10s one-shot after a
+    running→false transition, with pass/fail counts. Dismissible via
+    `✕` button. `useRef` tracks prev running state.
+  - New "Started at" (HH:mm with ISO title attr) and "Duration"
+    (Xm Ys / Xs) columns in cycle history table. Numeric columns
+    right-aligned.
+- Refactored `src/features/selfeval/SelfEvalDatePage.tsx`:
+  - `styles.*` migration.
+  - KPI grid with 4 `.kpiCard` (Passed / Failed / Timed out / Errored),
+    24 px/600 weight numeric values.
+  - Verdict cell now uses core `Badge` component (variant map:
+    passed→success, failed→error, timeout→warning, error→error).
+  - Trajectory-status cell shows a colored dot + label
+    (agent-finished→green, timed_out→yellow, errored→red).
+  - Task IDs rendered as `<code>` for monospace.
+  - Proposals list uses real card chrome (`<details>` + `.proposalCard{,Summary}` + `.proposalBody`).
+  - Empty proposals copy: "No proposals recorded for {date}."
+- Extended `src/tests/e2e/selfeval.spec.ts` from 3 empty-state tests to
+  8 tests across three tiers:
+  - Tier 1 (always runs): sidebar link, /selfeval heading + Run-now,
+    empty-hint-or-history-table.
+  - Tier 2 (auto-skips on zero cycles): populated history row +
+    Open-link navigation, KPI labels + task outcomes table, passed-badge
+    presence, invalid-date shows error banner (not a crash).
+  - Tier 3 (default-off; opt-in via `PLAYWRIGHT_SKIP_SELFEVAL_LAUNCH=0`):
+    Run-now actually launches a real cycle end-to-end.
+
+**Files touched:**
+- `src/features/selfeval/SelfEval.module.css` (new, 354 LOC)
+- `src/features/selfeval/SelfEvalPage.tsx` (rewritten, 223 LOC)
+- `src/features/selfeval/SelfEvalDatePage.tsx` (rewritten, 187 LOC)
+- `src/features/selfeval/api.ts` (TaskOutcome + fetch generics; see fix notes)
+- `src/app/(dashboard)/selfeval/[date]/page.tsx` (Next.js 16 Promise params)
+- `src/tests/e2e/selfeval.spec.ts` (new, 181 LOC — force-added past `tests/` gitignore)
+- `docs/selfeval/frontend-polish-scope.md` (approved scope, 159 LOC)
+- `screenshots/selfeval-after-list.png` (after-polish list page)
+- `screenshots/selfeval-after-detail.png` (after-polish detail page)
+- `DEBUG_LOG.md` (4 new entries; see below)
+
+**Ports / adapters affected:** none. BFF `/api/selfeval/*` endpoints
+unchanged. No new routes.
+
+**ADRs / ledgers updated:** none. Slice was pure frontend polish; no
+architectural decisions required.
+
+**Fixes discovered mid-slice (see DEBUG_LOG):**
+1. `.then(_json)` collapsed the generic to `unknown`, breaking prod
+   build — wrapped every fetch site with `.then((r) => _json<T>(r))`.
+2. `.gitignore` line 57 (`tests/`) silently swallowed new
+   `src/tests/e2e/*.spec.ts` files — must `git add -f` new specs.
+3. Next.js 16 dynamic route `params` is now `Promise<{...}>` — the
+   `/selfeval/[date]/page.tsx` wrapper rendered `Cycle: ` (empty date)
+   until unwrapped via `React.use(params)` (matching
+   `runs/[runId]/page.tsx`).
+4. `TaskOutcome` TS type declared `final_status` / `reason`; the BFF
+   harness dataclass emits `trajectory_status` / `failure_detail`. TS
+   type never caught it because no populated cycle detail had ever been
+   rendered until this slice.
+
+**Tests:**
+- `src/tests/e2e/selfeval.spec.ts` on Colossus against real BFF at
+  :8081 + real Next prod at :3100: **7 passed, 1 skipped** (Run-now
+  gated off by default).
+
+**Screenshots (populated cycle 2026-08-04, 3/3 passed):**
+- `screenshots/selfeval-after-list.png` — list page with cycle-history
+  table, styled Run-now button, sidebar highlight.
+- `screenshots/selfeval-after-detail.png` — detail page with h1
+  "Cycle: 2026-08-04", KPI cards, task outcomes table with badges,
+  proposal cards.
+
+**Definition of Done:** all files landed on `slice/selfeval-frontend-polish`,
+prod build clean, Playwright green, after-screenshots captured, BUILD_LOG +
+DEBUG_LOG + SESSION_HANDOFF updated, ready for PR + merge.
+
+**Stop condition:** slice complete, awaiting PR merge.
+
+**Next slice queued:** queued sequence complete. No forward slice pending
+until the operator picks the next one.
