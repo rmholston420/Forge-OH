@@ -175,6 +175,7 @@ async def test_run_selfeval_all_pass(tmp_path: Path, monkeypatch: pytest.MonkeyP
         selection_strategy="head",
         task_timeout_sec=10,
         trajectory_store=store,
+        preset_id="ap-test",
     )
     assert isinstance(summary, SelfEvalSummary)
     assert summary.tasks_selected == 1
@@ -207,6 +208,7 @@ async def test_run_selfeval_bff_error(tmp_path: Path, monkeypatch: pytest.Monkey
         selection_strategy="head",
         task_timeout_sec=5,
         trajectory_store=store,
+        preset_id="ap-test",
     )
     assert summary.tasks_errored == 1
     assert summary.outcomes[0].verdict == "error"
@@ -253,6 +255,7 @@ async def test_run_selfeval_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         selection_strategy="head",
         task_timeout_sec=1,  # 1-second wall
         trajectory_store=store,
+        preset_id="ap-test",
     )
     assert summary.tasks_timed_out == 1
     assert summary.outcomes[0].verdict == "timeout"

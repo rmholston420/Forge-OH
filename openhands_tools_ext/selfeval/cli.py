@@ -117,6 +117,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip the LLM proposer stage (harness runs; failures logged but no fix drafts).",
     )
     p.add_argument(
+        "--preset-id",
+        default=os.environ.get("FORGE_SELFEVAL_PRESET_ID"),
+        help=(
+            "Agent preset id to attach to each POST /api/runs. "
+            "Defaults to whichever preset the BFF flags as isDefault "
+            "(env: FORGE_SELFEVAL_PRESET_ID)."
+        ),
+    )
+    p.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -166,6 +175,7 @@ async def _amain(args: argparse.Namespace) -> int:
         manifest_path=str(args.manifest),
         selection_strategy=args.sample,
         task_timeout_sec=args.task_timeout_sec,
+        preset_id=args.preset_id,
     )
 
     now = datetime.now(timezone.utc)

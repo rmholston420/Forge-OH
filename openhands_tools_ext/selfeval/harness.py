@@ -96,12 +96,33 @@ class SelfEvalSummary:
         return d
 
 
+async def _resolve_default_preset_id(client: httpx.AsyncClient) -> str:
+    """Look up the default ``agentPresetId`` from ``GET /api/agent-presets``.
+
+    Called once per cycle and cached by the caller. Returns the first preset
+    whose ``isDefault`` is truthy; falls back to the first preset if none is
+    flagged; raises ``RuntimeError`` if the list is empty or the endpoint is
+    unreachable (the caller converts this into a per-task error verdict).
+    """
+    resp = await client.get("/api/agent-presets", timeout=15.0)
+    resp.raise_for_status()
+    payload = resp.json() or {}
+    presets = payload.get("data") or payload.get("presets") or []
+    if not presets:
+        raise RuntimeError("no agent presets returned by BFF")
+    for p in presets:
+        if p.get("isDefault"):
+            return p["id"]
+    return presets[0]["id"]
+
+
 async def _create_run(
-    client: httpx.AsyncClient, task: SelfEvalTask
+    client: httpx.AsyncClient, task: SelfEvalTask, preset_id: str
 ) -> tuple[str, str]:
     """POST /api/runs. Returns ``(run_id, error)``. ``error`` is empty on success."""
     body = {
         "title": f"[selfeval] {task.id}",
+        "agentPresetId": preset_id,
         "workspaceId": task.workspace_id,
         "taskPrompt": task.prompt,
         "taskComplexity": task.task_complexity,
@@ -217,9 +238,10 @@ async def _run_one(
     task: SelfEvalTask,
     *,
     timeout_sec: int,
+    preset_id: str,
 ) -> TaskOutcome:
     started = time.monotonic()
-    run_id, err = await _create_run(client, task)
+    run_id, err = await _create_run(client, task, preset_id)
     if err:
         return TaskOutcome(
             task_id=task.id,
@@ -254,6 +276,7 @@ async def run_selfeval(
     selection_strategy: str,
     task_timeout_sec: int = SELFEVAL_TASK_TIMEOUT_SEC,
     trajectory_store: TrajectoryStore | None = None,
+    preset_id: str | None = None,
 ) -> SelfEvalSummary:
     """Run every task in ``tasks`` sequentially and return the aggregate summary.
 
@@ -265,9 +288,43 @@ async def run_selfeval(
     store = trajectory_store or TrajectoryStore(default_db_path())
     outcomes: list[TaskOutcome] = []
     async with httpx.AsyncClient(base_url=bff_base_url, timeout=30.0) as client:
+        # Resolve the agent preset once per cycle. Failure to resolve turns
+        # into a per-task error verdict on the first task and blocks the rest
+        # of the cycle from making pointless POSTs.
+        resolved_preset: str | None = preset_id
+        resolve_err: str | None = None
+        if not resolved_preset:
+            try:
+                resolved_preset = await _resolve_default_preset_id(client)
+                log.info("selfeval: resolved default agentPresetId=%s", resolved_preset)
+            except Exception as exc:  # noqa: BLE001 - convert to error verdict
+                resolve_err = f"could not resolve default agent preset: {exc}"
+                log.error("selfeval: %s", resolve_err)
         for task in tasks:
             log.info("selfeval: starting task %s (role=%s)", task.id, task.role)
-            outcome = await _run_one(client, store, task, timeout_sec=task_timeout_sec)
+            if resolve_err or not resolved_preset:
+                outcome = TaskOutcome(
+                    task_id=task.id,
+                    run_id="",
+                    verdict="error",
+                    duration_sec=0.0,
+                    trajectory_status=None,
+                    verify_verdict=None,
+                    bff_status=None,
+                    failure_detail=resolve_err or "no preset",
+                )
+                outcomes.append(outcome)
+                log.info(
+                    "selfeval: task %s \u2192 %s (%.1fs) %s",
+                    task.id,
+                    outcome.verdict,
+                    outcome.duration_sec,
+                    outcome.failure_detail,
+                )
+                continue
+            outcome = await _run_one(
+                client, store, task, timeout_sec=task_timeout_sec, preset_id=resolved_preset
+            )
             log.info(
                 "selfeval: task %s → %s (%.1fs) %s",
                 task.id,

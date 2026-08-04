@@ -3529,3 +3529,40 @@ live cycle executed on Colossus. First half MET this session; live cycle
 requires Colossus (BFF + agent-server + vLLM up).
 
 **Files touched:** see git diff for full list — 20 new files, 3 modified.
+
+---
+
+## 2026-08-03 22:35 EDT — Slice G.1 live-cycle bug: agentPresetId + forge-restart/status scripts
+
+**Stage:** G.1 (post-live-cycle fix).
+**Files touched:**
+- `openhands_tools_ext/selfeval/harness.py` (+ `_resolve_default_preset_id`, thread preset_id)
+- `openhands_tools_ext/selfeval/cli.py` (`--preset-id` / `FORGE_SELFEVAL_PRESET_ID`)
+- `openhands_tools_ext/tests/selfeval/test_harness.py` (pass `preset_id="ap-test"`)
+- `scripts/forge-restart.sh` (NEW)
+- `scripts/forge-status.sh` (NEW)
+
+**Ports/adapters:** none new. `POST /api/runs` payload now includes required
+`agentPresetId`, resolved once per cycle from `GET /api/agent-presets`
+(preferring `isDefault=true`, falling back to first). Overridable via
+`--preset-id` flag or `FORGE_SELFEVAL_PRESET_ID` env var.
+
+**Bug fixed:** live cycle on Colossus (previous session) returned 422 on
+every task because harness omitted `agentPresetId` from the create-run
+body — required per `bff/routers/runs.py:73 CreateRunRequest`.
+
+**Restart scripts:** `forge-restart.sh` (full bounce, `--bff-only`, `--status`)
+and `forge-status.sh` (one-glance port + pidfile + PID-match view for
+agent-server/BFF/Next.js). vLLM containers intentionally out of scope.
+Wraps the existing `forge-up.sh` / `forge-down.sh` — does NOT introduce a
+parallel systemd control path.
+
+**Test summary:** 55/55 still passing after harness rewrite. Both scripts
+`bash -n` clean; `--help` and empty-sandbox `status` smoke-tested.
+
+**ADR:** ADR-011 still **Proposed**. Amend to Accepted only after the next
+live cycle on Colossus is green.
+
+**Stop condition:** Slice G.1 complete when a live cycle on Colossus runs
+green (at least one task reaches `passed` verdict). Not yet met.
+
