@@ -1,0 +1,61 @@
+[Unit]
+Description=Forge-OH on-demand self-eval harness
+Documentation=file:%h/dev/forge-oh/openhands_tools_ext/selfeval/__init__.py
+Documentation=file:%h/dev/forge-oh/docs/adr/011-selfeval-harness.md
+# Do not start if the BFF isn't up; the harness talks to it over 127.0.0.1:8081.
+# Both units are user-scoped (`systemctl --user`).
+Wants=forge-oh-bff.service
+After=forge-oh-bff.service
+
+[Service]
+# One-shot: the CLI runs the cycle, writes summary + proposals, exits.
+# There is no `.timer` \u2014 launches are on-demand (BFF Run-now button or
+# `systemctl --user start forge-oh-selfeval.service` from a terminal).
+# See ADR-011 for rationale.
+Type=oneshot
+
+# Colossus install root (canonical, per forge-oh-slice-driver skill).
+WorkingDirectory=%h/dev/forge-oh
+
+# Same interpreter that runs the BFF, so ``openhands_tools_ext`` is importable.
+# ``.oh-venv/bin/python`` is where the extension is installed per
+# bff/services/hook_config.py.
+ExecStart=%h/dev/forge-oh/.oh-venv/bin/python -m openhands_tools_ext.selfeval.cli \
+    --manifest openhands_tools_ext/selfeval/manifest.toml \
+    --bff-url http://127.0.0.1:8081 \
+    --summary-dir docs/selfeval \
+    --proposal-dir docs/proposals
+
+# Environment overrides. Any FORGE_SELFEVAL_* var set here wins over CLI defaults
+# but not over explicit --flag args above. To change per-cycle bounds without
+# editing the unit file:
+#   systemctl --user edit forge-oh-selfeval.service
+# and add e.g. `Environment=FORGE_SELFEVAL_LIMIT=10`.
+Environment=FORGE_SELFEVAL_LIMIT=3
+Environment=FORGE_SELFEVAL_SAMPLE=head
+Environment=FORGE_SELFEVAL_TIMEOUT_SEC=300
+
+# Total wall-clock cap for the whole cycle. Per-task cap above bounds each
+# task; this bounds the aggregate so a runaway loop doesn't stall the unit.
+# Set generously (limit * per-task * 1.5) but hard-capped.
+TimeoutStartSec=2h
+
+# Non-zero exit codes from the CLI (2 = manifest/CLI error) will be recorded
+# by systemd; no automatic restart (on-demand model).
+Restart=no
+
+# Logs go to journald; view with:
+#   journalctl --user -u forge-oh-selfeval.service --since "1 day ago"
+StandardOutput=journal
+StandardError=journal
+
+# Modest process protections. This unit calls localhost only.
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+# Not enabled by default. On-demand launches don't need WantedBy=; the unit
+# is invoked directly via `systemctl --user start`. Kept as `default.target`
+# so a future timer add-on can flip Install without editing this file.
+WantedBy=default.target

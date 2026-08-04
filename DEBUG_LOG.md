@@ -468,3 +468,158 @@ where the caller already sent the UUID.
 **Root cause:** uvicorn's `--reload` watcher tripped a reload during the long-running P3 request (planner swap ~135s). The reloader began shutdown; the in-flight request was cancelled, curl saw its socket close and returned 143.
 **Fix:** Restart BFF WITHOUT `--reload` for smoke/production runs. `--reload` is dev-only and can kill long-running vLLM-supervisor requests. Command: `nohup .oh-venv/bin/python .oh-venv/bin/uvicorn bff.main:app_with_sio --host 127.0.0.1 --port 8081 > ~/.forge-oh/bff.log 2>&1 &`
 **Files:** none (operational fix, not code).
+
+## 2026-08-03 22:52 EDT — self-eval cycle "transport error (ReadTimeout)" at exactly 30.0s per task
+
+**Symptom:** First live self-eval cycle after slice G.1 landed:
+`docs/selfeval/2026-08-04-selfeval.json` reports every task with
+`error / transport error (ReadTimeout): ReadTimeout('')` at wall-clock
+30.0s.  Systemd unit `forge-oh-selfeval.service` exits with
+`Result: success` (harness catches the exception) but zero tasks pass.
+
+**Affected:** slice G.1 (nightly self-eval harness) → BFF `POST /api/runs` → agent-server `POST /api/conversations`.
+
+**Investigation:**
+1. `~/.forge-oh/bff.log` looked empty around cycle time.  Discovered the
+   RUNNING BFF's stdout points at `~/dev/forge-oh/.forge-logs/bff.log`
+   (via `/proc/1483956/fd/1`), NOT `~/.forge-oh/bff.log` (stale from an
+   older start).  Two log directories, two ways to be misled.
+   The doctor script grepped the stale one.
+2. Once we grepped the LIVE log, every self-eval `POST /api/runs`
+   returned **200 OK** (lines 2495, 2502, 2529, 2531, 2543).  The BFF
+   was doing the work — the harness had hung up first.
+3. `bff/openhands_client.py:26` uses `httpx.Timeout(60.0)` for its call
+   to agent-server.  `openhands_tools_ext/selfeval/harness.py:133` used
+   `timeout=30.0` on `POST /api/runs`.  The harness's 30s cap fires
+   before the BFF's 60s inner budget completes — every time.
+4. Agent-server's synchronous LLM warmup inside `POST /api/conversations`
+   is what consumes most of the 60s (vLLM coder :8501 unreachable during
+   cycle → litellm falls back to Ollama :11434 first-token latency).
+
+**Root cause:** timeout inversion.  Harness client-side timeout (30s) <
+BFF server-side timeout (60s) < agent-server sync LLM warmup time
+(~30–60s depending on model state).
+
+**Fix (this slice — unblock G.1):**
+Raise harness POST cap from 30s → 90s in `_create_run()`.  Same bump
+for the enclosing AsyncClient default.  Add regression test
+`test_post_runs_timeout_at_least_90s` in `test_harness.py` so any
+future edit dropping the cap below 90s fails in CI.
+
+**Fix (follow-up — proper):** ADR-012 proposes refactoring BFF
+`create_run` to return immediately after conversation registration,
+moving the LLM warmup into a `BackgroundTasks` continuation with
+failures surfaced via Socket.IO events.  Once that lands, the harness
+cap can drop back to ≤10s and the regression test flips.
+
+**Files changed:**
+- `openhands_tools_ext/selfeval/harness.py` (lines 133, 294).
+- `openhands_tools_ext/tests/selfeval/test_harness.py` (+ regression).
+- `.openhands/decisions/012-bff-create-run-async-warmup.md` (new,
+  Proposed).
+
+**Also learned:**
+- Doctor script log-tail sections were pointing at `~/.forge-oh/*.log`
+  but the live services write to `~/dev/forge-oh/.forge-logs/*.log`.
+  Doctor fix: symlink or walk `/proc/<pid>/fd/1` to find the real log
+  target for each service.  Deferred to next slice.
+
+
+## 2026-08-03 23:40 EDT — G.1: event loop hogged by sidecar producers (proper fix)
+
+**Symptom:** After landing the harness 30s→90s timeout bump (22:55 EDT
+entry above), the 22:58 self-eval cycle STILL failed with
+`transport error (ReadTimeout): ReadTimeout('')` at ~90.1s per task.
+Zero `POST /api/runs` entries appeared in the fresh BFF log — as if the
+harness's request bodies never reached the BFF app code. BFF log
+contained 116 copies of
+`sidecar_producers[c07b8803-…]: event buffer capped, dropped 500 oldest events`.
+
+**Affected:** BFF (event loop scheduling). Slice G.1 self-eval harness
+was the visible failure surface, but the underlying bug is a class of
+sidecar-producer-related loop starvation and would eventually hit any
+long-running BFF process with a leaked or high-throughput conversation
+relay.
+
+**Investigation:** `py-spy dump --pid <bff>` taken during a live 90s
+ReadTimeout window, twice, 30 s apart:
+
+Dump 1:
+```
+Thread MainThread (active+gil):
+  build_plan (bff/services/action_reconstruction.py:282)
+  _produce_plan (bff/services/sidecar_producers.py:113)
+  update_from_event (bff/services/sidecar_producers.py:457)
+  _run_loop (bff/services/event_relay.py:195)
+  _run (asyncio/events.py:88)
+  ...
+```
+
+Dump 2:
+```
+Thread MainThread (idle):
+  _rmw (bff/services/sidecar.py:115)
+  update_sidecar (bff/services/sidecar.py:220)
+  update_from_event (bff/services/sidecar_producers.py:474)
+  _run_loop (bff/services/event_relay.py:195)
+  ...
+```
+
+Both dumps show the asyncio event loop's MainThread pinned inside
+`event_relay._run_loop`, which was calling
+`sidecar_producers.update_from_event(...)` **synchronously**. That
+sync path runs `_produce_plan → build_plan` (O(events)) and
+`_rmw → update_sidecar` (fsync + rename), consuming tens of ms per
+event. With ~500 backlogged events for a leaked producer (c07b8803),
+per-iteration wall time exceeded the harness ReadTimeout cap. Uvicorn's
+request handler coroutine never got scheduled during that window,
+so the harness POST hung until it timed out client-side — and the BFF
+log had no record of the request ever entering routing.
+
+**Root cause:** `EventRelay._run_loop` (line 195 of
+`bff/services/event_relay.py`) called
+`sidecar_producers.update_from_event(...)` directly on the asyncio
+event loop with no yield-point between events. Any CPU-bound or
+fsync-heavy sidecar producer would starve every other coroutine on the
+same loop (uvicorn's request handler is on that same loop).
+
+**Fix applied:**
+1. Wrap the sync call in `await asyncio.to_thread(...)` so the plan
+   builder and file-lock/fsync run on a worker thread, not on the
+   event loop.
+2. Add `await asyncio.sleep(0)` per event, unconditionally, so even
+   with sidecar work disabled (`working_dir == ""`) the loop yields to
+   other pending tasks.
+
+Both changes are inside the per-event loop in `_run_loop` (single edit,
+inline comment references this DEBUG_LOG timestamp).
+
+**Regression tests (bff/tests/test_event_relay_yield.py):**
+- `test_update_from_event_runs_in_worker_thread`: fails if the
+  `asyncio.to_thread` wrapping is removed (asserts the sidecar producer
+  is invoked on a non-main thread).
+- `test_slow_producer_does_not_block_event_loop`: kicks off a 200 ms
+  CPU-bound sync call the way the relay does it and asserts a
+  concurrent "request" coroutine schedules in <100 ms.
+- `test_direct_sync_call_would_block_confirms_the_hazard`: documents
+  the hazard (a direct sync call inside a coroutine DOES block a
+  concurrent task); guards against a future revert with a "just call
+  it directly" comment.
+
+**Also learned:**
+- `uvicorn --reload` was NOT the culprit here (was ruled out by
+  restarting without it and reproducing the same 90.1s failure).
+- Doctor script's Section 7/8 grep for `POST /api/runs` missed this
+  because no such line was ever emitted — the request never reached
+  the router. Add a Section that greps `py-spy dump` for MainThread
+  when the doctor detects a stalled cycle. Deferred to next slice.
+- The leaked `c07b8803` conversation is separate work: we should
+  either (a) cap producer backlog at ~200 events with drop-oldest, or
+  (b) shut down relays for orphaned conversations after N idle
+  minutes. Deferred to a follow-up slice.
+
+**Files changed:**
+- `bff/services/event_relay.py` (per-event loop in `_run_loop`).
+- `bff/tests/test_event_relay_yield.py` (NEW, 3 regression tests).
+- DEBUG_LOG.md (this entry).
+- BUILD_LOG.md (2026-08-03 23:45 EDT entry).

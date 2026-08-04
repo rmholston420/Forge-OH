@@ -276,6 +276,75 @@ def test_route_by_role_max_tokens_env_override(monkeypatch):
     assert planner_route.backend == "vllm"
 
 
+# ---------- G.1: supervisor request-cap + per-role lock ----------
+
+
+def test_supervisor_ensure_respects_request_cap(monkeypatch, tmp_path):
+    """When the supervisor takes longer than the cap, _supervisor_ensure
+    returns False without killing the subprocess. G.1 fix (2026-08-04).
+    """
+    # Fake a supervisor script that sleeps well past the cap.
+    fake = tmp_path / "vllm_supervisor.sh"
+    fake.write_text("#!/usr/bin/env bash\nsleep 30\n")
+    fake.chmod(0o755)
+
+    monkeypatch.setenv("VLLM_SUPERVISOR_ENABLED", "1")
+    monkeypatch.setenv("VLLM_SUPERVISOR_PATH", str(fake))
+    monkeypatch.setenv("VLLM_SUPERVISOR_REQUEST_CAP", "0.5")
+    import bff.services.model_router as mr
+
+    importlib.reload(mr)
+
+    import time
+
+    start = time.monotonic()
+    result = _run(mr._supervisor_ensure("coder"))
+    elapsed = time.monotonic() - start
+
+    assert result is False
+    # Must return in ~cap, NOT wait the full sleep.
+    assert elapsed < 5.0, f"supervisor waited {elapsed:.1f}s (cap should be ~0.5s)"
+
+
+def test_supervisor_ensure_coalesces_concurrent_calls(monkeypatch, tmp_path):
+    """Two concurrent ensure() calls for the same role only spawn ONE
+    subprocess; the second waits on the lock, then trusts the probe.
+    G.1 fix (2026-08-04).
+    """
+    counter = tmp_path / "count.txt"
+    counter.write_text("0")
+    fake = tmp_path / "vllm_supervisor.sh"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        f"n=$(cat {counter}); echo $((n+1)) > {counter}\n"
+        "sleep 1\n"
+    )
+    fake.chmod(0o755)
+
+    monkeypatch.setenv("VLLM_SUPERVISOR_ENABLED", "1")
+    monkeypatch.setenv("VLLM_SUPERVISOR_PATH", str(fake))
+    monkeypatch.setenv("VLLM_SUPERVISOR_REQUEST_CAP", "5")
+    import bff.services.model_router as mr
+
+    importlib.reload(mr)
+
+    async def _healthy(_url):
+        return True
+
+    monkeypatch.setattr(mr, "_vllm_role_health", _healthy)
+
+    async def _both():
+        return await asyncio.gather(
+            mr._supervisor_ensure("coder"),
+            mr._supervisor_ensure("coder"),
+        )
+
+    results = _run(_both())
+    assert all(r is True for r in results)
+    # Only one subprocess spawned even though two ensure() calls raced.
+    assert counter.read_text().strip() == "1"
+
+
 def test_role_route_dataclass_is_frozen():
     from bff.services.model_router import RoleRoute
 

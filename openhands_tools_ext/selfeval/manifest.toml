@@ -1,0 +1,51 @@
+# Self-Eval harness — task manifest.
+#
+# This file grows over time. Rules:
+# - Every task must be self-contained: the prompt names the file(s) to create
+#   or modify, and the verify hook must be able to run (pytest picks up
+#   tests/ automatically).
+# - Never point at a real Forge-OH workspace with source you care about;
+#   these are throwaway workspaces. The default is `forge-oh-smoke`.
+# - Keep prompts small (< 300 chars). Long prompts belong in an SDD/spec doc,
+#   not in the self-eval corpus.
+# - Add tags to make selection composable ("smoke", "python", "refactor",
+#   "regression", "long"). The CLI can filter to just one tag for targeted
+#   runs.
+#
+# workspace_id below is the seeded `forge-oh-smoke` workspace UUID on
+# Colossus. Confirmed at 2026-08-03 in POST /api/runs smoke run P1.
+
+[[task]]
+id = "smoke-add-two"
+role = "coder"
+task_complexity = "single_action"
+tags = ["smoke", "python", "unit"]
+workspace_id = "6dac22aed0e44798b04ea335a405528a"
+prompt = """
+Create a file `add.py` with a function `add_two(a, b)` that returns a + b.
+Then create `test_add.py` with a pytest test that asserts add_two(2, 3) == 5.
+"""
+
+[[task]]
+id = "smoke-reverse-string"
+role = "coder"
+task_complexity = "single_action"
+tags = ["smoke", "python", "unit"]
+workspace_id = "6dac22aed0e44798b04ea335a405528a"
+prompt = """
+Create a file `strings.py` with a function `reverse(s)` that returns the
+reversed string. Then create `test_strings.py` with pytest tests covering
+the empty string, a single char, and "hello".
+"""
+
+[[task]]
+id = "smoke-json-roundtrip"
+role = "coder"
+task_complexity = "single_action"
+tags = ["smoke", "python", "stdlib"]
+workspace_id = "6dac22aed0e44798b04ea335a405528a"
+prompt = """
+Create a file `roundtrip.py` with a function `roundtrip(obj)` that JSON-encodes
+`obj` and then decodes the result, returning the decoded value. Add a pytest
+test in `test_roundtrip.py` for a dict, a list, and a nested structure.
+"""

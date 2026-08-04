@@ -3444,3 +3444,291 @@ when the map contains a match.
 - P3 role=planner, backend=vllm, baseUrl=:8511, workspaceId=UUID, elapsed=135s (planner swap)
 **Files touched:** none (verification only). Logs: BUILD_LOG.md, SESSION_HANDOFF.md.
 **Stop condition:** cosmetic workspaceId fix (commit abb06f7) confirmed green on all three prompts with real vLLM routing — MET.
+
+## 2026-08-03 21:41 EDT — Audit: frontend-backend parity + Kosmos plugin analysis + ADR-010
+
+**Stage:** Pre-G.1 audit (branch: `audit/frontend-backend-parity`).
+
+**What was audited:**
+- Frontend↔BFF parity across all `/api` routes: which endpoints have GUI
+  surfaces, which don't, which have GUI-only surfaces with no backend.
+- Kosmos plugin candidacy: which Forge-OH modules are ready to lift into
+  Kosmos as-is, which need reshaping, which are Forge-OH-only forever.
+- Missing top-level GUI: Skills, Agents subpanel, MCP tools inventory.
+
+**Deliverables:**
+- `docs/audits/2026-08-03-frontend-backend-parity.md` — endpoint parity matrix.
+- `docs/audits/2026-08-03-kosmos-plugin-analysis.md` — module-by-module
+  lift/reshape/never-lift verdicts.
+- `docs/audits/2026-08-03-gui-gaps.md` — three missing top-level nav items.
+- `docs/adr/010-frontend-parity.md` (Proposed) — proposes the Skills page,
+  MCP tools inventory, and Agents subpanel as follow-up slices.
+
+**Stop condition:** Audit branch pushed to origin
+(`audit/frontend-backend-parity` @ `9058ff6`). MET.
+
+## 2026-08-03 22:13 EDT — Slice G.1: on-demand self-eval harness (backend + GUI + tests)
+
+**Stage:** G.1 (post-F, on-demand self-improvement loop).
+**Branch:** `slice/g1-nightly-harness` (kept name for history; module is `selfeval`).
+**ADR:** ADR-011 (Proposed).
+
+**What was built:**
+- `openhands_tools_ext/selfeval/` module: `manifest.py` (TOML loader +
+  head/random/tag selector), `harness.py` (BFF orchestrator, serial per
+  ADR-009, `_score()` reduces verify+trajectory+BFF+timeout to one of
+  {passed, failed, timeout, error}), `proposer.py` (planner-LLM Markdown fix
+  proposer, never overwrites, ADR-009-compliant defaults), `cli.py`
+  (argparse + env overrides FORGE_SELFEVAL_*), `manifest.toml` (3 starter
+  tasks). Serial execution enforced.
+- `openhands_tools_ext/tests/selfeval/` — 39 tests (16 manifest, 10
+  proposer, 13 harness incl. 3 async). All green under pytest-asyncio.
+- `ops/systemd/forge-oh-selfeval.service` — user-scoped one-shot unit.
+  **No `.timer`** — launches are on-demand only.
+- `ops/systemd/README.md` — install + `systemctl --user start` usage
+  + per-cycle overrides via drop-in.
+- `bff/routers/selfeval.py` — `/cycles`, `/cycles/{filename}`,
+  `/proposals`, `/proposals/{filename}`, `POST /run` (shells out to
+  `systemctl --user start` with asyncio.Lock guard), `GET /status`
+  (in-flight state, reaper). Path-traversal guards on every filename
+  param via `_safe_child()`.
+- `bff/tests/test_selfeval_router.py` — 16 tests covering happy-path,
+  filename validation, traversal-block, 409/502/500 error paths.
+- `bff/main.py` — mounts the new router at `/api`.
+- `src/features/selfeval/` — `api.ts`, `hooks.ts` (React-Query with
+  status polling every 5s while running / 30s while idle), `SelfEvalPage.tsx`
+  (cycle history + Run-now button), `SelfEvalDatePage.tsx` (per-cycle
+  outcome table + collapsible proposals).
+- `src/app/(dashboard)/selfeval/page.tsx` + `[date]/page.tsx` — thin
+  App-Router shims.
+- `src/components/navigation/Sidebar.tsx` — new **Self-Eval** entry (⏰),
+  slot A: after Observability, before Settings.
+- `src/tests/e2e/selfeval.spec.ts` — Playwright smoke (sidebar link,
+  page loads, empty-state or history renders, no runtime error).
+- `docs/adr/011-selfeval-harness.md` — decision + alternatives + DoD.
+- `docs/skills-index.md` + `README.md` — 7 project skills + 2 user
+  skills documented.
+
+**Cadence decision:** Fixed nightly `.timer` **rejected**. Holston has no
+consistent sleep schedule. Only launch surfaces: Run-now button in GUI
+(primary) and `systemctl --user start forge-oh-selfeval.service` (fallback).
+
+**Ports touched:** none. Verify + trajectory + hook + model_router
+subsystems unchanged.
+
+**Kosmos analysis:** Kosmos has `plugins/tektos/eval/` but no on-demand
+launcher and no scheduled runner. Pattern borrowed (one manifest, verdict
+per task, aggregated summary) but no code vendored → no PORTING_LEDGER
+entry required.
+
+**Test summary:** 55/55 passing (39 module + 16 router). Async tests
+green with pytest-asyncio installed.
+
+**Stop condition:** Slice G.1 complete when branch pushed to origin + one
+live cycle executed on Colossus. First half MET this session; live cycle
+requires Colossus (BFF + agent-server + vLLM up).
+
+**Files touched:** see git diff for full list — 20 new files, 3 modified.
+
+---
+
+## 2026-08-03 22:35 EDT — Slice G.1 live-cycle bug: agentPresetId + forge-restart/status scripts
+
+**Stage:** G.1 (post-live-cycle fix).
+**Files touched:**
+- `openhands_tools_ext/selfeval/harness.py` (+ `_resolve_default_preset_id`, thread preset_id)
+- `openhands_tools_ext/selfeval/cli.py` (`--preset-id` / `FORGE_SELFEVAL_PRESET_ID`)
+- `openhands_tools_ext/tests/selfeval/test_harness.py` (pass `preset_id="ap-test"`)
+- `scripts/forge-restart.sh` (NEW)
+- `scripts/forge-status.sh` (NEW)
+
+**Ports/adapters:** none new. `POST /api/runs` payload now includes required
+`agentPresetId`, resolved once per cycle from `GET /api/agent-presets`
+(preferring `isDefault=true`, falling back to first). Overridable via
+`--preset-id` flag or `FORGE_SELFEVAL_PRESET_ID` env var.
+
+**Bug fixed:** live cycle on Colossus (previous session) returned 422 on
+every task because harness omitted `agentPresetId` from the create-run
+body — required per `bff/routers/runs.py:73 CreateRunRequest`.
+
+**Restart scripts:** `forge-restart.sh` (full bounce, `--bff-only`, `--status`)
+and `forge-status.sh` (one-glance port + pidfile + PID-match view for
+agent-server/BFF/Next.js). vLLM containers intentionally out of scope.
+Wraps the existing `forge-up.sh` / `forge-down.sh` — does NOT introduce a
+parallel systemd control path.
+
+**Test summary:** 55/55 still passing after harness rewrite. Both scripts
+`bash -n` clean; `--help` and empty-sandbox `status` smoke-tested.
+
+**ADR:** ADR-011 still **Proposed**. Amend to Accepted only after the next
+live cycle on Colossus is green.
+
+**Stop condition:** Slice G.1 complete when a live cycle on Colossus runs
+green (at least one task reaches `passed` verdict). Not yet met.
+
+
+## 2026-08-03 22:38 EDT — Slice G.1 hotfix: orphan next-server reap + honest status
+
+**Stage:** G.1 (post-restart-script live test).
+**Files touched:**
+- `scripts/forge-down.sh` (+ `kill_by_pattern` step for `next-server`, `pnpm.*dev`, `uvicorn.*bff.main`, `openhands.agent_server`)
+- `scripts/forge-status.sh` (any_bad=1 when listening but no pidfile + no PID-on-port)
+
+**Bug observed on Colossus (2026-08-03 22:32 EDT restart):** after
+`forge-restart.sh --status`, Next.js showed `listen=yes / pidfile=- /
+onport=-`. The `pnpm dev` parent was killed via pidfile, but its detached
+`next-server` child survived and re-bound :3000 before `kill_port`
+ran. Status still reported "✅ all three healthy" \u2014 which was a lie.
+
+**Fixes:**
+1. `forge-down.sh` now runs a `pgrep -f` pattern sweep after the pidfile
+   pass and before `kill_port`. Catches detached grandchildren by argv.
+2. `forge-status.sh` now flags `listening=yes` combined with no pidfile
+   and no discoverable PID as unhealthy. No more false green.
+
+**Stop condition:** unchanged. Slice G.1 still awaits one green live
+self-eval cycle.
+
+
+## 2026-08-03 22:38 EDT — Slice G.1 hotfix²: status handles child processes
+
+**Stage:** G.1.
+**Files touched:** `scripts/forge-status.sh`.
+
+**Bug observed on Colossus (2026-08-03 22:35 EDT restart):** Next.js row
+reported `pidfile=1484074 alive=alive onport=- n/a ❌` even though the
+service was healthy. Root cause: `pnpm dev` (the pidfile PID) execs
+`next dev` which spawns `next-server` — the actual :3000 listener is a
+child, not the pidfile PID. Additionally, some port probes (lsof, ss -p)
+returned empty even when a listener was present.
+
+**Fix:**
+1. `pid_on_port` now falls back through lsof → ss → fuser.
+2. New `is_descendant` walks `/proc/<pid>/status` PPid chain (bounded 20
+   hops). When the port PID is a descendant of the pidfile PID, render
+   `child` (green — still healthy).
+3. When port probes all return empty but the pidfile PID is alive AND
+   the port is listening, render `assumed-child` (yellow, but NOT
+   `any_bad`). Genuinely unknown ownership without listening remains red.
+
+**Stop condition:** unchanged. Slice G.1 still awaits one green live
+self-eval cycle.
+
+
+## 2026-08-03 22:42 EDT — Slice G.1 hotfix³: forge-doctor.sh + honest transport error + colossus-ops skill update
+
+**Stage:** G.1.
+**Files touched:**
+- `scripts/forge-doctor.sh` (NEW) — one-shot read-only diagnostic (env, port health, HTTP probes, workspaces, presets, selfeval unit + latest cycle, filtered log tails).
+- `openhands_tools_ext/selfeval/harness.py` — transport error now includes exception class name (fixes empty `transport error:` seen on Colossus 22:37 cycle where every task hit exactly 30.0s ReadTimeout with no diagnosable message).
+- `docs/skills-index.md` — reflect the triage playbook added to `forge-oh-colossus-ops`.
+- `.skills` (skill save via pplx-tool) — `forge-oh-colossus-ops` v2: correct :3000 vs :3100 semantics, `app_with_sio` entrypoint, forge-{up,down,restart,status,doctor} recipes table, and runtime triage playbook covering orphan next-server, `agentPresetId` 422, empty `transport error:`, `assumed-child` status semantics.
+
+**Ports/adapters:** none changed. Skill and doctor are read-only overlays.
+
+**Bug root cause (Colossus 22:37 run):** every task's `POST /api/runs`
+timed out at exactly 30.0s with an empty `transport error:` message.
+The empty message was `httpx.ReadTimeout.__str__()` being blank; the
+timeout itself is a separate diagnostic still open — likely BFF
+synchronously calling agent-server (:8090) during run creation and
+either agent-server is not accepting or the BFF handler is stuck. Next
+cycle should surface `transport error (ReadTimeout): ...` and paired
+BFF-log evidence in `forge-doctor.sh` section 7.
+
+**Skill update rationale:** rmholston asked for a "world-class engineer"
+credit spend; codifying the runtime-triage recipes we just derived into
+the auto-loading skill means the next session doesn't re-derive
+`kill_by_pattern`, `is_descendant`, `agentPresetId` resolution, or the
+`app_with_sio` entrypoint from scratch.
+
+**Test summary:** 55/55 still passing.
+
+**Stop condition:** Slice G.1 still awaits one green live self-eval
+cycle. Next diagnostic path: run `forge-doctor.sh` immediately after the
+next `systemctl --user start forge-oh-selfeval.service` and paste
+sections 3, 5, 6, 7 to close the 30.0s-timeout diagnosis.
+
+
+## 2026-08-03 22:55 EDT — Slice G.1 hotfix⁴: raise harness POST timeout to 90s + ADR-012 stub
+
+**Stage:** G.1.
+**Files touched:**
+- `openhands_tools_ext/selfeval/harness.py` — POST /api/runs and AsyncClient default 30s → 90s. Detailed inline comment ties the value to `bff/openhands_client.py`'s `httpx.Timeout(60.0)`.
+- `openhands_tools_ext/tests/selfeval/test_harness.py` — `test_post_runs_timeout_at_least_90s` regression guard: greps `_create_run` source for `timeout=<N>` and asserts N ≥ 90.
+- `.openhands/decisions/012-bff-create-run-async-warmup.md` (NEW, Proposed) — records the proper fix: refactor BFF `create_run` to return before the LLM warmup completes, moving that work into a `BackgroundTasks` continuation with WS-emitted failure events.
+- `scripts/forge-doctor.sh` — Section 7/8 now segment BFF log into POST /api/runs history + errors + tail, and agent-server log into POST /api/conversations + errors + tail. GPU-poll flood no longer drowns the signal. Also fixed the Section 1 false-positive CLI-import traceback (was probing `build_parser` which doesn't exist; now probes `main`).
+
+**Bug root cause (this cycle):** timeout inversion. Harness POST cap (30s) < BFF inner budget (60s) < agent-server LLM warmup (30–60s). Every self-eval task hit the ceiling first while the BFF was still legitimately working. Full analysis in DEBUG_LOG 2026-08-03 22:52 EDT.
+
+**Test summary:** 14/14 in `test_harness.py` (including the new regression). Full suite deferred to the venv-equipped Colossus checkout.
+
+**Ports/adapters:** none changed. Timeout is a client-side ceiling.
+
+**ADR:** ADR-012 Proposed (not Ratified). Ratification gated on next slice.
+
+**Stop condition:** Slice G.1 still awaits one green live self-eval cycle. Command sequence to verify on Colossus:
+```
+cd ~/dev/forge-oh && git pull --ff-only
+systemctl --user restart forge-oh-selfeval.service
+sleep 90
+bash scripts/forge-doctor.sh | tail -80
+cat docs/selfeval/2026-08-04-selfeval.json | jq '.tasks_passed, .tasks_failed, .tasks_timed_out, .tasks_errored'
+```
+Expected: at least one `tasks_passed > 0` OR (if the model actually fails) `tasks_failed > 0` — either way, no more `transport error (ReadTimeout)` verdicts.
+
+
+## 2026-08-03 23:45 EDT — Slice G.1 hotfix⁵: unblock event loop in EventRelay._run_loop
+
+**Stage:** G.1.
+**Files touched:**
+- `bff/services/event_relay.py` — per-event branch inside `_run_loop`:
+  wrap `sidecar_producers.update_from_event(...)` in
+  `await asyncio.to_thread(...)`, add unconditional
+  `await asyncio.sleep(0)` yield-point. Inline comment cross-references
+  DEBUG_LOG 2026-08-03 23:40 EDT.
+- `bff/tests/test_event_relay_yield.py` (NEW) — 3 regression tests:
+  worker-thread execution, non-blocking under load, hazard demo.
+- DEBUG_LOG.md — full root-cause writeup with py-spy dumps.
+- SESSION_HANDOFF.md — overwrite with next-action checklist.
+
+**Bug root cause:** `EventRelay._run_loop` called
+`sidecar_producers.update_from_event` directly on the asyncio event
+loop. That sync path runs `_produce_plan → build_plan` (O(events)) and
+`_rmw` (fsync). Leaked/backlogged conversation `c07b8803` had 500+
+queued events; per-iteration wall time exceeded the harness 90s
+ReadTimeout, so `POST /api/runs` never got CPU. Full analysis in
+DEBUG_LOG 2026-08-03 23:40 EDT.
+
+**Diagnostic method that cracked it:** `py-spy dump --pid <bff>` taken
+twice during a live 90s ReadTimeout window. Both dumps pinned
+MainThread inside `_run_loop`'s call chain. This was decisive after
+three prior diagnostic paths (30s→90s bump, `--reload` disable, log
+grep) all produced the same 90.1s ReadTimeout with no useful
+distinguishing signal.
+
+**Test summary:** New file `test_event_relay_yield.py`, 3 tests. Full
+BFF suite deferred to Colossus run.
+
+**Ports/adapters:** none. Internal service-layer change to how BFF
+schedules sidecar work.
+
+**ADR:** ADR-012 remains Proposed. This fix is orthogonal to it —
+ADR-012 refactors the BFF-agent-server request/response pattern for
+`create_run`; this fix removes CPU/IO contention on the shared event
+loop. Both are needed for full G.1 robustness. Do not ratify ADR-012
+based on this fix alone.
+
+**Stop condition:** After deploying this fix on Colossus, one live
+self-eval cycle must produce non-timeout verdicts (either `passed` or
+model-legitimate `failed`) for G.1 to close. If the cycle still times
+out with the same symptom, the leaked `c07b8803` conversation needs to
+be purged from agent-server + trajectory DB before re-running (both
+paths are documented in SESSION_HANDOFF).
+
+**Follow-ups queued (not this slice):**
+- Cap `sidecar_producers` per-conversation event backlog at ~200 with
+  drop-oldest semantics.
+- Auto-shutdown `EventRelay` for orphan conversations after N idle
+  minutes.
+- Doctor script: add py-spy dump for BFF when a stalled cycle is
+  detected.
