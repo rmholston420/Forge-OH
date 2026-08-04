@@ -15,13 +15,14 @@ BFF_URL="${BFF_URL:-http://127.0.0.1:8081}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROMPTS_DIR="$REPO_ROOT/bench/prompts"
 
-# Assume a workspace exists on the agent-server. Fallback: fetch first
-# available.
+# BFF /api/workspaces returns list[Workspace] directly. Pick the first;
+# fall back to "default" if none registered (agent-server maps default
+# -> workspace/runs/pending; fine for smoke but not real agent execution).
 WS_ID="$(curl -sS --max-time 10 "$BFF_URL/api/workspaces" | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
-    ws = d.get("workspaces") or []
+    ws = d if isinstance(d, list) else (d.get("workspaces") or [])
     if ws:
         print(ws[0]["id"])
 except Exception:
