@@ -778,3 +778,53 @@ The supervisor's `_stop_ollama` helper does `systemctl stop` AND
 `pkill -x ollama`; the audit check should use both signals.
 Consider adding a `ss -lntp | grep 11434` check to
 `ops/vllm_supervisor.sh check` in a follow-up hygiene slice.
+
+## 2026-08-04 02:42 EDT — Ollama "leak" was user-scope systemd, not a stray
+
+**Continuation of 2026-08-04 02:40 EDT entry above.**
+
+**Root cause identified:** Ollama on `:11434` (PID 2684635, parent
+PID 2939 = user systemd) is the **user-scoped** systemd unit. It is
+NOT a leftover manual process. Diagnostic results:
+
+```
+$ systemctl is-active ollama              → inactive       (system scope)
+$ systemctl --user is-active ollama       → active         (user scope)
+$ ss -lntp | grep 11434                   → LISTEN owned by pid 2684635
+$ nvidia-smi --query-compute-apps ...     → NO ollama pid in output
+                                            (only chromium + vLLM engine core)
+```
+
+Ollama's API server is running, but **no model is loaded** into
+VRAM (0 MiB held by ollama). VLLM has full GPU tenancy
+(28220 MiB / 32 GB).
+
+**Impact on the verified cycle:** none. Zero VRAM contention, zero
+requests routed to Ollama.
+
+**Impact on future c04 restarts:** at risk. If a request ever
+triggers Ollama to load a model into VRAM (unlikely from the router
+now that vLLM-primary is the code default and healthy, but possible
+from any manual `ollama run <model>` invocation), the c04 restart
+will fail the supervisor's free-memory precondition — and
+`_stop_ollama` in `ops/vllm_supervisor.sh` currently only stops the
+system-scope unit, not the user-scope one.
+
+**Fix (deferred hygiene slice):** extend `_stop_ollama` to try
+BOTH scopes:
+```bash
+sudo systemctl stop ollama 2>/dev/null || true
+systemctl --user stop ollama 2>/dev/null || true
+pkill -x ollama 2>/dev/null || true
+```
+And extend `ops/vllm_supervisor.sh check` to `ss -lntp | grep 11434`
+so the audit reflects reality (an inactive system-scope unit does
+NOT mean Ollama is off).
+
+Tracking as `slice/supervisor-user-scope-hygiene` for later.
+
+**Lesson (durable):** on multi-scope systemd machines, always
+check `systemctl --user is-active <unit>` in addition to
+`systemctl is-active <unit>`. A user-scope unit is invisible to
+`systemctl` without the `--user` flag but still owns processes and
+ports.
