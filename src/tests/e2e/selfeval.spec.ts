@@ -86,10 +86,17 @@ test.describe('Self-Eval page smoke', () => {
     const row = page.getByRole('row').filter({ hasText: date }).first();
     await expect(row).toBeVisible();
 
-    // "Open →" link on that row navigates to /selfeval/[date].
-    await row.getByRole('link', { name: /Open/i }).click();
-    await page.waitForURL(new RegExp(`/selfeval/${date}$`));
-    await expect(page.getByRole('heading', { name: new RegExp(`Cycle: ${date}`) })).toBeVisible();
+    // "Open →" link on that row navigates to /selfeval/[date]. Use
+    // Promise.all to race the click and the navigation — Next.js's client
+    // router uses history.pushState, which page.waitForURL sometimes misses
+    // when the assertion is set up after the click has already resolved.
+    await Promise.all([
+      page.waitForURL(new RegExp(`/selfeval/${date}(?:\?|$)`), { timeout: 10_000 }),
+      row.getByRole('link', { name: /Open/i }).click(),
+    ]);
+    await expect(
+      page.getByRole('heading', { name: new RegExp(`Cycle: ${date}`) }),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('cycle detail page renders KPIs + task outcomes table', async ({ page }) => {
@@ -100,13 +107,15 @@ test.describe('Self-Eval page smoke', () => {
     const date = first.filename.slice(0, 10);
     await page.goto(`/selfeval/${date}`);
 
-    // KPI grid — check the four labels are rendered.
-    await expect(page.getByText('PASSED', { exact: true })).toBeVisible();
-    await expect(page.getByText('FAILED', { exact: true })).toBeVisible();
-    await expect(page.getByText('TIMED OUT', { exact: true })).toBeVisible();
-    await expect(page.getByText('ERRORED', { exact: true })).toBeVisible();
+    // KPI grid — DOM text is title-case ("Passed", "Failed", ...); the
+    // uppercase appearance comes from CSS text-transform which Playwright
+    // does NOT normalize into hasText matches. Assert the DOM text.
+    await expect(page.getByText('Passed', { exact: true })).toBeVisible();
+    await expect(page.getByText('Failed', { exact: true })).toBeVisible();
+    await expect(page.getByText('Timed out', { exact: true })).toBeVisible();
+    await expect(page.getByText('Errored', { exact: true })).toBeVisible();
 
-    // Task outcomes table is present with at least tasks_selected rows.
+    // Task outcomes heading present.
     const outcomesHeading = page.getByRole('heading', { name: /task outcomes/i });
     await expect(outcomesHeading).toBeVisible();
 
@@ -128,12 +137,15 @@ test.describe('Self-Eval page smoke', () => {
 
     const date = first.filename.slice(0, 10);
     await page.goto(`/selfeval/${date}`);
-    // The core Badge component always emits a span with the passed text.
-    // We don't assert on the hashed module class (would drift across builds)
-    // — instead confirm at least one 'passed' badge is a <span> descendant of
-    // the outcomes table (excludes the sidebar Self-Eval label).
-    const passedBadge = page.locator('tbody span').filter({ hasText: /^passed$/ }).first();
-    await expect(passedBadge).toBeVisible();
+
+    // The core Badge component emits a <span> whose accessible text is
+    // exactly the verdict string. Search across ALL tbody spans (not just
+    // the first row's first span) since the first row's verdict may not
+    // be 'passed'.
+    const passedBadges = page.locator('tbody span').filter({ hasText: /^passed$/ });
+    const count = await passedBadges.count();
+    expect(count).toBeGreaterThan(0);
+    await expect(passedBadges.first()).toBeVisible();
   });
 
   test('/selfeval/{invalid-date} surfaces an error banner (not a crash)', async ({ page }) => {
