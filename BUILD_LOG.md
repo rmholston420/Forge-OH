@@ -3838,3 +3838,41 @@ guidance (fast Coder path needs 32k context on Ollama fallback).
 - ADR-0001 amendment marking ADR-009 as the superseder for the
   F.19+ router (doc-only slice).
 - Self-eval frontend wire-up + Playwright verification.
+
+## 2026-08-04 02:40 EDT — slice/vllm-primary-selfeval-verification (Colossus verified)
+
+**Merge:** `dcdcc6b` on main.
+
+**Verification on Colossus (rmholston@Collosus, ~/dev/forge-oh):**
+1. `git pull --ff-only origin main` → fast-forward to `dcdcc6b`.
+2. BFF restarted with `VLLM_SUPERVISOR_ENABLED=1` and NO
+   `LLM_CODER_OLLAMA_FALLBACK` env override.
+3. `POST /api/selfeval/run` → 200 `{"started_at": "2026-08-04T06:37:29..."}`.
+4. Cycle completed in 81 seconds. All three smoke tasks passed:
+   - `smoke-add-two` — 20.3s (vs 205.9s on Ollama fallback — 10.1× faster)
+   - `smoke-reverse-string` — 40.4s (vs 75.5s — 1.87× faster)
+   - `smoke-json-roundtrip` — 20.3s (vs 45.4s — 2.24× faster)
+   - Total: 81.0s (vs 326.8s — 4.03× faster).
+5. `docs/selfeval/2026-08-04-selfeval.json` written with `tasks_passed=3`.
+6. vLLM metrics at cycle-close on `:8501`:
+   - `vllm:generation_tokens_total{model_name="qwen3.6-35b-nvfp4"} = 16260`
+   - `vllm:request_success_total{finished_reason="stop"} = 21`
+   - `vllm:request_success_total{finished_reason="length"} = 1`
+   - Non-trivial workload confirmed: c04 served every LLM call.
+7. Ollama systemd unit remained `inactive` throughout the cycle.
+8. GPU: 28877 MiB used (vLLM engine core), 3271 MiB free — well
+   within the 30 GB weight budget from forge-oh-llm-serving skill.
+
+**Definition of Done: MET.** Step 1 of the F.19-post sequence complete.
+
+**Follow-up observation (non-blocking, logged for hygiene):**
+Post-cycle, `curl http://localhost:11434/api/tags` returned model
+list despite `systemctl is-active ollama = inactive`. Indicates a
+stray Ollama process outside systemd. Not affecting this cycle
+(vLLM held the GPU throughout), but should be cleaned up before
+next c04 restart to preserve the supervisor's free-memory
+precondition. See DEBUG_LOG entry 2026-08-04 02:40 EDT.
+
+**Next slice queued:** `slice/adr-0001-amend-supersede` — amend
+ADR-0001 (ollama-first) with a status block marking it superseded
+by ADR-009 for the F.19+ router. Doc-only, no code, no port.

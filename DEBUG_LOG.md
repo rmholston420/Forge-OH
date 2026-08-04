@@ -738,3 +738,43 @@ with `git show <sha>` and `grep -n <constant>` against the current
 file. If the summary is wrong, correct the SESSION_HANDOFF and log
 the correction in DEBUG_LOG so future sessions do not re-inherit
 the falsehood.
+
+## 2026-08-04 02:40 EDT — stray Ollama process outside systemd
+
+**Symptom:** After the vLLM-primary verification cycle completed
+green, `systemctl is-active ollama` returned `inactive`, but
+`curl http://localhost:11434/api/tags` responded 200 with the full
+model list including `qwen3-coder:32k`, `qwen3-coder:30b`,
+`qwen3-coder:latest`, `qwen3.6:35b-a3b`, `qwen3-thinking-2507:q4kxl`,
+`nomic-embed-text:latest`. Indicates a running `ollama serve`
+process outside systemd (likely a leftover from a manual foreground
+launch earlier in the evening).
+
+**Affected stage/plugin/port:** Colossus GPU-tenancy discipline
+(ADR-009 §5, forge-oh-llm-serving skill).
+
+**Root cause:** Not yet diagnosed. Candidates:
+1. A `nohup ollama serve &` from earlier tonight when Ollama systemd
+   was manually stopped for the c04 launch.
+2. Ollama user-scoped socket-activation (unusual).
+3. An `.oh-venv` shell fork keeping ollama alive.
+
+**Impact right now:** None on the completed cycle — vLLM held the
+GPU throughout, and Ollama metrics show zero requests routed there.
+BUT: if the stray Ollama has any weights loaded, the next c04
+restart will trip the supervisor's free-memory precondition.
+
+**Fix (deferred):** on next session, run:
+```
+ps -ef | grep '[o]llama'
+ss -lntp | grep 11434
+nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv,noheader
+kill -TERM <ollama_pid>
+```
+
+**Lesson:** `systemctl is-active` is not a proof of "Ollama is
+stopped" — it only proves systemd doesn't think it's managing one.
+The supervisor's `_stop_ollama` helper does `systemctl stop` AND
+`pkill -x ollama`; the audit check should use both signals.
+Consider adding a `ss -lntp | grep 11434` check to
+`ops/vllm_supervisor.sh check` in a follow-up hygiene slice.
