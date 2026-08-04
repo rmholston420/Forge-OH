@@ -468,3 +468,58 @@ where the caller already sent the UUID.
 **Root cause:** uvicorn's `--reload` watcher tripped a reload during the long-running P3 request (planner swap ~135s). The reloader began shutdown; the in-flight request was cancelled, curl saw its socket close and returned 143.
 **Fix:** Restart BFF WITHOUT `--reload` for smoke/production runs. `--reload` is dev-only and can kill long-running vLLM-supervisor requests. Command: `nohup .oh-venv/bin/python .oh-venv/bin/uvicorn bff.main:app_with_sio --host 127.0.0.1 --port 8081 > ~/.forge-oh/bff.log 2>&1 &`
 **Files:** none (operational fix, not code).
+
+## 2026-08-03 22:52 EDT — self-eval cycle "transport error (ReadTimeout)" at exactly 30.0s per task
+
+**Symptom:** First live self-eval cycle after slice G.1 landed:
+`docs/selfeval/2026-08-04-selfeval.json` reports every task with
+`error / transport error (ReadTimeout): ReadTimeout('')` at wall-clock
+30.0s.  Systemd unit `forge-oh-selfeval.service` exits with
+`Result: success` (harness catches the exception) but zero tasks pass.
+
+**Affected:** slice G.1 (nightly self-eval harness) → BFF `POST /api/runs` → agent-server `POST /api/conversations`.
+
+**Investigation:**
+1. `~/.forge-oh/bff.log` looked empty around cycle time.  Discovered the
+   RUNNING BFF's stdout points at `~/dev/forge-oh/.forge-logs/bff.log`
+   (via `/proc/1483956/fd/1`), NOT `~/.forge-oh/bff.log` (stale from an
+   older start).  Two log directories, two ways to be misled.
+   The doctor script grepped the stale one.
+2. Once we grepped the LIVE log, every self-eval `POST /api/runs`
+   returned **200 OK** (lines 2495, 2502, 2529, 2531, 2543).  The BFF
+   was doing the work — the harness had hung up first.
+3. `bff/openhands_client.py:26` uses `httpx.Timeout(60.0)` for its call
+   to agent-server.  `openhands_tools_ext/selfeval/harness.py:133` used
+   `timeout=30.0` on `POST /api/runs`.  The harness's 30s cap fires
+   before the BFF's 60s inner budget completes — every time.
+4. Agent-server's synchronous LLM warmup inside `POST /api/conversations`
+   is what consumes most of the 60s (vLLM coder :8501 unreachable during
+   cycle → litellm falls back to Ollama :11434 first-token latency).
+
+**Root cause:** timeout inversion.  Harness client-side timeout (30s) <
+BFF server-side timeout (60s) < agent-server sync LLM warmup time
+(~30–60s depending on model state).
+
+**Fix (this slice — unblock G.1):**
+Raise harness POST cap from 30s → 90s in `_create_run()`.  Same bump
+for the enclosing AsyncClient default.  Add regression test
+`test_post_runs_timeout_at_least_90s` in `test_harness.py` so any
+future edit dropping the cap below 90s fails in CI.
+
+**Fix (follow-up — proper):** ADR-012 proposes refactoring BFF
+`create_run` to return immediately after conversation registration,
+moving the LLM warmup into a `BackgroundTasks` continuation with
+failures surfaced via Socket.IO events.  Once that lands, the harness
+cap can drop back to ≤10s and the regression test flips.
+
+**Files changed:**
+- `openhands_tools_ext/selfeval/harness.py` (lines 133, 294).
+- `openhands_tools_ext/tests/selfeval/test_harness.py` (+ regression).
+- `.openhands/decisions/012-bff-create-run-async-warmup.md` (new,
+  Proposed).
+
+**Also learned:**
+- Doctor script log-tail sections were pointing at `~/.forge-oh/*.log`
+  but the live services write to `~/dev/forge-oh/.forge-logs/*.log`.
+  Doctor fix: symlink or walk `/proc/<pid>/fd/1` to find the real log
+  target for each service.  Deferred to next slice.

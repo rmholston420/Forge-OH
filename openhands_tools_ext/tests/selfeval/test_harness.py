@@ -259,3 +259,29 @@ async def test_run_selfeval_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     )
     assert summary.tasks_timed_out == 1
     assert summary.outcomes[0].verdict == "timeout"
+
+
+def test_post_runs_timeout_at_least_90s():
+    """Regression: harness POST /api/runs must allow >=90s so the BFF has
+    room to complete its 60s inner call to agent-server plus overhead.
+    A previous 30s cap caused every self-eval cycle to ReadTimeout while
+    the BFF was still legitimately waiting on agent-server LLM warmup.
+    See DEBUG_LOG 2026-08-03 22:52 EDT.
+
+    This test enforces the timeout ceiling as an invariant. If the value
+    is ever lowered, we want to fail fast in CI rather than in a live
+    cycle at 30s per task.
+    """
+    import inspect
+    from openhands_tools_ext.selfeval import harness as harness_mod
+
+    src = inspect.getsource(harness_mod._create_run)
+    # Look for either httpx.AsyncClient default timeout or per-request timeout
+    # on the POST. Reject anything below 90.
+    import re
+    for m in re.finditer(r"timeout\s*=\s*([0-9]+(?:\.[0-9]+)?)", src):
+        val = float(m.group(1))
+        assert val >= 90.0, (
+            f"harness._create_run has a timeout={val}s; must be >=90s per "
+            f"DEBUG_LOG 2026-08-03 22:52 EDT"
+        )

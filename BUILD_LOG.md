@@ -3648,3 +3648,30 @@ cycle. Next diagnostic path: run `forge-doctor.sh` immediately after the
 next `systemctl --user start forge-oh-selfeval.service` and paste
 sections 3, 5, 6, 7 to close the 30.0s-timeout diagnosis.
 
+
+## 2026-08-03 22:55 EDT — Slice G.1 hotfix⁴: raise harness POST timeout to 90s + ADR-012 stub
+
+**Stage:** G.1.
+**Files touched:**
+- `openhands_tools_ext/selfeval/harness.py` — POST /api/runs and AsyncClient default 30s → 90s. Detailed inline comment ties the value to `bff/openhands_client.py`'s `httpx.Timeout(60.0)`.
+- `openhands_tools_ext/tests/selfeval/test_harness.py` — `test_post_runs_timeout_at_least_90s` regression guard: greps `_create_run` source for `timeout=<N>` and asserts N ≥ 90.
+- `.openhands/decisions/012-bff-create-run-async-warmup.md` (NEW, Proposed) — records the proper fix: refactor BFF `create_run` to return before the LLM warmup completes, moving that work into a `BackgroundTasks` continuation with WS-emitted failure events.
+- `scripts/forge-doctor.sh` — Section 7/8 now segment BFF log into POST /api/runs history + errors + tail, and agent-server log into POST /api/conversations + errors + tail. GPU-poll flood no longer drowns the signal. Also fixed the Section 1 false-positive CLI-import traceback (was probing `build_parser` which doesn't exist; now probes `main`).
+
+**Bug root cause (this cycle):** timeout inversion. Harness POST cap (30s) < BFF inner budget (60s) < agent-server LLM warmup (30–60s). Every self-eval task hit the ceiling first while the BFF was still legitimately working. Full analysis in DEBUG_LOG 2026-08-03 22:52 EDT.
+
+**Test summary:** 14/14 in `test_harness.py` (including the new regression). Full suite deferred to the venv-equipped Colossus checkout.
+
+**Ports/adapters:** none changed. Timeout is a client-side ceiling.
+
+**ADR:** ADR-012 Proposed (not Ratified). Ratification gated on next slice.
+
+**Stop condition:** Slice G.1 still awaits one green live self-eval cycle. Command sequence to verify on Colossus:
+```
+cd ~/dev/forge-oh && git pull --ff-only
+systemctl --user restart forge-oh-selfeval.service
+sleep 90
+bash scripts/forge-doctor.sh | tail -80
+cat docs/selfeval/2026-08-04-selfeval.json | jq '.tasks_passed, .tasks_failed, .tasks_timed_out, .tasks_errored'
+```
+Expected: at least one `tasks_passed > 0` OR (if the model actually fails) `tasks_failed > 0` — either way, no more `transport error (ReadTimeout)` verdicts.

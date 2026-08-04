@@ -130,7 +130,15 @@ async def _create_run(
         "requireApproval": False,
     }
     try:
-        resp = await client.post("/api/runs", json=body, timeout=30.0)
+        # 90s ceiling matches the BFF's 60s inner-timeout to agent-server
+        # (bff/openhands_client.py httpx.Timeout(60.0)) plus margin for the
+        # BFF's own workspace lookup + conversation-create overhead. A 30s
+        # cap caused every self-eval cycle to ReadTimeout while the BFF
+        # was still legitimately waiting on agent-server LLM warmup. See
+        # DEBUG_LOG 2026-08-03 22:52 EDT ("30s ReadTimeout diagnosis").
+        # Follow-up: ADR-012 will remove the blocking inner call so this
+        # timeout can drop back to something small.
+        resp = await client.post("/api/runs", json=body, timeout=90.0)
     except httpx.HTTPError as exc:
         # ReadTimeout/ConnectTimeout override __str__ to be empty when no
         # message is set. Always include the exception class so the
@@ -291,7 +299,10 @@ async def run_selfeval(
     started_at = datetime.now(timezone.utc).isoformat()
     store = trajectory_store or TrajectoryStore(default_db_path())
     outcomes: list[TaskOutcome] = []
-    async with httpx.AsyncClient(base_url=bff_base_url, timeout=30.0) as client:
+    # See _create_run() for the 90s rationale. The AsyncClient default
+    # here covers subsequent poll GETs (each carries its own 10s override)
+    # and the presets/workspaces lookups. Kept in sync with the POST cap.
+    async with httpx.AsyncClient(base_url=bff_base_url, timeout=90.0) as client:
         # Resolve the agent preset once per cycle. Failure to resolve turns
         # into a per-task error verdict on the first task and blocks the rest
         # of the cycle from making pointless POSTs.

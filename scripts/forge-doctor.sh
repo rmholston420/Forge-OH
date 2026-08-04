@@ -83,7 +83,7 @@ if [ -x .oh-venv/bin/python ]; then
   PY_VER="$(.oh-venv/bin/python -c 'import sys; print(sys.version.split()[0])' 2>/dev/null || echo '?')"
   inf "openhands: $(.oh-venv/bin/python -c 'import openhands; print(openhands.__version__ if hasattr(openhands, "__version__") else "installed (no __version__)")' 2>&1 | head -1)"
   inf "openhands_tools_ext: $(.oh-venv/bin/python -c 'import openhands_tools_ext; print("importable")' 2>&1 | head -1)"
-  inf "selfeval CLI: $(.oh-venv/bin/python -c 'from openhands_tools_ext.selfeval.cli import build_parser; print("importable")' 2>&1 | head -1)"
+  inf "selfeval CLI: $(.oh-venv/bin/python -c 'from openhands_tools_ext.selfeval.cli import main; print("importable")' 2>&1 | head -1)"
 else
   bad ".oh-venv/bin/python missing"
 fi
@@ -198,19 +198,27 @@ if [ -n "$LATEST_PROPOSALS" ]; then
 fi
 
 # ---- 7. Recent BFF errors ------------------------------------------------
-hdr "7. Recent BFF log (last 40 lines, error-ish first)"
+hdr "7. Recent BFF log (POST /api/runs history + errors + tail)"
 if [ -f "$LOG_DIR/bff.log" ]; then
-  # Show any error/exception/warning lines from the last 200 lines, then the raw tail.
-  tail -n 200 "$LOG_DIR/bff.log" | grep -iE 'error|exception|traceback|500|422|warning' | tail -n 20 | sed 's|^|  |'
-  sub "raw tail"
+  # Segment the log tail so GPU polls don't drown the signal.
+  sub "POST /api/runs history (last 20)"
+  grep -nE 'POST /api/runs' "$LOG_DIR/bff.log" | tail -n 20 | sed 's|^|  |'
+  sub "errors/exceptions (last 20 from last 400 lines)"
+  tail -n 400 "$LOG_DIR/bff.log" | grep -iE 'error|exception|traceback|500|422|warning' | tail -n 20 | sed 's|^|  |'
+  sub "raw tail (last 20)"
   tail -n 20 "$LOG_DIR/bff.log" | sed 's|^|  |'
 else
   bad "no $LOG_DIR/bff.log"
 fi
 
 # ---- 8. Recent agent-server errors --------------------------------------
-hdr "8. Recent agent-server log (last 20 lines)"
+hdr "8. Recent agent-server log (POST /api/conversations history + errors + tail)"
 if [ -f "$LOG_DIR/agent-server.log" ]; then
+  sub "POST /api/conversations (last 10)"
+  grep -nE 'POST /api/conversations' "$LOG_DIR/agent-server.log" | tail -n 10 | sed 's|^|  |'
+  sub "errors/exceptions (last 10 from last 400 lines)"
+  tail -n 400 "$LOG_DIR/agent-server.log" | grep -iE 'ERROR|Exception|Traceback|500|502|503' | tail -n 10 | sed 's|^|  |'
+  sub "raw tail (last 20)"
   tail -n 20 "$LOG_DIR/agent-server.log" | sed 's|^|  |'
 else
   bad "no $LOG_DIR/agent-server.log"
