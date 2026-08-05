@@ -4396,3 +4396,21 @@ Coder ranking (score = mean(debug, arch)) — informational, deferred:
 - **Ports / adapters affected:** none (bench-only decision).
 - **PORTING_LEDGER / ADR updated:** ADR-013 amendment #2 deferred to after SWE-bench Verified run completes.
 - **Stop-condition status:** F.3 renumbered scope defined; setup work not yet started this session.
+
+## 2026-08-05 05:45 EDT — Stage-1H queued: SWE-bench end-to-end sandbox (ADR-015 Proposed)
+
+- **Stage / plugin / port:** Stage-1H (new) · Harness Engineering · SWE-bench sandbox port
+- **What changed:** Authored ADR-015 (Proposed) and `docs/reconciliation-plan-stage-1H.md` after Colossus probes (2026-08-05 05:32 EDT) confirmed two blockers to end-to-end Forge-OH SWE-bench Verified: (1) no preset routes to c01 (presets are gpt-4o and claude-opus-4), (2) no per-run Docker sandboxing (agent-server operates on the single `~/dev/forge-oh/workspace/` dir). Neither blocker was in Action Plan v4 or reconciliation-plan-v1.
+- **Decision:** Split-track plan.
+  - Track 1 (immediate): F.3 Path A (raw c01 vs SWE-bench Verified oracle mode) proceeds as-is → ADR-013 amendment #2.
+  - Track 2 (queued): Stage-1H spec/ADR filed now. Impl slices 1H.1 (preset ap-3), 1H.2 (`swe_bench_sandbox.py`), 1H.3 (UI field) land after F.3 Path A closes.
+  - Track 3 (follow-up): Path B rerun through full Forge-OH after 1H.1–1H.3 Green → possible ADR-013 amendment #3.
+- **Files touched:**
+  - `docs/adr/015-swe-bench-sandbox.md` (new, Proposed)
+  - `docs/reconciliation-plan-stage-1H.md` (new)
+  - `docs/adr/README.md` (row appended)
+  - `BUILD_LOG.md` (this entry)
+  - `SESSION_HANDOFF.md` (overwritten)
+- **Ports / adapters affected:** none this turn (spec-only); Stage-1H impl slices touch agent-server workspace-bootstrap port (new), preset routing, model_router.
+- **PORTING_LEDGER / ADR updated:** ADR-015 (Proposed).
+- **Stop-condition status:** met for this slice — Stage-1H spec + ADR committed + pushed. Next: pivot back to Track 1, generate F.3 Path A shakeout harness.

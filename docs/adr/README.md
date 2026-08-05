@@ -23,3 +23,5 @@ New or amended ADRs follow the `kosmos-adr-authoring` skill. Filename pattern: `
 
 - **ADR-001, ADR-002** live under `.openhands/decisions/` (predate `docs/adr/`).
 - **ADR-010** unassigned (historical gap).
+
+| 015 | [SWE-bench Verified end-to-end sandbox](015-swe-bench-sandbox.md) | Proposed | Adds Stage-1H: per-run Docker sandbox for full-Forge-OH Verified acceptance |
