@@ -10,7 +10,6 @@
 #   c03b = Qwen3-Coder-30B-A3B AWQ-4bit              (coder,   specialized-coder upgrade over c03 Q4_K_M)
 #   c04  = Qwen3.6-27B NVFP4                         (planner, proposed)
 #   c05  = Qwen3-Thinking-2507 AWQ                   (planner, ADR-009 baseline)
-#   c07  = Qwen3-Coder-30B-A3B FP8                   (coder,   quant-ceiling check vs c03b)
 #   c09  = Codestral-22B-v0.1 AWQ                    (coder,   Mistral generalist)
 #   c11  = Devstral-Small-2-24B-2512 compressed-int4 (coder,   Mistral coder-specialist AWQ path)
 #   c12a = DeepSeek-R1-Distill-Qwen-32B AWQ          (coder,   reasoning-model-as-coder)
@@ -33,7 +32,7 @@
 
 set -euo pipefail
 
-CELL="${1:?usage: $0 <c01|c02|c03b|c04|c05|c07|c09|c11|c12a|c12b>}"
+CELL="${1:?usage: $0 <c01|c02|c03b|c04|c05|c09|c11|c12a|c12b>}"
 
 ts()   { date '+%Y-%m-%d %H:%M:%S %Z'; }
 ts_s() { date +%s; }
@@ -104,17 +103,11 @@ case "$CELL" in
       --reasoning-parser qwen3
     )
     ;;
-  c07)
-    # Official Qwen3-Coder-30B FP8 (Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8, 29.03 GB).
-    # Tight fit at 32 GB VRAM — --gpu-memory-utilization stays 0.90 but KV headroom shrinks.
-    MODEL_DIR="Qwen3-Coder-30B-A3B-Instruct-FP8"
-    SERVED_NAME="c07_coder_vllm_qwen3coder_fp8"
-    EXTRA_FLAGS=(
-      --quantization fp8
-      --tool-call-parser qwen3_coder
-      --enable-auto-tool-choice
-    )
-    ;;
+  # c07 (Qwen3-Coder-30B FP8) dropped 2026-08-05 02:31 EDT — CUDA OOM at
+  # compile time on 32 GB 5090. FP8 is weights-only (~30 GB alone),
+  # torch.compile inductor allocations push past VRAM boundary. AWQ 4-bit
+  # variant (c03b) is the canonical Blackwell 5090 quant for this model.
+  # See DEBUG_LOG.md 2026-08-05 02:31 EDT for full trace.
   c09)
     # TechxGenus/Codestral-22B-v0.1-AWQ — real classic AWQ (group_size=128, GEMM).
     # Uses --quantization awq_marlin for Blackwell int4 kernel.
@@ -168,7 +161,7 @@ case "$CELL" in
     )
     ;;
   *)
-    echo "unknown cell: $CELL (valid: c01 c02 c03b c04 c05 c07 c09 c11 c12a c12b)" >&2
+    echo "unknown cell: $CELL (valid: c01 c02 c03b c04 c05 c09 c11 c12a c12b)" >&2
     exit 2
     ;;
 esac

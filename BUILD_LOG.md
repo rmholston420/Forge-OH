@@ -4201,3 +4201,15 @@ until the operator picks the next one.
 - **Ports / adapters affected:** none (bench-only)
 - **PORTING_LEDGER / ADR updated:** ADR-013 verdict still pending — matrix now 12 cells (c03, c08 Ollama + c01, c02, c04, c05, c07, c03b, c09, c11, c12a, c12b vLLM)
 - **Stop-condition status:** c10/c11 pre-flight complete (c10 dropped, c11 on native mistral path); ready to launch c11 smoke, then begin full matrix
+
+## 2026-08-05 02:31 EDT — Drop c07 (Qwen3-Coder-30B FP8) from Path E bench matrix
+
+- **Stage / plugin / port:** F.19 (Path E rebench) · bench matrix cleanup
+- **What changed:** Removed c07 (Qwen3-Coder-30B-A3B-Instruct-FP8) from bench matrix after 900s launch timeout revealed compile-time CUDA OOM. FP8 30B model does not fit in 32 GB VRAM alongside torch.compile inductor allocations. AWQ variant (c03b) is the canonical Blackwell 5090 quant for this model.
+- **Files touched:**
+  - `bench/pathE_qwen36_27b/bench_pathE.py` (CELL_CONFIGS + CELL_ORDER)
+  - `bench/pathE_qwen36_27b/vllm_launch.sh` (removed c07 case block, updated usage strings)
+  - `DEBUG_LOG.md` (appended OOM diagnosis + 5090 VRAM budget rule)
+- **Ports / adapters affected:** none (bench-only cleanup)
+- **PORTING_LEDGER / ADR updated:** —
+- **Stop-condition status:** in-progress — c07 dropped, remaining vLLM cells: c03b, c09, c11, c12a, c12b (5 cells). Ollama cells + c01, c02, c04, c05 already complete.

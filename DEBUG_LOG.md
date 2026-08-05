@@ -1221,3 +1221,34 @@ Chain summary of the four failed fixes for the record:
 2. **01:16 EDT** — added --chat-template jinja. Chat completions returned 400 (no default chat_template) → 501 (MistralCommonBackend.get_chat_template).
 3. **01:20 EDT** — added --tokenizer-mode hf. Engine config accepted it. Tokenizer factory ignored it. Still 501.
 4. **01:27 EDT** — attempted --tokenizer-mode mistral + --config-format mistral + --load-format mistral. Failed check: repo missing params.json/consolidated.safetensors. Abandoned c10.
+
+## 2026-08-05 02:31 EDT — c07 Qwen3-Coder-30B FP8 CUDA OOM at compile time
+
+**Symptom**:
+```
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB.
+GPU 0 has a total capacity of 31.39 GiB of which 30.56 MiB is free.
+this process has 30.73 GiB memory in use.
+```
+
+Container reached the vLLM engine core init stage. Failed at `AsyncLLM.from_vllm_config` → `launch_core_engines` → `wait_for_engine_startup`. Engine core died inside `torch._functorch._aot_autograd` inductor cache during BF16 tensor allocation (`empty_strided_cuda((s72, 5120), (5120, 1), torch.bfloat16)`). vllm_launch.sh timed out after 900s.
+
+**Affected**: F.19 (Path E rebench) · c07 · Qwen3-Coder-30B-A3B-Instruct-FP8
+
+**Root cause**: FP8 is a weights-only quantization. On Qwen3-Coder-30B, FP8 weights alone occupy ~29 GB, saturating the 5090's 32 GB VRAM before any activations, KV cache, or CUDA graph inductor allocations are made. Torch.compile inductor requires additional BF16 activation tensors during graph construction (this is the s72×5120 tensor above), which pushes past the VRAM boundary. `--gpu-memory-utilization 0.90` does not help because the OOM is compile-time, not runtime, and torch.compile bypasses vLLM's memory budget.
+
+**Fix applied**: Dropped c07 from the Path E bench matrix. Qwen3-Coder-30B AWQ 4-bit (c03b) is the canonical Blackwell 5090 quant for this model — it fits in ~18 GB with ~12 GB KV cache headroom.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/bench_pathE.py` (removed c07 from CELL_CONFIGS + CELL_ORDER)
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (removed c07 case block, updated usage strings)
+
+**Alternative approaches considered (not applied)**:
+- `--gpu-memory-utilization 0.75` + `--max-model-len 16384`: might reclaim 2-3 GB but OOM is compile-time, not runtime.
+- `--enforce-eager` to skip torch.compile: drops throughput ~30%; still marginal fit.
+- `--kv-cache-dtype fp8`: helps runtime KV memory, not compile-time OOM.
+
+**General rule for 5090 VRAM budget (32 GB total, ~30 GB usable)**:
+- FP8 models: usable up to ~20-24B params.
+- AWQ/GPTQ 4-bit: usable up to ~32-35B params.
+- NVFP4 (Blackwell-native): usable up to ~35B params with 5-8 GB KV headroom.

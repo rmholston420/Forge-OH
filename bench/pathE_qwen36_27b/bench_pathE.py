@@ -46,7 +46,6 @@ CELLS = {
     "c04": ("planner", "vllm",   "http://localhost:8000/v1",  "c04_planner_vllm_qwen36_27b_nvfp4",  "thinking"),
     "c05": ("planner", "vllm",   "http://localhost:8000/v1",  "c05_planner_vllm_qwen3thinking_awq", "thinking"),
     # F.19-post expansion — broader coder/planner matrix.
-    "c07": ("coder",   "vllm",   "http://localhost:8000/v1",  "c07_coder_vllm_qwen3coder_fp8",      "coder_nothink"),
     "c08": ("coder",   "ollama", "http://localhost:11434/v1", "yi:34b-chat-v1.5-q4_K_M",              "coder"),
     "c09": ("coder",   "vllm",   "http://localhost:8000/v1",  "c09_coder_vllm_codestral22b_awq",    "coder_nothink"),
     # c10 (Devstral NVFP4) dropped 2026-08-05 01:27 EDT — Fireworks repo has no
@@ -61,7 +60,7 @@ CELLS = {
 # Ordering rule (Ollama first, then vLLM grouped by model):
 # Full-matrix ordering (Ollama first — hot-swap free; vLLM grouped by model to minimize restarts):
 #   c03  → c08         (Ollama)
-#   c01 → c02 → c02-rerun → c04 → c05 → c07 → c03b → c09 → c11 → c12a → c12b   (vLLM)
+#   c01 → c02 → c02-rerun → c04 → c05 → c03b → c09 → c11 → c12a → c12b   (vLLM)
 # (c01/c02/c04/c05 are separate vLLM launches; c01 & c04 share weights but
 #  differ in --reasoning-parser / --enable-reasoning flags so they run in
 #  separate containers).
@@ -70,7 +69,7 @@ CELL_ORDER = [
     "c03", "c08",
     # vLLM — grouped by model to minimize container reloads
     "c01", "c02", "c04", "c05",
-    "c07", "c03b",
+    "c03b",
     "c09",
     "c11",
     "c12a", "c12b",
