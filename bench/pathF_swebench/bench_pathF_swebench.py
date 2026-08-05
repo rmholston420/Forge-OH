@@ -95,6 +95,45 @@ CELLS: dict[str, dict] = {
 MAX_TOKENS = 4096  # coder role
 REQUEST_TIMEOUT_S = 900  # 15 min per task — plenty for c01 at ~85 tok/s
 
+# 25-task cross-repo smoke set. 5 tasks each from 5 different repos to
+# stress-test image pulls + repo-specific test invocations before committing
+# to the overnight full-500 run. IDs sampled from SWE-bench Verified test split
+# (princeton-nlp/SWE-bench_Verified). Chosen to cover distinct base_commits
+# per repo — same base_commit means same image, so we'd get an artificial
+# free hit on the second task.
+SMOKE_25_TASK_IDS = [
+    # Django (5)
+    "django__django-10914",  # confirmed green in F.3.0
+    "django__django-11133",
+    "django__django-12708",
+    "django__django-13315",
+    "django__django-14580",
+    # Sympy (5)
+    "sympy__sympy-13480",
+    "sympy__sympy-13877",
+    "sympy__sympy-14248",
+    "sympy__sympy-18189",
+    "sympy__sympy-20590",  # SWE-bench README's validate-gold instance
+    # Sphinx (5)
+    "sphinx-doc__sphinx-8035",
+    "sphinx-doc__sphinx-8595",
+    "sphinx-doc__sphinx-8721",
+    "sphinx-doc__sphinx-9367",
+    "sphinx-doc__sphinx-10466",
+    # Scikit-learn (5)
+    "scikit-learn__scikit-learn-10297",
+    "scikit-learn__scikit-learn-11310",
+    "scikit-learn__scikit-learn-13439",
+    "scikit-learn__scikit-learn-14053",
+    "scikit-learn__scikit-learn-15100",
+    # Matplotlib (5)
+    "matplotlib__matplotlib-22719",
+    "matplotlib__matplotlib-23299",
+    "matplotlib__matplotlib-24026",
+    "matplotlib__matplotlib-24149",
+    "matplotlib__matplotlib-25311",
+]
+
 # ---------- vLLM call ----------
 
 
@@ -275,69 +314,8 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
 # ---------- entrypoint ----------
 
 
-def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--tasks", required=True, help="instance_id, comma-separated list, or 'all'")
-    ap.add_argument("--model", choices=list(CELLS.keys()), default="c01",
-                    help="model cell to test (default: c01, the ratified coder)")
-    ap.add_argument("--dry-plan-only", action="store_true",
-                    help="skip docker apply_and_test; exercise everything else")
-    ap.add_argument("--keep-sandbox", action="store_true",
-                    help="don't rm sandbox container after test run (debug)")
-    args = ap.parse_args(argv)
-
-    # Resolve task list.
-    if args.tasks == "all":
-        ids: list[str] = ["all"]
-    else:
-        ids = [t.strip() for t in args.tasks.split(",") if t.strip()]
-    tasks = load_tasks(ids)
-    print(f"[F.3 Path A] resolved {len(tasks)} task(s); model={args.model}; "
-          f"dry_plan_only={args.dry_plan_only}", flush=True)
-
-    # Prepare output dir.
-    ts = datetime.now().strftime("%Y%m%d_%H%M")
-    out_dir = BENCH_ROOT / f"{ts}_run"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Manifest.
-    manifest = {
-        "ts_utc": datetime.now(timezone.utc).isoformat(),
-        "ts_local": ts,
-        "cell": args.model,
-        "model_id": CELLS[args.model]["model_id"],
-        "endpoint": CELLS[args.model]["endpoint"],
-        "mode": "oracle-retrieval",
-        "task_count": len(tasks),
-        "task_ids": [t["instance_id"] for t in tasks],
-        "dry_plan_only": args.dry_plan_only,
-        "keep_sandbox": args.keep_sandbox,
-    }
-    try:
-        manifest["git_sha"] = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=REPO, text=True
-        ).strip()
-    except Exception:
-        manifest["git_sha"] = "unknown"
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
-
-    # Run.
-    records: list[dict] = []
-    t0 = time.time()
-    for task in tasks:
-        try:
-            rec = run_task(task, args.model, out_dir, args.dry_plan_only, args.keep_sandbox)
-            records.append(rec)
-        except KeyboardInterrupt:
-            print("[F.3 Path A] interrupted; partial results in", out_dir, flush=True)
-            return 130
-        except Exception as e:
-            print(f"[F.3 Path A] task {task['instance_id']} failed: {type(e).__name__}: {e}", flush=True)
-            records.append({"instance_id": task["instance_id"], "phase": "harness_error", "error": f"{type(e).__name__}: {e}"})
-
-    total_wall = time.time() - t0
-
-    # Summary.
+def _emit_summary(out_dir: Path, records: list[dict], total_wall: float) -> None:
+    """Compute + write summary.json. Extracted so KeyboardInterrupt path can call it too."""
     resolved = [r for r in records if r.get("resolved") is True]
     unresolved = [r for r in records if r.get("resolved") is False]
     unknown = [r for r in records if r.get("resolved") is None]
@@ -357,6 +335,118 @@ def main(argv: list[str]) -> int:
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     print("[F.3 Path A] done. summary:", json.dumps(summary, indent=2), sep="\n")
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    task_group = ap.add_mutually_exclusive_group(required=True)
+    task_group.add_argument("--tasks", help="instance_id, comma-separated list, or 'all'")
+    task_group.add_argument("--smoke-25", action="store_true",
+                            help="cross-repo smoke set (django/sympy/sphinx/sklearn/matplotlib × 5 each)")
+    ap.add_argument("--model", choices=list(CELLS.keys()), default="c01",
+                    help="model cell to test (default: c01, the ratified coder)")
+    ap.add_argument("--dry-plan-only", action="store_true",
+                    help="skip docker apply_and_test; exercise everything else")
+    ap.add_argument("--keep-sandbox", action="store_true",
+                    help="don't rm sandbox container after test run (debug)")
+    ap.add_argument("--resume-run", metavar="DIR",
+                    help="resume into an existing run dir; skip tasks whose "
+                         "<instance_id>.json already contains a completed record")
+    args = ap.parse_args(argv)
+
+    # Resolve task list.
+    if args.smoke_25:
+        ids = list(SMOKE_25_TASK_IDS)
+    elif args.tasks == "all":
+        ids = ["all"]
+    else:
+        ids = [t.strip() for t in args.tasks.split(",") if t.strip()]
+    tasks = load_tasks(ids)
+    print(f"[F.3 Path A] resolved {len(tasks)} task(s); model={args.model}; "
+          f"dry_plan_only={args.dry_plan_only}", flush=True)
+
+    # Prepare output dir (new or resumed).
+    if args.resume_run:
+        out_dir = Path(args.resume_run).expanduser().resolve()
+        if not out_dir.is_dir():
+            print(f"[F.3 Path A] --resume-run dir does not exist: {out_dir}", flush=True)
+            return 2
+        ts = out_dir.name.split("_run")[0] if out_dir.name.endswith("_run") else datetime.now().strftime("%Y%m%d_%H%M")
+        print(f"[F.3 Path A] resuming into {out_dir}", flush=True)
+    else:
+        ts = datetime.now().strftime("%Y%m%d_%H%M")
+        out_dir = BENCH_ROOT / f"{ts}_run"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Manifest (append a new one on resume; original preserved as manifest.json).
+    manifest = {
+        "ts_utc": datetime.now(timezone.utc).isoformat(),
+        "ts_local": ts,
+        "cell": args.model,
+        "model_id": CELLS[args.model]["model_id"],
+        "endpoint": CELLS[args.model]["endpoint"],
+        "mode": "oracle-retrieval",
+        "task_count": len(tasks),
+        "task_ids": [t["instance_id"] for t in tasks],
+        "dry_plan_only": args.dry_plan_only,
+        "keep_sandbox": args.keep_sandbox,
+        "smoke_25": bool(args.smoke_25),
+        "resumed": bool(args.resume_run),
+    }
+    try:
+        manifest["git_sha"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=REPO, text=True
+        ).strip()
+    except Exception:
+        manifest["git_sha"] = "unknown"
+    manifest_path = out_dir / ("manifest.json" if not (out_dir / "manifest.json").exists()
+                               else f"manifest_resume_{datetime.now().strftime('%Y%m%d_%H%M')}.json")
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+
+    # Resumption: preload existing per-task records so summary reflects total
+    # progress. Skip re-running tasks whose JSON already contains a completed
+    # record (not a `phase: harness_error` and not an empty file).
+    records: list[dict] = []
+    already_done: set[str] = set()
+    if args.resume_run:
+        for existing in sorted(out_dir.glob("*.json")):
+            if existing.name in ("summary.json", "manifest.json") or existing.name.startswith("manifest_"):
+                continue
+            try:
+                r = json.loads(existing.read_text())
+            except json.JSONDecodeError:
+                continue
+            inst = r.get("instance_id")
+            # Consider a task "done" if it has a completion phase we don't want to redo.
+            phase = r.get("phase")
+            has_resolution = r.get("resolved") in (True, False)
+            if inst and (has_resolution or phase == "dry-plan-only-skipped-docker"):
+                records.append(r)
+                already_done.add(inst)
+        print(f"[F.3 Path A] resume: {len(already_done)} tasks already complete; "
+              f"skipping those", flush=True)
+
+    remaining = [t for t in tasks if t["instance_id"] not in already_done]
+    if args.resume_run:
+        print(f"[F.3 Path A] {len(remaining)} tasks remain to run", flush=True)
+
+    # Run.
+    t0 = time.time()
+    for task in remaining:
+        try:
+            rec = run_task(task, args.model, out_dir, args.dry_plan_only, args.keep_sandbox)
+            records.append(rec)
+        except KeyboardInterrupt:
+            print("[F.3 Path A] interrupted; partial results in", out_dir, flush=True)
+            # Still emit summary of what we've got so it's usable.
+            _emit_summary(out_dir, records, time.time() - t0)
+            return 130
+        except Exception as e:
+            print(f"[F.3 Path A] task {task['instance_id']} failed: {type(e).__name__}: {e}", flush=True)
+            records.append({"instance_id": task["instance_id"], "phase": "harness_error", "error": f"{type(e).__name__}: {e}"})
+
+    total_wall = time.time() - t0
+    _emit_summary(out_dir, records, total_wall)
     print("[F.3 Path A] artifacts:", out_dir)
     return 0
 

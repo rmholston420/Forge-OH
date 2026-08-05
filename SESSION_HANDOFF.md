@@ -1,36 +1,41 @@
-# Forge-OH Session Handoff — 2026-08-05 07:04 EDT
+# Forge-OH Session Handoff — 2026-08-05 07:07 EDT
 
 ## Current build-sequencing position
-- **Stage / phase**: Track 1 — F.3 Path A (SWE-bench Verified pass@1 on raw c01, oracle-retrieval)
+- **Stage / phase**: Track 1 — F.3 Path A (SWE-bench Verified pass@1, oracle-retrieval, raw c01)
 - **Plugin / kernel component**: bench harness
 - **Port(s) in progress**: —
 
 ## Completed this session
-- F.3.0 dry-run PASSED: c01 produced correct fix for django__django-10914 (3.4s, 41.46 tok/s, 143 completion tokens)
-- Fence-stripping fix committed (`73cc32a`): c01 wraps output in ```diff ... ``` — normalize_patch() strips fences, patch_raw preserves original
-- F.3 docker glue implemented (HEAD): `apply_patch_and_run_tests()` calls the official swebench harness. Artifacts under `~/.forge-oh/swebench_runs/<harness_run_id>/`
-- Coder/planner VRAM coexistence documented in DEBUG_LOG (2026-08-05 06:52 EDT)
+- F.3.0 docker-real gate GREEN: `django__django-10914` resolved by c01 (`pass_at_1=1.0`, wall 46.82s)
+- Fence-stripping fix (`73cc32a`)
+- Official swebench harness integration (`1bb51d4`)
+- Smoke-25 + resumption (HEAD): 25-task cross-repo smoke set + `--resume-run DIR`. All 25 IDs verified in Verified split; all 25 base_commits distinct.
 
 ## Remaining before current Definition of Done
-- **F.3.0 docker-real confirmation** (user, next step):
-  1. `source ~/dev/forge-oh/.oh-venv/bin/activate`
-  2. `pip install swebench` (Python 3.12 in .oh-venv, meets ≥3.10)
-  3. `df -h ~ /var/lib/docker` — confirm ≥30 GB free (harness pulls one image ≈ few GB)
-  4. `git pull && python -m bench.pathF_swebench.bench_pathF_swebench --tasks django__django-10914 --model c01`  (note: NO `--dry-plan-only`)
-  5. Expected: `resolved=true` for django__django-10914 (ground-truth patch matches c01 output)
-- **F.3.1 full-500 run** (Perplexity Computer + user overnight): only after F.3.0 docker-real green. Expected wall 4-8h. Disk-space check first (harness pulls ~500 images, ~120 GB per official docs).
-- **ADR-013 amendment #2**: after F.3.1 completes → record pass@1 verdict.
+- **F.3.0.5 smoke-25 pass** (user, next step):
+  1. `cd ~/dev/forge-oh && git pull`
+  2. `python -m bench.pathF_swebench.bench_pathF_swebench --smoke-25 --model c01`
+  3. Expected wall: 20-60 min depending on which instance images are already cached from F.3.0. Most will need first-time pulls (~2-3 GB each).
+  4. Watch stdout for per-task `ok wall=... resolved=True/False` lines.
+  5. If interrupted mid-run, resume with:
+     `python -m bench.pathF_swebench.bench_pathF_swebench --smoke-25 --model c01 --resume-run /home/rmholston/.forge-oh/bench_pathF_swebench/<ts>_run`
+  6. **Green threshold for Go on F.3.1**: ≥90% resolved (23+/25). Below that, diagnose failures from `harness_stderr_tail` in per-task JSONs before overnight run.
+
+- **F.3.1 full-500 overnight** (only after F.3.0.5 green): kicked off before bed; expected 6-10h wall.
+
+- **ADR-013 amendment #2**: after F.3.1 completes → record c01 pass@1 verdict.
+
 - **Post-F.3**: `docker start forge-vllm-planner` to restore steady-state.
-- Non-blocking backlog: untracked `scripts/*.sh` parity per ADR-016; stale docker containers (`uia-qdrant`, `mythos_v01-*`, `open-notebook-*`); stale git stashes.
+
+- Non-blocking backlog: untracked `scripts/*.sh` parity per ADR-016; stale docker containers; stale git stashes.
 
 ## Open questions / awaiting user answer
-- None. Next step is a user-runs-on-Colossus confirmation.
+- None. F.3.0.5 smoke-25 is a user-runs-on-Colossus step.
 
 ## Exact next action
 ```bash
-source ~/dev/forge-oh/.oh-venv/bin/activate
-pip install swebench
-df -h ~ /var/lib/docker
 cd ~/dev/forge-oh && git pull
-python -m bench.pathF_swebench.bench_pathF_swebench --tasks django__django-10914 --model c01
+python -m bench.pathF_swebench.bench_pathF_swebench --smoke-25 --model c01
 ```
+
+If it goes >60 min without a per-task `ok`/`resolved=` line, `Ctrl-C` and paste last 30 lines of stdout + `ls /home/rmholston/.forge-oh/swebench_runs/ | tail -5`.

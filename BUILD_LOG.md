@@ -4586,3 +4586,25 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected**: none
 - **PORTING_LEDGER / ADR updated**: — (F.3.1 pending → ADR-013 amendment #2)
 - **Stop-condition status**: **Docker glue implemented; awaits confirmation run**. User to: (1) `pip install swebench` in `.oh-venv`, (2) rerun F.3.0 without `--dry-plan-only`, (3) confirm `resolved=true` for django__django-10914. On green, unblocks F.3.1.
+
+## 2026-08-05 07:07 EDT — F.3.0 docker-real GREEN + smoke-25 + resumption
+
+- **Stage / plugin / port**: Track 1 / F.3 Path A / F.3.0 gate ratified
+- **F.3.0 result** (user rerun on Colossus):
+  - `django__django-10914` with c01 → `resolved=True`, `pass_at_1=1.0`
+  - wall 46.82s total for one task (inference 3.45s + docker apply/build/test ≈ 43s)
+  - artifacts: `/home/rmholston/.forge-oh/bench_pathF_swebench/20260805_0705_run/`
+  - end-to-end proven: fence-strip → predictions.jsonl → swebench harness → report.json → resolved bool
+- **F.3.0.5 changes (smoke-25 + resumption)**:
+  - `bench/pathF_swebench/bench_pathF_swebench.py`:
+    - New `SMOKE_25_TASK_IDS` constant: 25 tasks × 5 repos (django, sympy, sphinx, sklearn, matplotlib) × 5 tasks each. **All 25 IDs verified against princeton-nlp/SWE-bench_Verified via HF datasets-server API.** All 25 base_commits are distinct → every task pulls a distinct instance image → real image-pull stress test.
+    - New `--smoke-25` flag (mutually exclusive with `--tasks`)
+    - New `--resume-run DIR` flag: preloads existing `<instance_id>.json` records that already have `resolved in (True, False)` or `phase=="dry-plan-only-skipped-docker"`, skips those tasks. Appends a new `manifest_resume_<ts>.json` alongside the original manifest.
+    - Extracted `_emit_summary()` so KeyboardInterrupt path still writes usable summary.
+  - Rationale: (a) 25-task smoke pass validates real cross-repo docker image pulls + test invocations before committing to overnight full-500 (user's stated approach). (b) resumption prevents losing hours of work to a mid-run crash on the eventual full-500.
+- **Files touched**:
+  - `bench/pathF_swebench/bench_pathF_swebench.py` (smoke-25 constant + argparse group + resume-run flag + _emit_summary helper)
+  - `BUILD_LOG.md`, `SESSION_HANDOFF.md`
+- **Ports / adapters affected**: none
+- **PORTING_LEDGER / ADR updated**: — (F.3.1 verdict → ADR-013 amendment #2 still pending)
+- **Stop-condition status**: F.3.0 gate PASSED. Next stop: F.3.0.5 smoke-25 green (≥90% resolved for a Go on overnight full-500).
