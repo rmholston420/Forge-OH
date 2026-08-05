@@ -1,6 +1,8 @@
 # ADR-009: Local LLM Selection for Forge-OH F.19+ (Coder + Planner Roles)
 
-- **Status:** Accepted
+> **STATUS AMENDMENT (2026-08-04):** §1, §2, §3, and §3a are superseded at the *routing-layer contract* by [ADR-012 — Dual-Mode Model Routing](./012-dual-mode-model-routing.md). ADR-009's evidence, dual-port + swap-on-demand topology (§3a), token budgets (§3b), vLLM Blackwell operational notes (§5), and follow-ups remain load-bearing and are cited from ADR-012. Consult ADR-012 for the current routing contract; consult ADR-009 for the bench evidence and operational discipline that underpin it.
+
+- **Status:** Accepted · superseded by [ADR-012](./012-dual-mode-model-routing.md) at the routing-layer contract
 - **Date:** 2026-08-03
 - **Slice:** F.19-pre (path-D v2 blocker) — Forge-OH-Action-Plan-v4
 - **Related:** [BUILD_LOG.md](../../BUILD_LOG.md), [PORTING_LEDGER.md](../../PORTING_LEDGER.md); **supersedes [ADR-001 (Ollama-First, vLLM Fallback Routing)](../../.openhands/decisions/001-use-ollama-first.md)** for the F.19+ two-role router, and supersedes the F.15 default of `qwen3-coder:30b` + `qwen3.6:35b-a3b` on Ollama.

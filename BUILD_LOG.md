@@ -4148,3 +4148,20 @@ until the operator picks the next one.
 - **`FEATURE_RIGPA_LMS_ENABLED`:** operator picked option (2) — Colossus grep verified no external dependency; compose removal stands; in-repo flag registry and ADR-003/004 references intentionally kept.
 - **Files touched:** SESSION_HANDOFF.md (question section rewritten with resolutions), BUILD_LOG.md (this entry).
 - **Both halves shipped together:** n/a — bookkeeping only.
+
+## 2026-08-04 22:04 EDT — ADR-012 authored: dual-mode model routing supersedes ADR-009 routing contract
+
+- **Stage / plugin / port:** Stage 1 reconciliation-plan-v1 · sub-slices 1.5.3–1.5.5 prep · BFF `model_router` + `agent_presets` + `create_run` routing contract.
+- **Slice branch:** `slice/dual-mode-routing-adr` off `slice/stage1-reconciliation-v1`.
+- **What changed:** authored [`docs/adr/012-dual-mode-model-routing.md`](docs/adr/012-dual-mode-model-routing.md) codifying operator resolution (option b) to SESSION_HANDOFF open question #1. ADR establishes:
+  - Two-pass routing in `create_run`: role selection (unchanged from ADR-009 §3a) then preset model override, compatibility-gated.
+  - `AgentPreset.role: Literal["coder","planner"]` field (advisory; constrains which `model` values are legal per preset).
+  - `MODEL_ROUTER_CATALOG` in `bff/services/model_router.py` replacing the cloud-model `Literal` in `agent_presets.py`; canonical model per role + compatible-substitutes set; API-boundary validation on preset create/update.
+  - SQLite persistence at `~/.forge-oh/agent_presets.db` with unique-index-on-default; auto-seed of `ap-1`/`ap-2` on empty first-read; zero migration surface for existing Colossus operators.
+- **Files touched:**
+  - `docs/adr/012-dual-mode-model-routing.md` (new, 138 lines).
+  - `docs/adr/009-local-llm-selection.md` (status-amendment block prepended; ADR-009 §1/§2/§3/§3a marked superseded at routing-layer contract; §3a topology / §3b budgets / §5 vLLM notes / follow-ups retained).
+  - `docs/adr/README.md` (new — ADR index created; documents historical gap at ADR-010 and pre-`docs/adr/` decisions at `.openhands/decisions/`).
+- **Ports / adapters affected:** none this slice. Implementation lands next slice per ADR-012 §Consequences.
+- **PORTING_LEDGER / ADR updated:** ADR-012 authored; ADR-009 amended; ADR index created.
+- **Stop-condition status:** ADR slice complete. Next slice `slice/dual-mode-routing-impl` implements ADR-012 §Consequences bullet list (`bff/services/model_router.py`, `bff/routers/agent_presets.py`, `bff/routers/runs.py`, SQLite migration, three test files, frontend catalog endpoint + role selector).
