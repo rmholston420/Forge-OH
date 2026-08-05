@@ -40,7 +40,7 @@ CELLS = {
     # coder-role cells
     "c01": ("coder",   "vllm",   "http://localhost:8000/v1",  "c01_coder_vllm_qwen36_27b_int4",     "coder_nothink"),
     "c02": ("coder",   "vllm",   "http://localhost:8000/v1",  "c02_coder_vllm_qwen36_35b_nvfp4",    "coder_nothink"),
-    "c03": ("coder",   "ollama", "http://localhost:11434/v1", "qwen3-coder:32k",                    "coder"),
+    "c03": ("coder",   "ollama", "http://localhost:11434/v1", "qwen3-coder:latest",                 "coder"),
     # planner-role cells
     "c04": ("planner", "vllm",   "http://localhost:8000/v1",  "c04_planner_vllm_qwen36_27b_nvfp4",  "thinking"),
     "c05": ("planner", "vllm",   "http://localhost:8000/v1",  "c05_planner_vllm_qwen3thinking_awq", "thinking"),
