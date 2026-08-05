@@ -72,8 +72,12 @@ case "$CELL" in
     )
     ;;
   c04)
+    # Qwen3.6-27B uses Mamba/hybrid attention: fixed Mamba cache slots (~111 on 32GB w/ 0.90 util).
+    # Each parallel decode sequence consumes one slot, so max_num_seqs must be <= slots.
+    # See DEBUG_LOG 2026-08-04 23:57 EDT — c04 first attempt with max_num_seqs=128 failed.
     MODEL_DIR="qwen3.6-27b-nvfp4"
     SERVED_NAME="c04_planner_vllm_qwen36_27b_nvfp4"
+    MAX_NUM_SEQS=96
     EXTRA_FLAGS=(
       --quantization modelopt_fp4
       --reasoning-parser qwen3
@@ -111,7 +115,7 @@ docker run -d --name vllm-bench --gpus all \
   --host 0.0.0.0 --port 8000 \
   --gpu-memory-utilization 0.90 \
   --max-model-len 32768 \
-  --max-num-seqs 128 \
+  --max-num-seqs "${MAX_NUM_SEQS:-128}" \
   --kv-cache-dtype fp8 \
   --dtype auto \
   --trust-remote-code \

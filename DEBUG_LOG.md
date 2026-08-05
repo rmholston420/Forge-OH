@@ -977,3 +977,23 @@ Pydantic schema.
 **Fix applied:** Executed the conservative safe subset for each sub-slice; documented every divergence in BUILD_LOG.md entry `2026-08-04 21:38 EDT`. 1.5.3–1.5.5 deferred pending operator decision on ADR-009 amendment or supersede.
 
 **Files changed:** BUILD_LOG.md (append). No revert of prior slice work; deletions in 1.4 remain because their target files are demonstrably orphan against the current repo state, not against the plan's assumed state.
+## 2026-08-04 23:57 EDT — c04 vLLM fails to start: "max_num_seqs (128) exceeds available Mamba cache blocks (111)"
+
+**Symptom** (exact from `docker logs vllm-bench`):
+```
+ValueError: max_num_seqs (128) exceeds available Mamba cache blocks (111). Each decode sequence requires one Mamba cache block, so CUDA graph capture cannot proceed. Please lower max_num_seqs to at most 111 or increase gpu_memory_utilization.
+RuntimeError: Engine core initialization failed.
+```
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh · c04 cell (Qwen3.6-27B NVFP4 planner)
+
+**Root cause**: Qwen3.6-27B uses Mamba/hybrid attention (not pure dense self-attention). Mamba cache slots are a fixed derived quantity based on model config × gpu_memory_utilization × available VRAM. On Colossus RTX 5090 (32 GB, 0.90 util) the model provides ~111 Mamba slots. Our launcher hard-coded `--max-num-seqs 128`, which exceeded the slot count. Each parallel decode sequence needs one Mamba slot, so vLLM refused to start.
+
+**Fix applied**: introduced per-cell `MAX_NUM_SEQS` override in `vllm_launch.sh`. For c04, set to 96 (safe headroom below the 111 hard-cap). Default remains 128 for all non-Mamba cells (c01 dense-int4, c02 A3B MoE, c03b dense AWQ, c05 dense AWQ). If future Mamba-model cells fail with the same symptom, set their own `MAX_NUM_SEQS` in the case-block.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (added per-cell MAX_NUM_SEQS variable + comment)
+
+**Alternative not chosen**: raising `--gpu-memory-utilization` beyond 0.90 would produce more Mamba slots but risks OOM on prompt processing spikes.
+
+**Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c04` — should reach READY without the Mamba-slot error.
