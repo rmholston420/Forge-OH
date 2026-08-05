@@ -1062,3 +1062,26 @@ Error: pull model manifest: file does not exist
 
 **Verify with**: `ollama pull yi:34b-chat-v1.5-q4_K_M` — should download without manifest error.
 
+
+## 2026-08-05 00:39 EDT — pull_new_models.sh v2: --include also silently ignored, only tiny configs downloaded
+
+**Symptom** (exact from operator paste):
+```
+UserWarning: Ignoring `--include` since filenames have been explicitly set.
+Fetching 7 files: 100%|██████████| 7/7 [00:01<00:00,  5.70it/s]
+[2026-08-05 00:34:12 EDT] DONE Qwen3-Coder-30B-A3B-Instruct-FP8
+```
+
+All 5 HF pulls "succeeded" in <2 seconds each — a real 30 GB weight download over hf_transfer runs 30-90 seconds. Only tiny (11 MB, 2 MB, 34 MB) config/tokenizer files were fetched.
+
+**Affected**: F.19-post · pathE_qwen36_27b · pull_new_models.sh
+
+**Root cause**: On huggingface_hub 1.26.0, the `hf download` CLI treats **any** positional args after the repo id as literal filenames, AND silently ignores `--include` when positional filenames are also inferred. The `--include "*.safetensors" "*.json" "*.txt" "*.model" "tokenizer*"` was parsed as: `--include "*.safetensors"` with `"*.json"`, `"*.txt"`, `"*.model"`, `"tokenizer*"` as positional filenames — which the CLI then tried to fetch literally, hitting cached small files or failing silently.
+
+**Fix applied**: rewrote `pull()` to omit both `--include` and `--exclude` (full snapshot download), then post-download `find ... -name '*.gguf' -delete` to remove GGUFs. Added a sentinel check: only skip if a `.safetensors` file > 100 MB exists in the target dir (guards against the "download succeeded with only configs" false positive). Failure now returns exit 3 with a clear error.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/pull_new_models.sh`
+
+**Verify with**: `bash bench/pathE_qwen36_27b/pull_new_models.sh` — expect real download times (30-120s per model on Gbit) and `du -sh` should show ~15-30 GB per model dir.
+

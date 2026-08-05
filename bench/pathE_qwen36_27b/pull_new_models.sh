@@ -24,21 +24,35 @@ mkdir -p "$MODELS_DIR"
 
 ts() { date '+%Y-%m-%d %H:%M:%S %Z'; }
 
+# Download the full snapshot. huggingface_hub 1.0+ has removed reliable
+# --include/--exclude filtering from the CLI (both are silently ignored when
+# positional filenames are also present, and positional filenames themselves
+# are treated as literal names). Simplest correct behavior: pull everything,
+# then rm GGUFs afterward if they exist.
 pull() {
   local REPO="$1"
   local LOCAL="$2"
   local DIR="$MODELS_DIR/$LOCAL"
+  # Sentinel for "weights actually downloaded": at least one non-empty *.safetensors
+  local have_weights=0
   if [ -d "$DIR" ] && [ -f "$DIR/config.json" ]; then
-    echo "[$(ts)] SKIP $LOCAL (already at $DIR)"
+    if find "$DIR" -maxdepth 2 -name '*.safetensors' -size +100M 2>/dev/null | grep -q .; then
+      have_weights=1
+    fi
+  fi
+  if [ "$have_weights" = "1" ]; then
+    echo "[$(ts)] SKIP $LOCAL (weights already present at $DIR)"
     return 0
   fi
-  echo "[$(ts)] PULL $REPO -> $DIR"
-  # Only fetch inference-time files: weights, tokenizer, configs. Skip GGUFs and
-  # non-inference artifacts. Use --include patterns because --exclude is ignored
-  # on huggingface_hub>=1.0 when other filename filters are present.
-  hf download "$REPO" \
-    --local-dir "$DIR" \
-    --include "*.safetensors" "*.json" "*.txt" "*.model" "tokenizer*"
+  echo "[$(ts)] PULL $REPO -> $DIR (full snapshot)"
+  hf download "$REPO" --local-dir "$DIR"
+  # Strip any GGUFs — vLLM does not use them and they inflate footprint.
+  find "$DIR" -maxdepth 2 -name '*.gguf' -type f -print -delete 2>/dev/null || true
+  # Verify at least one shard landed
+  if ! find "$DIR" -maxdepth 2 -name '*.safetensors' -size +100M 2>/dev/null | grep -q .; then
+    echo "[$(ts)] FAIL $LOCAL: no .safetensors > 100MB found under $DIR" >&2
+    return 3
+  fi
   echo "[$(ts)] DONE $LOCAL"
 }
 
