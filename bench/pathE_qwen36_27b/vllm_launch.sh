@@ -128,11 +128,12 @@ case "$CELL" in
   c10)
     # Firworks/Devstral-Small-2-24B-Instruct-2512-nvfp4 (15 GB).
     # Mistral3ForConditionalGeneration (VLM) — served text-only via --limit-mm-per-prompt.
-    # Vision tower still loads (~2 GB VRAM) but is inert. See DEBUG_LOG 2026-08-05 01:04 EDT.
+    # Weights are genuine NVFP4 (float, 4-bit, format=nvfp4-pack-quantized) BUT wrapped in
+    # compressed-tensors registry — DO NOT pass --quantization; vLLM auto-detects and dispatches
+    # to the Blackwell FP4 kernel via the CT path. See DEBUG_LOG 2026-08-05 01:11 EDT.
     MODEL_DIR="Devstral-Small-2-24B-Instruct-2512-nvfp4"
     SERVED_NAME="c10_coder_vllm_devstral24b_nvfp4"
     EXTRA_FLAGS=(
-      --quantization modelopt_fp4
       --limit-mm-per-prompt '{"image":0}'
     )
     ;;

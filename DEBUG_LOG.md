@@ -1107,3 +1107,29 @@ Both c10 (`Devstral-Small-2-24B-Instruct-2512-nvfp4`) and c11 (`Devstral-Small-2
 - `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 and c11 stanzas)
 
 **Verify with**: after `bash vllm_launch.sh c10 up`, `curl -s http://localhost:8000/v1/models | jq` should list `c10_coder_vllm_devstral24b_nvfp4` with limit `image=0` reflected in vLLM startup log. Same for c11.
+
+
+## 2026-08-05 01:11 EDT — c10 Fireworks NVFP4 is compressed-tensors-wrapped, same as c11
+
+**Symptom** (exact from vLLM 0.26.0 startup):
+```
+ValidationError: 1 validation error for ModelConfig
+  Value error, Quantization method specified in the model config (compressed-tensors) does not match the quantization method specified in the `quantization` argument (modelopt_fp4).
+```
+
+Container exited(1) at ~01:06 EDT, ~10 seconds after launch. Vision tower never loaded — died at ModelConfig validation.
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh (c10)
+
+**Root cause**: Third instance of the compressed-tensors trap this session (c03b, c11, now c10). The `Firworks/Devstral-Small-2-24B-Instruct-2512-nvfp4` repo packages genuine NVFP4 weights (`format: nvfp4-pack-quantized`, `type: float`, `num_bits: 4`) but wraps them in the compressed-tensors registry (`quant_method: compressed-tensors`). vLLM's config auto-detect reads `compressed-tensors`; our explicit `--quantization modelopt_fp4` conflicts and pydantic ModelConfig validation aborts.
+
+The kernel dispatch on Blackwell (SM_120) still goes through the CT path to the FP4 marlin kernel — the served weights are unchanged, only the registry wrapper differs from a "native" ModelOpt-FP4 repo.
+
+**Fix applied**: removed `--quantization modelopt_fp4` from c10 EXTRA_FLAGS. Kept `--limit-mm-per-prompt '{"image":0}'`. Matches the c03b and c11 pattern.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 stanza)
+
+**Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c10 up 2>&1 | tee ~/.forge-oh/c10_up.log` — expect READY within 60-120s and no ValidationError.
+
+**Prevention for future benches**: **always** inspect `config.json:quantization_config.quant_method` BEFORE deciding whether to pass `--quantization` to vLLM. If it says `compressed-tensors`, never pass an explicit `--quantization` flag regardless of what the repo name suggests. Repos naming themselves `-awq-4bit`, `-nvfp4`, `-fp8`, etc. may still ship as CT-wrapped.
