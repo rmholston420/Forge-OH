@@ -21,7 +21,7 @@ const routes: { path: string; expect: RegExp }[] = [
   { path: '/tools-mcp',         expect: /Tools & MCP|MCP server/i },
   { path: '/observability',     expect: /Observability|Metrics dashboard/i },
   { path: '/settings',          expect: /Appearance|Model & Agent|Shortcuts/i },
-  { path: '/settings/secrets',  expect: /Secrets/i },
+  { path: '/secrets',           expect: /Secrets/i },
   { path: '/runs/compare',      expect: /No runs selected|feature-flag|Fork action/i },
 ];
 

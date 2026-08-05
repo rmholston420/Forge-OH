@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from bff.openhands_client import get_client
 from bff.services.action_reconstruction import (
@@ -681,6 +681,41 @@ async def resume_run(run_id: str) -> dict:
             except Exception:
                 pass
             # State suggests it should be resumable now; loop retries /run.
+
+
+class SendMessageRequest(BaseModel):
+    """Payload for POST /runs/{run_id}/message.
+
+    The agent-server route ``POST /api/conversations/{cid}/events`` takes
+    ``{role, content, run}``. We fix ``role='user'`` (only user messages
+    make sense to inject mid-run from the operator UI) and wrap the plain
+    text string as a single ``TextContent`` entry. ``run=False`` because
+    Send-While-Running assumes the loop is already active — the message
+    is appended to the event stream and the currently-running LLM turn
+    (or the next one) will pick it up.
+    """
+
+    message: str = Field(min_length=1, max_length=32_000)
+
+
+@router.post("/runs/{run_id}/message")
+async def send_run_message(run_id: str, body: SendMessageRequest) -> dict:
+    """Send a user message into a running (or paused) conversation.
+
+    Mirrors the exact contract of agent-server 1.40.0's
+    ``POST /api/conversations/{cid}/events`` with a fixed
+    ``role='user'`` and a single ``TextContent`` payload.
+    """
+    result = await _call_lifecycle(
+        run_id,
+        "events",
+        json_body={
+            "role": "user",
+            "content": [{"type": "text", "text": body.message}],
+            "run": False,
+        },
+    )
+    return {"ok": True, "run_id": run_id, "agent_server": result}
 
 
 @router.post("/runs/{run_id}/stop")

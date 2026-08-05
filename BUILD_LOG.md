@@ -4050,3 +4050,101 @@ DEBUG_LOG + SESSION_HANDOFF updated, ready for PR + merge.
 
 **Next slice queued:** queued sequence complete. No forward slice pending
 until the operator picks the next one.
+
+## 2026-08-04 21:38 EDT — Stage 1 (reconciliation-plan-v1): 1.1–1.4, 1.5.2, 1.6, 1.7 landed on slice/stage1-reconciliation-v1
+
+**Governing spec:** `uploaded_attachments/.../Forge-OH-reconciliation-plan-v1-stage-1.md`. Executes verbatim per user directive except where the plan's assumptions contradict live repo state — each divergence is called out below. Sub-slices 1.5.3–1.5.5 are DEFERRED (see rationale under 1.5).
+
+### 1.1 — install blockers
+
+- **Backend files:** `bff/requirements.lock` — bumped `openhands-sdk==1.29.3` → `==1.40.0` (surgical edit; requires full lock regen on Colossus's Python before deploy).
+- **Frontend files:** `package.json` — added `"typecheck": "tsc --noEmit"` and `"test:unit": "vitest run"` script aliases (kept existing `type-check`/`test` intact) so `.github/workflows/ci.yml` invocations resolve.
+- **Plan divergence:** the plan says `lmnr==0.7.57` conflicts with `openhands-sdk==1.29.3`. Sandbox pip install with Python 3.14 resolved cleanly with `openhands-sdk==1.40.0` + `lmnr==0.7.57` — no conflict reproducible here. Real problem is stale lock on Colossus. Full `pip-compile` regen must be run on Colossus's actual Python before merging.
+- **Both halves shipped together:** yes.
+
+### 1.2 — MCP Tools page
+
+- **Frontend files:**
+  - `src/features/mcp/api.ts` — corrected all fetches from `${BASE}/mcp*` → `${BASE}/api/mcp*` (backend mounts at `/api` + router prefix `/mcp`).
+  - `src/app/(dashboard)/tools-mcp/page.tsx` — replaced `EmptyState` stub with `<McpPage />` (default export from `@/features/mcp/McpPage`).
+- **Both halves shipped together:** yes (frontend-only slice; backend already exists at `bff/routers/mcp.py`).
+
+### 1.3 — Secrets nav entry + stub deletion
+
+- **Frontend files:**
+  - `src/components/navigation/Sidebar.tsx` — added `{ href: '/secrets', label: 'Secrets', icon: '🔒' }` between Observability and Self-Eval.
+  - Deleted `src/app/(dashboard)/settings/secrets/page.tsx` (stubbed `EmptyState` → 404-until-user-typed-URL path); dir removed.
+  - Updated 3 e2e specs to point at `/secrets`: `src/tests/e2e/secrets.spec.ts`, `src/tests/e2e/nav-routes.spec.ts`, `src/tests/e2e/visual-tour.spec.ts` (also removed a duplicate entry).
+- **Backend files:** none — real `/secrets` page at `src/app/(dashboard)/secrets/page.tsx` already exists and is gated on `NEXT_PUBLIC_FEATURE_SECRETS_ENABLED`.
+- **Both halves shipped together:** yes.
+
+### 1.4 — safe dead-code deletions
+
+**1.4.1 — orphan Next.js API proxy routes:** the plan says "12 unused" but grep against the current repo shows only 3 truly zero-caller routes (many of the plan's proposed deletions have live code or test callers). Following the plan's own rule "do not delete anything with a live importer without investigating why it appeared live", conservative subset deleted:
+- `src/app/api/runs/[runId]/commands/route.ts`
+- `src/app/api/runs/[runId]/events/route.ts`
+- `src/app/api/runs/[runId]/artifacts/route.ts`
+
+**1.4.2 — dead Plugins scaffolding:**
+- Deleted `src/features/plugins/PluginsPage.tsx` — the `(dashboard)/plugins/page.tsx` uses `@/features/plugins/hooks` (a different file from `@/lib/plugins/hooks`).
+- Deleted `src/lib/plugins/hooks.ts` — only importer besides the deleted `PluginsPage.tsx` was two orphan tests.
+- Deleted `src/tests/unit/plugin-hooks.test.ts` and `src/tests/integration/plugins-flow.test.ts` — orphan tests that would break without the deleted hooks.
+
+**1.4.3 — dead runs helper:** deleted `src/lib/runs.ts` (zero code + zero test importers).
+
+**1.4.4 — dead compose env var:** removed `FEATURE_RIGPA_LMS_ENABLED` line from `docker-compose.yml` (line 21).
+
+**1.4.5 — TODO(foh-phase2) markers:**
+- `bff/routers/agents.py` — deleted; entire file was a deliberately-empty deprecation stub whose own docstring said "delete once no imports remain". Confirmed zero importers.
+- `bff/routers/notifications.py` — NOT touched. The TODO here is a future-work list ("decide on real notification sources"), not a "delete this file" marker. Router is live and functional.
+- `src/features/mcp/mcp-server-card.tsx` — plan mentioned this file but grep finds no `TODO(foh-phase2)` marker. Nothing to delete.
+
+**Both halves shipped together:** yes.
+
+### 1.5 — Agent Presets (partial: stub swap only)
+
+- **Frontend files:**
+  - `src/app/(dashboard)/agents/page.tsx` — replaced `EmptyState` stub with `<AgentPresetsPage />` (default export from `@/features/agent-presets/AgentPresetsPage`).
+  - `src/features/agent-presets/api.ts` — corrected all 7 fetches from `${BASE}/agent-presets*` → `${BASE}/api/agent-presets*` (same `/api`-prefix bug pattern as MCP had).
+- **1.5.3–1.5.5 DEFERRED — architectural conflict with ADR-009.** The plan asks to (a) replace the `Literal["gpt-4o","claude-opus-4","gemini-2.5-pro","local-llama"]` with `model_router` validation, (b) make `create_run` route via `preset.model`, (c) migrate `_PRESETS` from in-memory dict to SQLite. But the codebase's model routing is deterministically governed by ADR-009 §3a: `route_by_role(role, context_length)` — routing is by **role** (coder/planner), not by a user-selected preset model. There is no `role` field on `AgentPreset`. Making `agentPresetId` override role-based routing directly contradicts ADR-009's topology assumption (only one of coder/planner vLLM resident at a time). This needs either a fresh ADR (amending or superseding ADR-009 to allow preset-driven model override) or a targeted alignment of `AgentPreset` to `role`. Per project rule *"Ask clarifying questions … especially for anything the spec flags as requiring a formal ADR"*, deferring the three sub-slices until reconciliation-plan-v1 is amended.
+- **Both halves shipped together:** yes (for the stub-swap portion).
+
+### 1.6 — Send Message While Running
+
+- **Backend files:** `bff/routers/runs.py`
+  - Added `from pydantic import Field` to the existing pydantic import line.
+  - Added `SendMessageRequest` model (single field: `message: str = Field(min_length=1, max_length=32_000)`).
+  - Added `POST /runs/{run_id}/message` handler that calls `_call_lifecycle(run_id, "events", json_body={"role":"user","content":[{"type":"text","text":body.message}],"run":False})` — mirrors agent-server 1.40.0's exact `SendMessageRequest`/`TextContent` shape as verified against `OpenHands/software-agent-sdk/main/openhands-sdk/openhands/sdk/conversation/request.py` and `.../llm/message.py`.
+- **Frontend files:**
+  - `src/lib/api/endpoints.ts` — added `ENDPOINTS.RUNS.message`.
+  - `src/features/runs/api.ts` — added `sendRunMessage(runId, message)` and `MessageAck` type.
+  - `src/features/runs/hooks.ts` — added `useSendRunMessage` mutation that invalidates both `QUERY_KEYS.runs.detail(runId)` and `QUERY_KEYS.runs.events(runId)` on success.
+  - `src/features/run-detail/RunMessageComposer.tsx` — new persistent composer component (sticky bottom bar with textarea + Send button, Ctrl/Cmd+Enter shortcut, terminal-status detection, error surfacing).
+  - `src/app/(dashboard)/runs/[runId]/page.tsx` — imported and rendered `<RunMessageComposer runId={runId} status={run?.status} />` at the bottom of the page so it's visible across all tabs.
+- **Both halves shipped together:** yes.
+
+### 1.7 — dead Socket.IO approval_required listener
+
+- **Backend files:** `bff/services/event_relay.py` — inside the `if status != last_status` block, added a conditional emit of a dedicated `"approval_required"` Socket.IO event when `status == "waiting_for_confirmation"`. Payload carries `type: "approval_required"` (discriminator for `normalizeEvent`), `runId`, `conversationId`, and `executionStatus`.
+- **Frontend files:** none — the listener at `src/lib/streaming/useRunStream.ts:102` already binds to `'approval_required'`; it just never received an event because the BFF wasn't emitting one. Root cause was that all agent-server events use `kind` (not `type`), so the `e.type === 'approval_required'` branch in `normalizeEvent` was structurally dead.
+- **Both halves shipped together:** yes.
+
+### Static verification (sandbox — Colossus verify pending)
+
+- `python3 -m compileall` — clean for `bff/routers/runs.py`, `bff/services/event_relay.py`, `bff/main.py`, `bff/routers/agent_presets.py`.
+- `ast.parse` — clean for all touched Python files.
+- TS/TSX balance checks (braces/parens/brackets) — clean for all 7 touched frontend files.
+- **Not verified in sandbox:** `pnpm typecheck`, `pnpm build`, `pytest --collect-only`, Playwright specs. Per user directive #2, runtime verification is on Colossus.
+
+### Stop condition status
+
+- 1.1, 1.2, 1.3, 1.4, 1.5.2, 1.6, 1.7 — code landed on `slice/stage1-reconciliation-v1`, ready for Colossus runtime verify.
+- 1.5.3, 1.5.4, 1.5.5 — DEFERRED pending ADR-009 alignment decision.
+- Slice-branch push and PR follow this entry.
+
+## 2026-08-04 21:57 EDT — Stage 1 reconciliation-plan-v1: open questions resolved
+
+- **ADR-009 vs 1.5.3–1.5.5:** operator picked option (b) — supersede ADR-009 with a new dual-mode routing ADR. Role-based routing remains canonical + takes precedence; `preset.model` layers on as an override only when compatible with the resident role's model. `AgentPreset` will gain a `role` field. Draft + implementation to land in the next slice.
+- **`FEATURE_RIGPA_LMS_ENABLED`:** operator picked option (2) — Colossus grep verified no external dependency; compose removal stands; in-repo flag registry and ADR-003/004 references intentionally kept.
+- **Files touched:** SESSION_HANDOFF.md (question section rewritten with resolutions), BUILD_LOG.md (this entry).
+- **Both halves shipped together:** n/a — bookkeeping only.

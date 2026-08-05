@@ -28,6 +28,7 @@ export const ENDPOINTS = {
     fork: (runId: string) => `${BASE}/runs/${runId}/fork`,
     approve: (runId: string) => `${BASE}/runs/${runId}/approve`,
     reject: (runId: string) => `${BASE}/runs/${runId}/reject`,
+    message: (runId: string) => `${BASE}/runs/${runId}/message`,
     secrets: (runId: string) => `${BASE}/runs/${runId}/secrets`,
     compare: (left: string, right: string) =>
       `${BASE}/runs/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`,

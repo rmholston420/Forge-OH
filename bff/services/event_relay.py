@@ -168,6 +168,27 @@ async def _run_loop(cid: str) -> None:
                         "prev": last_status,
                     },
                 )
+                # Stage 1.7 (reconciliation-plan-v1) — emit a dedicated
+                # ``approval_required`` Socket.IO event when the conversation
+                # enters ``waiting_for_confirmation``. Prior to this the
+                # frontend's ``useRunStream`` listener for that name never
+                # fired because agent-server events use ``kind`` (not
+                # ``type``), so the ``e.type === 'approval_required'``
+                # branch in ``normalizeEvent`` was structurally dead.
+                # The payload carries a discriminator ``type`` so the
+                # normalizer picks the branch, plus the conversation id
+                # for room-scoping on the client.
+                if status == "waiting_for_confirmation":
+                    await _emit(
+                        room,
+                        "approval_required",
+                        {
+                            "type": "approval_required",
+                            "runId": cid,
+                            "conversationId": cid,
+                            "executionStatus": status,
+                        },
+                    )
                 last_status = status
 
             events, next_page = await _fetch_page(cid, page_id)

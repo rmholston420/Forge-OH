@@ -1,17 +1,16 @@
 /**
  * secrets.spec.ts
  *
- * /settings/secrets is currently an EmptyState stub in the shipped app.
- * This spec asserts THAT ACTUAL BEHAVIOR (per user instruction:
- * "make the optimal choices. what is important is that the app actually
- *  works for real."). When secrets are implemented, this file should be
- * expanded with real CRUD flows.
+ * Real Secrets page at /secrets (Stage 1.3 reconciliation-plan-v1 wired
+ * the sidebar entry and removed the redundant /settings/secrets stub).
+ * The page renders the real SecretsPage feature component; values
+ * remain masked in the DOM.
  */
 import { test, expect } from '@playwright/test';
 
-test.describe('Secrets (stub)', () => {
+test.describe('Secrets', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/settings/secrets');
+    await page.goto('/secrets');
   });
 
   test('page loads with heading', async ({ page }) => {

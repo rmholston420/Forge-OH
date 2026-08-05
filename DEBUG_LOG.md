@@ -958,3 +958,22 @@ caught because no populated cycle detail was ever rendered until now.
 **Regression guard:** when adding new BFF-shape TS types, mirror the
 Python dataclass exactly. When possible, generate the TS from the
 Pydantic schema.
+
+## 2026-08-04 21:38 EDT — Plan-vs-repo mismatches during Stage 1 reconciliation-plan-v1 execution
+
+**Symptom:** `Forge-OH-reconciliation-plan-v1-stage-1.md` prescribes delete lists and code changes that, when checked against the live repo, contradict on-disk state.
+
+**Affected stage/plugin/port:** Stage 1 reconciliation-plan-v1 · sub-slices 1.1, 1.4, 1.5.
+
+**Root cause:** Plan was written against an assumed snapshot (`plan-v0`?) that predates several merged PRs (notably selfeval-frontend-polish #4). Specifically:
+
+1. **1.1** — plan claims a top-level `lmnr==0.7.57` pin blocks `openhands-sdk` upgrade. `bff/requirements.txt` has no direct `lmnr` line. `lmnr` comes transitively via `openhands-tools`. Sandbox pip resolve with Python 3.14 succeeded with `openhands-sdk==1.40.0` + `lmnr==0.7.57` — no conflict reproducible. Root problem is stale `bff/requirements.lock` on Colossus (`openhands-sdk==1.29.3`).
+2. **1.4.1** — plan says "12 unused Next.js proxy routes". Grep finds only 3 truly zero-caller (`runs/[runId]/commands`, `.../events`, `.../artifacts`); the other proposed deletions have live code or test callers.
+3. **1.4.2** — plan says to delete `src/lib/plugins/hooks.ts` and `src/features/plugins/PluginsPage.tsx` unconditionally. Grep shows two orphan test files also import from `src/lib/plugins/hooks.ts` — they were deleted alongside per plan rule 1.4.5 ("if any marker turns out to guard code that's actually still referenced, log in DEBUG_LOG.md rather than deleting blind").
+4. **1.4.5** — plan says `src/features/mcp/mcp-server-card.tsx` contains a `TODO(foh-phase2)` marker. Grep finds no such marker in `src/features/mcp/`. Plan mis-identifies the location.
+5. **1.5** — plan asks to route `create_run` via `preset.model`. Codebase's `route_by_role(role, context_length)` is deterministically role-based per ADR-009 §3a. There is no `role` field on `AgentPreset`. Making preset drive model directly contradicts ADR-009 topology. Deferred; awaiting operator decision.
+6. **General** — plan text uses BFF port 8000. Actual verified BFF port is 8081 (see `forge-oh-colossus-ops` skill).
+
+**Fix applied:** Executed the conservative safe subset for each sub-slice; documented every divergence in BUILD_LOG.md entry `2026-08-04 21:38 EDT`. 1.5.3–1.5.5 deferred pending operator decision on ADR-009 amendment or supersede.
+
+**Files changed:** BUILD_LOG.md (append). No revert of prior slice work; deletions in 1.4 remain because their target files are demonstrably orphan against the current repo state, not against the plan's assumed state.
