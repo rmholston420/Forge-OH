@@ -106,3 +106,10 @@ storybook-static/
 #   scripts/  — was force-tracked; ignore rule was dead and misleading
 # If you re-introduce either as a working directory, add an explicit rule with rationale.
 # =============================================================================
+
+# --- scripts/ scratch (per ADR-016 parity closeout 2026-08-05) ---------------
+#   scripts/debug-out/       — Playwright screenshot + JSON report scratch,
+#                              regenerated on every debug-frontend.ts run.
+#   scripts/__pycache__/     — Python bytecode.
+scripts/debug-out/
+scripts/__pycache__/

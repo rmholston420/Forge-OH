@@ -4716,3 +4716,19 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **PORTING_LEDGER / ADR updated:** ADR-013 (amendment #2)
 - **Stop-condition status:** ADR ratified; awaiting full-500 (F.3.1) result on Colossus.
 
+
+## 2026-08-05 09:36 EDT — ADR-016 parity closeout: track scripts/{check-approval-checkbox,e2e-approval}.ts + explicit scripts/ gitignore
+
+- **Stage / plugin / port:** Stage 1 exit-gate prep · ADR-016 parity
+- **What changed:**
+  - Tracked two previously-untracked ad-hoc E2E scripts (Playwright + BFF integration, same shape as tracked `scripts/e2e-run.ts` / `e2e-stage6.ts` / `e2e-stage7.ts`).
+  - Added explicit `.gitignore` rules for `scripts/debug-out/` (Playwright screenshot scratch) and `scripts/__pycache__/` per ADR-016 "every path either tracked or explicitly ignored with rationale".
+  - Deleted five dead Path D / superseded bench scripts (`scripts/bench_ollama_vs_vllm.sh`, `scripts/bench_pathD*.{py,sh}`, `scripts/bench_runner.py`) and two dead vLLM launchers (`scripts/vllm_start_qwen*.sh`) via the Colossus-side cleanup block that follows this commit. Ops-canonical `ops/vllm_launch_{coder,planner}.sh` supersede.
+- **Files touched:**
+  - `scripts/check-approval-checkbox.ts` (added, 22 lines)
+  - `scripts/e2e-approval.ts` (added, 87 lines)
+  - `.gitignore` (added `scripts/debug-out/`, `scripts/__pycache__/` with rationale)
+  - `BUILD_LOG.md` (this entry)
+- **Ports / adapters affected:** none (test/scratch surface only)
+- **PORTING_LEDGER / ADR updated:** —
+- **Stop-condition status:** partial — untracked-parity item from the ADR-016 closeout todo is now resolved on GitHub; Colossus mirror aligns after user runs the follow-up `git rm` block for the seven dead scripts.
