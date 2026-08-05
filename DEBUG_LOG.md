@@ -997,3 +997,25 @@ RuntimeError: Engine core initialization failed.
 **Alternative not chosen**: raising `--gpu-memory-utilization` beyond 0.90 would produce more Mamba slots but risks OOM on prompt processing spikes.
 
 **Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c04` — should reach READY without the Mamba-slot error.
+
+## 2026-08-05 00:00 EDT — c03b vLLM fails to start: "Quantization method in model config (compressed-tensors) does not match --quantization (awq_marlin)"
+
+**Symptom** (exact from `docker logs vllm-bench`):
+```
+pydantic_core._pydantic_core.ValidationError: 1 validation error for ModelConfig
+Value error, Quantization method specified in the model config (compressed-tensors) does not match the quantization method specified in the `quantization` argument (awq_marlin).
+```
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh · c03b cell (Qwen3-Coder-30B AWQ-4bit from cyankiwi)
+
+**Root cause**: The repo `cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit` is misleadingly named — despite "AWQ" in the repo name, its `config.json` declares `quantization_config.quant_method = "compressed-tensors"` with `format: pack-quantized`, `group_size: 32`, `num_bits: 4`, symmetric int4. This is llm-compressor's compressed-tensors int4 format, not classic AWQ. vLLM refuses when `--quantization awq_marlin` disagrees with the model's self-declared method.
+
+**Fix applied**: removed `--quantization awq_marlin` from c03b case in `vllm_launch.sh`. vLLM auto-detects `compressed-tensors` from `config.json` and dispatches to the correct kernel (on Blackwell this is still int4 Marlin under the hood).
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c03b case simplified, comment explaining the naming trap)
+
+**Alternative not chosen**: re-downloading `QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ` (real AWQ, 254K downloads) would require ~10 min extra bandwidth. cyankiwi's int4 quality is equivalent to AWQ at same group size, so not worth the round-trip.
+
+**Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c03b` — should reach READY without the quantization-mismatch error.
+

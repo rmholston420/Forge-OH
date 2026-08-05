@@ -63,10 +63,13 @@ case "$CELL" in
     )
     ;;
   c03b)
+    # Despite the "AWQ-4bit" in the repo name, cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
+    # is packaged as compressed-tensors int4 (pack-quantized, group_size=32, symmetric).
+    # vLLM auto-detects the quant method from config.json — do NOT pass --quantization.
+    # See DEBUG_LOG 2026-08-05 00:00 EDT.
     MODEL_DIR="Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
     SERVED_NAME="c03b_coder_vllm_qwen3coder_awq"
     EXTRA_FLAGS=(
-      --quantization awq_marlin
       --tool-call-parser qwen3_coder
       --enable-auto-tool-choice
     )
