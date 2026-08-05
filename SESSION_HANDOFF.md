@@ -1,24 +1,39 @@
-# Kosmos / Forge-OH Session Handoff — 2026-08-05 07:34 EDT
+# Forge-OH Session Handoff — 2026-08-05 09:52 EDT
 
 ## Current build-sequencing position
-- **Stage / phase:** F.3 Path A · smoke-25 clean rerun after tokenize-URL fix
-- **Plugin / kernel component:** `bench/pathF_swebench/`
+
+- **Stage / phase:** Stage 1 COMPLETE — Stage 2 (Inference-Backend Flexibility) not yet started.
+- **Plugin / kernel component:** kernel · BFF · model_router.
+- **Port(s) in progress:** none. Next port: `InferenceBackend` protocol (Stage 2.1).
 
 ## Completed this session
-- F.3.0 GREEN, numbering + progress.json + NVML sampler, dynamic max_tokens budgeting, ADR-017
-- **Tokenize URL fix**: vLLM's `/tokenize` lives at BASE, not under `/v1`. Fixed URL construction.
+
+- Three-PR chain merged to `main`:
+  - PR #5 `2aa3065` — Stage 1 Reconciliation Plan v1 (sub-slices 1.1–1.7).
+  - PR #6 `b37944c` — ADR-012 Dual-Mode Model Routing (docs only).
+  - PR #7 `c6009c7` — F.3 SWE-bench harness + ADRs 013 / 015 / 016 / 017.
+- ADR-016 mirror parity closeout committed to `main` as `c22c037`:
+  - Tracked `scripts/check-approval-checkbox.ts` and `scripts/e2e-approval.ts`.
+  - `.gitignore` explicit rules for `scripts/debug-out/` and `scripts/__pycache__/`.
+  - Colossus-side deletion of five dead Path D bench scripts and two dead `vllm_start_qwen*` launchers superseded by `ops/vllm_launch_{coder,planner}.sh`.
+- Stage 1 exit-gate: **7/7 automated + 5/5 browser eyeball + 19/19 Playwright** — all green.
+- Full-500 SWE-bench Verified run killed at 20/500 (3 resolved = 15% pass@1) by user request; partial output preserved at `~/.forge-oh/bench_pathF_swebench/20260805_0907_run/`. Will be restarted clean on green Stage 1 main.
 
 ## Remaining before current Definition of Done
-1. User: Ctrl-C current smoke-25 run (BEFORE task 9 = matplotlib__matplotlib-24149, or it will 400)
-2. User: `cd ~/dev/forge-oh && git pull` — pulls tokenize URL fix
-3. User: fresh smoke-25 (no --resume-run, the interrupted run's data is bad)
-4. Agent: score against anchors
+
+- **Stage 1 DoD:** none — Stage 1 is fully complete.
+- **Stage 2 DoD:** all of Stage 2 remains. Next action below.
+
+## Open questions / awaiting user answer
+
+- **Restart full-500 SWE-bench Verified run** (was killed at 20/500 to close Stage 1 clean). User indicated intent to restart on green main.
+- **Two Stage-2 exit-gate acceptance criteria** were formally deferred from Stage 1 and filed in `KNOWN_ISSUES.md`:
+  - Agent-preset `ModelId` is a static `Literal` with no local-endpoint plumbing.
+  - `GET /api/runs/{id}` returns `agentPresetId: null` on succeeded runs.
+  These resolve together in Stage 2.1 when the `InferenceBackend` protocol formally consumes preset config.
 
 ## Exact next action
-```bash
-^C
-cd ~/dev/forge-oh && git pull
-.oh-venv/bin/python -m bench.pathF_swebench.bench_pathF_swebench --smoke-25 --model c01
-```
 
-Watch: each task should now show `toks=X/Y` with Y varying (e.g. 4096 for small prompts, ~3800 for medium, ~500 for near-overflow prompts, or "context-budget-skip" if the prompt itself won't leave 512t room).
+Restart the full-500 SWE-bench Verified run on green Stage 1 main. Then begin Stage 2.1: `InferenceBackend` protocol in `bff/services/model_router.py`, per `docs/reconciliation-plan-v1.md` Stage 2.
+
+Colossus is on `main` at `c22c037` after this closeout lands; working tree clean; three stale slice branches deleted; `scripts/` inventory mirrors GitHub exactly.

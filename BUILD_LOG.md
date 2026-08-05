@@ -4732,3 +4732,33 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Ports / adapters affected:** none (test/scratch surface only)
 - **PORTING_LEDGER / ADR updated:** —
 - **Stop-condition status:** partial — untracked-parity item from the ADR-016 closeout todo is now resolved on GitHub; Colossus mirror aligns after user runs the follow-up `git rm` block for the seven dead scripts.
+
+## 2026-08-05 09:52 EDT — Stage 1 COMPLETE
+
+- **Stage / plugin / port:** Stage 1 exit-gate closure · reconciliation-plan-v1
+- **What changed:**
+  - **Automated exit-gate: 7/7 PASS.**
+    - `pip install -r bff/requirements.txt -r bff/requirements-dev.txt` → clean; `respx==0.23.1` installed, all else already satisfied.
+    - `pytest bff/tests/ --collect-only` → **273 tests collected**, zero import errors.
+    - `grep openhands-sdk bff/requirements.lock` → `openhands-sdk==1.40.0` pinned.
+    - `pnpm install` → already up to date.
+    - `pnpm typecheck` → `tsc --noEmit` silent (zero type errors).
+    - `pnpm test:unit` → **829 tests passed, 6 skipped, 0 failed** (4.04s).
+    - `pnpm build` → Next.js prod build succeeded, full route manifest.
+  - **Manual browser eyeball (dev :3000): 5/5 PASS.**
+    - `/tools-mcp`, `/secrets`, `/agents`, `/runs/6bad3048-…`, `/runs` all render real BFF-backed pages, no stubs, sidebar clean, no stale routes.
+  - **Playwright exit-gate subset (prod :3100): 19/19 PASS in 7.0s.**
+    - `smoke.spec.ts` (5 tests) — shell, sidebar, palette, collapse toggle, all-routes.
+    - `nav-routes.spec.ts` (9 tests) — every dashboard route renders without app-error boundary.
+    - `run-detail.spec.ts` (5 tests) — detail page, 7 tabs present, files/artifacts/terminal sub-routes.
+  - **Two Stage-1 acceptance criteria formally deferred to Stage 2** and filed in `KNOWN_ISSUES.md`:
+    - Agent-preset `ModelId` is a static `Literal` with no local-endpoint plumbing (blocks Stage 2 exit only).
+    - `GET /api/runs/{id}` returns `agentPresetId: null` on succeeded runs (paired issue).
+  - **One CI infrastructure issue** filed in `KNOWN_ISSUES.md`: pnpm workspace check red on every push (Node 20 + workspace config); non-blocking (`mergeable: true` on all PRs).
+- **Files touched:**
+  - `KNOWN_ISSUES.md` (created)
+  - `BUILD_LOG.md` (this entry)
+  - `SESSION_HANDOFF.md` (overwritten — Stage 2 kickoff pointer)
+- **Ports / adapters affected:** none (verification only, no code changes).
+- **PORTING_LEDGER / ADR updated:** —
+- **Stop-condition status:** **Stage 1 stop condition MET.** Forge-OH is now functional enough to be used for Stage 2 (Inference-Backend Flexibility) work. Next action: begin Stage 2.1 (`InferenceBackend` protocol in `model_router.py`), which is the natural home for the two deferred acceptance criteria.
