@@ -4699,3 +4699,20 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 
 On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 51% with 100-turn OpenHands scaffold; we're at 43% with single-turn oracle-retrieval — very close.
 
+
+## 2026-08-05 09:00 EDT — ADR-013 amendment #2: F.3 SWE-bench smoke-25 baseline (40% / 50% answerable)
+
+- **Stage / plugin / port:** Path F · SWE-bench Verified harness · ADR-013 (canonical coder/planner)
+- **What changed:**
+  - Appended amendment #2 to ADR-013 documenting F.3 smoke-25 baseline: 40% pass@1 raw, 50% pass@1 on answerable-subset (excludes 4 context-skips + 1 truncation).
+  - Documented three progressive runs: 0737 (16%, recount buggy) → 0812 (36%, recount stable) → 0840 (40%, +merge-dedupe).
+  - Recorded harness fixes (recount_hunks, merge_duplicate_file_sections) with commit refs.
+  - GPU envelope confirmed within F.1b bounds (VRAM 90.3%, temp 71°C, power 452W).
+  - Set 40% smoke-25 as regression floor for future Forge-OH slices.
+  - Opened full-500 gate. Wall estimate 1.01-1.11h.
+- **Files touched:**
+  - `docs/adr/013-qwen36-27b-canonical-coder-planner.md`
+- **Ports / adapters affected:** none
+- **PORTING_LEDGER / ADR updated:** ADR-013 (amendment #2)
+- **Stop-condition status:** ADR ratified; awaiting full-500 (F.3.1) result on Colossus.
+
