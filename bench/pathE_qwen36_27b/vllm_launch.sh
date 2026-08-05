@@ -5,10 +5,11 @@
 #   vllm_launch.sh <cell_id>
 #
 # Cells:
-#   c01 = Qwen3.6-27B AutoRound INT4        (coder,   proposed)
-#   c02 = Qwen3.6-35B-A3B NVFP4             (coder,   ADR-009 baseline)
-#   c04 = Qwen3.6-27B NVFP4                 (planner, proposed)
-#   c05 = Qwen3-Thinking-2507 AWQ            (planner, ADR-009 baseline)
+#   c01  = Qwen3.6-27B AutoRound INT4       (coder,   proposed)
+#   c02  = Qwen3.6-35B-A3B NVFP4            (coder,   ADR-009 baseline)
+#   c03b = Qwen3-Coder-30B-A3B AWQ-4bit     (coder,   specialized-coder quality upgrade over c03 Q4_K_M)
+#   c04  = Qwen3.6-27B NVFP4                (planner, proposed)
+#   c05  = Qwen3-Thinking-2507 AWQ           (planner, ADR-009 baseline)
 #
 # Requires the following model dirs under ~/models/ (HuggingFace weights):
 #   qwen3.6-27b-int4-autoround/        (Lorbus/Qwen3.6-27B-int4-AutoRound)
@@ -21,7 +22,7 @@
 
 set -euo pipefail
 
-CELL="${1:?usage: $0 <c01|c02|c04|c05>}"
+CELL="${1:?usage: $0 <c01|c02|c03b|c04|c05>}"
 
 ts()   { date '+%Y-%m-%d %H:%M:%S %Z'; }
 ts_s() { date +%s; }
@@ -61,6 +62,15 @@ case "$CELL" in
       --enable-auto-tool-choice
     )
     ;;
+  c03b)
+    MODEL_DIR="Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+    SERVED_NAME="c03b_coder_vllm_qwen3coder_awq"
+    EXTRA_FLAGS=(
+      --quantization awq_marlin
+      --tool-call-parser qwen3_coder
+      --enable-auto-tool-choice
+    )
+    ;;
   c04)
     MODEL_DIR="qwen3.6-27b-nvfp4"
     SERVED_NAME="c04_planner_vllm_qwen36_27b_nvfp4"
@@ -77,7 +87,7 @@ case "$CELL" in
     )
     ;;
   *)
-    echo "unknown cell: $CELL (valid: c01 c02 c04 c05)" >&2
+    echo "unknown cell: $CELL (valid: c01 c02 c03b c04 c05)" >&2
     exit 2
     ;;
 esac
