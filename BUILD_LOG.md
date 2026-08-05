@@ -4296,3 +4296,19 @@ Coder ranking (score = mean(debug, arch)) — informational, deferred:
 - 3× repetition per (cell, task) — total 4 runs per pair
 - Redesigned arch task: remove or inline the importer-graph twist
 - SWE-bench Verified for top 2-3 coder candidates (best model first for budget estimate)
+
+## 2026-08-05 04:11 EDT — ops/vllm_launch_planner.sh flipped to DSR1 default (ADR-013)
+
+- **Stage / plugin / port:** F.19 (Path E rebench) · planner launcher wiring
+- **What changed:** `ops/vllm_launch_planner.sh` defaults updated to match ADR-013 ratification:
+  - `NAME`: `qwen3-thinking-2507-awq` → `deepseek-r1-distill-32b-awq`
+  - `MODEL_DIR`: `qwen3-thinking-2507-awq` → `deepseek-r1-distill-qwen-32b-awq` (upstream repo dir name)
+  - New `REASONING_PARSER` env: `qwen3` → `deepseek_r1` (required for DSR1's `<think>` block schema)
+  - New `QUANTIZATION` env: default `awq_marlin` (required for casperhansen classic-AWQ weights on Blackwell; autodetect only works for compressed-tensors AWQ)
+  - Rollback instructions inline in header comment
+- **Files touched:** `ops/vllm_launch_planner.sh`
+- **Ports / adapters affected:** planner vLLM `:8511`
+- **PORTING_LEDGER / ADR updated:** matches ADR-013 planner ratification (2026-08-05 03:52 EDT)
+- **Stop-condition status:** planner launcher wiring DONE. Operator next: `docker rm -f forge-vllm-planner && bash ops/vllm_supervisor.sh ensure planner` to reload with DSR1.
+
+**Diagnosis note:** first `bash ops/vllm_supervisor.sh ensure planner` after commit c5f118d still loaded `qwen3-thinking-2507-awq` because the supervisor calls `vllm_launch_planner.sh` which had the ADR-009 defaults hardcoded. The BFF env-var default flip alone was not sufficient — launcher script also had to change.
