@@ -4494,3 +4494,18 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected**: none (frontend-only)
 - **PORTING_LEDGER / ADR updated**: —
 - **Stop-condition status**: met — CPU idle after fix, dev-mode Next.js Fast-Refresh loop closed.
+
+## 2026-08-05 06:17 EDT — Add App Router error boundaries (defense-in-depth)
+
+- **Stage / plugin / port**: dashboard · frontend · error boundaries
+- **What changed**:
+  - `src/app/(dashboard)/error.tsx` (new) — segment error boundary for all `/runs`, `/agents`, `/workspaces`, `/plugins`, `/tools-mcp`, `/metrics`, `/observability`, `/secrets`, `/settings`, `/selfeval` routes. Catches client-component throws before Fast Refresh can loop on them.
+  - `src/app/global-error.tsx` (new) — root-level fallback for errors escaping the dashboard segment (layout/provider throws).
+- **Files touched**:
+  - `src/app/(dashboard)/error.tsx`
+  - `src/app/global-error.tsx`
+  - `DEBUG_LOG.md` (2026-08-05 06:17 EDT amendment)
+  - `SESSION_HANDOFF.md` (overwritten)
+- **Ports / adapters affected**: none
+- **PORTING_LEDGER / ADR updated**: —
+- **Stop-condition status**: met — CPU-peg feedback-loop failure mode structurally prevented.

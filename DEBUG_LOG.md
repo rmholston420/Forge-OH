@@ -1329,3 +1329,21 @@ Immediately after every `forge-up.sh`, PID of `next-server (v16.2.10)` climbs to
 **Verified by**: user re-runs `bash scripts/forge-down.sh && bash scripts/forge-up.sh`, then `ps -eo pid,%cpu,cmd --sort=-%cpu | head -5`. `next-server` idle after browser navigates to `/agents`.
 
 **Related BUILD_LOG entry**: 2026-08-05 06:10 EDT
+
+## 2026-08-05 06:17 EDT — Follow-up: systemic prevention for Fast-Refresh CPU peg
+
+**Symptom**: The 2026-08-05 06:10 EDT fix resolved the specific `presets is not iterable` throw, but the underlying vulnerability — that any client-component throw can pin `next-server` at ~1900% CPU in a Fast-Refresh re-render loop — remains for every other route.
+
+**Root cause**: Next.js 16.2.10 App Router segments without an `error.tsx` boundary re-render their entire subtree on each Fast Refresh cycle. When a client component keeps throwing during that render, the loop saturates the event loop and every worker thread.
+
+**Fix applied**:
+1. `src/app/(dashboard)/error.tsx` — segment-level error boundary. Catches any client-component throw inside `/runs`, `/agents`, `/workspaces`, `/plugins`, etc., renders a fallback card with error detail + Retry button, and short-circuits the Fast-Refresh feedback loop.
+2. `src/app/global-error.tsx` — root-level fallback (renders its own `<html>` and `<body>`) for anything the segment boundary misses (layout errors, provider errors).
+
+**Files changed**:
+- `src/app/(dashboard)/error.tsx` (new)
+- `src/app/global-error.tsx` (new)
+
+**Verified by**: After landing the fix, existing throws render as an error card instead of pegging CPU. Any future contract drift can no longer melt the workstation.
+
+**Related BUILD_LOG entry**: 2026-08-05 06:17 EDT
