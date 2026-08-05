@@ -1303,3 +1303,29 @@ Our bench harness's `coder_nothink` profile sends `extra_body={"chat_template_kw
 - Trooper.AI Ministral tuning guide — documents the exact 400 error message for `chat_template_kwargs` under `--tokenizer-mode mistral`
 
 **General rule**: Any cell that launches with `--tokenizer-mode mistral` MUST use a sampling profile with no `chat_template` and no `chat_template_kwargs` in `extra_body`. Applies to future Mistral-family AWQ/NVFP4/FP8 cells.
+
+## 2026-08-05 06:10 EDT — Next.js dev pegged at 1927% CPU (Fast-Refresh error loop)
+
+**Symptom**:
+```
+[browser] Uncaught TypeError: presets is not iterable
+    at AgentPresetsPage (src/features/agent-presets/AgentPresetsPage.tsx:42:16)
+> 42 |           {[...presets].sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0))
+```
+Immediately after every `forge-up.sh`, PID of `next-server (v16.2.10)` climbs to 1900%+ CPU (~19 cores pegged). `pnpm dev` exits with `[ELIFECYCLE] Command failed.` but its detached `next-server` child stays alive and continues spinning. Killing the child brings CPU to idle.
+
+**Affected**: dashboard · frontend · `/agents` route · Fast Refresh dev loop
+
+**Root cause**: BFF `GET /api/agent-presets` returns `{"data": [AgentPreset, ...]}` (envelope shape, see `bff/routers/agent_presets.py::list_presets`). Frontend `fetchPresets` in `src/features/agent-presets/api.ts` typed the return as `Promise<AgentPreset[]>` and blindly returned `r.json()` — so React-Query stored the wrapper object as `presets`. `AgentPresetsPage.tsx` line 42 does `[...presets].sort(...)`, throwing `TypeError: presets is not iterable`. In Next 16.2.10 dev + Turbopack + App Router, a client-component throw inside a repeatedly-rendered path traps Fast Refresh in a re-render loop that saturates every available core.
+
+**Fix applied**:
+1. `src/features/agent-presets/api.ts::fetchPresets` — unwrap the `{data: [...]}` envelope, with an `Array.isArray` guard as fallback for any future contract change.
+2. `src/features/agent-presets/AgentPresetsPage.tsx` — defensive `Array.isArray(presetsRaw) ? presetsRaw : []` so a future BFF contract drift can no longer peg dev-mode Next.js in an error loop.
+
+**Files changed**:
+- `src/features/agent-presets/api.ts`
+- `src/features/agent-presets/AgentPresetsPage.tsx`
+
+**Verified by**: user re-runs `bash scripts/forge-down.sh && bash scripts/forge-up.sh`, then `ps -eo pid,%cpu,cmd --sort=-%cpu | head -5`. `next-server` idle after browser navigates to `/agents`.
+
+**Related BUILD_LOG entry**: 2026-08-05 06:10 EDT

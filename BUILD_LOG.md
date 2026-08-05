@@ -4479,3 +4479,18 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 
 **Next:** Perplexity Computer generates F.3 Path A shakeout harness under
 `bench/pathF_swebench/` in a subsequent commit (Track 1 resumes).
+
+## 2026-08-05 06:10 EDT — Fix runaway Next.js dev CPU peg (agent-presets envelope drift)
+
+- **Stage / plugin / port**: dashboard · frontend · `/agents` route
+- **What changed**:
+  - `src/features/agent-presets/api.ts::fetchPresets` now unwraps the BFF `{data: [...]}` envelope. Fallback returns `[]` if the shape is neither an array nor `{data: [...]}`.
+  - `src/features/agent-presets/AgentPresetsPage.tsx` adds a defensive `Array.isArray` guard around `presets` before the `[...presets].sort(...)` call so a future contract drift cannot peg `next-server` in a Fast-Refresh error loop.
+- **Files touched**:
+  - `src/features/agent-presets/api.ts`
+  - `src/features/agent-presets/AgentPresetsPage.tsx`
+  - `DEBUG_LOG.md` (2026-08-05 06:10 EDT entry)
+  - `SESSION_HANDOFF.md` (overwritten)
+- **Ports / adapters affected**: none (frontend-only)
+- **PORTING_LEDGER / ADR updated**: —
+- **Stop-condition status**: met — CPU idle after fix, dev-mode Next.js Fast-Refresh loop closed.

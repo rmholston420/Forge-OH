@@ -4,7 +4,11 @@ import { useAgentPresetStore } from './store';
 import { AgentPresetCard } from './AgentPresetCard';
 
 export default function AgentPresetsPage() {
-  const { data: presets = [], isLoading } = usePresets();
+  const { data: presetsRaw, isLoading } = usePresets();
+  // Defensive: fetchPresets unwraps the BFF {data: [...]} envelope, but guard
+  // against any future contract drift so this page cannot peg dev-mode Next.js
+  // in a Fast-Refresh error loop (see DEBUG_LOG 2026-08-05).
+  const presets = Array.isArray(presetsRaw) ? presetsRaw : [];
   const { openCreateDrawer } = useAgentPresetStore();
 
   return (
