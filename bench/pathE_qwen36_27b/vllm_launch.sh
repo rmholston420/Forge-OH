@@ -23,10 +23,20 @@ set -euo pipefail
 
 CELL="${1:?usage: $0 <c01|c02|c04|c05>}"
 
-# Free VRAM before vLLM launch
+# Free VRAM before vLLM launch (both Ollama and any prior vLLM container)
 sudo systemctl stop ollama 2>/dev/null || pkill -x ollama 2>/dev/null || true
-sleep 3
 docker rm -f vllm-bench 2>/dev/null || true
+sleep 3
+
+# Verify GPU is idle before launching (guards against orphaned engines)
+BUSY_MIB=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | tr -d ' ')
+if [ "${BUSY_MIB:-0}" -gt 2000 ]; then
+  echo "WARN: GPU has ${BUSY_MIB} MiB used before launch (expected < 2000 MiB)" >&2
+  echo "      processes still holding VRAM:" >&2
+  nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv >&2
+  echo "      continue anyway? Ctrl-C within 10s to abort." >&2
+  sleep 10
+fi
 
 case "$CELL" in
   c01)
