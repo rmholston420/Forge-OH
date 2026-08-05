@@ -4414,3 +4414,68 @@ Coder ranking (score = mean(debug, arch)) — informational, deferred:
 - **Ports / adapters affected:** none this turn (spec-only); Stage-1H impl slices touch agent-server workspace-bootstrap port (new), preset routing, model_router.
 - **PORTING_LEDGER / ADR updated:** ADR-015 (Proposed).
 - **Stop-condition status:** met for this slice — Stage-1H spec + ADR committed + pushed. Next: pivot back to Track 1, generate F.3 Path A shakeout harness.
+
+## 2026-08-05 05:58 EDT — ADR-016 Colossus<->GitHub mirror parity ratified + enforced
+
+**Stage / plugin / port:** Cross-cutting · repo hygiene · ADR-016
+
+**What was built or changed:**
+- Parity audit (2026-08-05 05:51 EDT) surfaced 45 drifted files on Colossus:
+  35 failed-proposer noise in `docs/proposals/`, 1 failed-selfeval JSON at
+  `docs/selfeval/2026-08-04-selfeval.json`, 9 runtime artifacts in
+  `.forge-logs/` + `.forge-oh/` + `workspaces/`. Also found 2 stale
+  `.gitignore` rules: `tests/` (directory doesn't exist on Colossus) and
+  `scripts/` (was force-tracked despite being listed as ignored).
+- **Ratified ADR-016**: Colossus `~/dev/forge-oh/` and GitHub
+  `rmholston420/Forge-OH` are exact mirrors modulo an explicit `.gitignore`
+  with per-rule rationale. Every commit pushes same turn. **Perplexity
+  Computer commits directly to GitHub via `bash` with
+  `api_credentials=["github"]`; user pulls with `git pull`.** No paste-block
+  commit workflows (previous paste block killed operator's bash session on
+  `set -e` failure — direct-to-GitHub eliminates that class of failure).
+- Full `.gitignore` refactor with section comments + rationale per rule.
+  Removed stale `tests/` and `scripts/` lines. Added explicit `.forge-logs/`,
+  `.forge-oh/`, `workspaces/` (plural — was only `workspace/` singular).
+- Added `AGENTS.md` Non-Negotiable Rule #9 (parity + direct-to-GitHub) and
+  Rule #10 (selfeval artifact retention policy: only commit
+  proposals/selfeval JSONs with real signal, not environmental failures).
+- Added `scripts/forge-doctor.sh` Section 10: mirror drift check + unpushed-
+  commits check.
+- Created `scripts/pre_commit_drift_check.sh` + `.pre-commit-config.yaml` —
+  active commit-time gate that blocks drift-introducing commits (overridable
+  with `git commit --no-verify` for WIP).
+- Created `docs/proposals/.gitkeep` — tracks the directory empty pending
+  real proposals.
+
+**Files touched (this commit, on GitHub):**
+- `docs/adr/016-colossus-github-mirror-parity.md` (new, Ratified)
+- `.gitignore` (full refactor)
+- `AGENTS.md` (Rules #9 + #10 added)
+- `.pre-commit-config.yaml` (new)
+- `scripts/pre_commit_drift_check.sh` (new, executable)
+- `scripts/forge-doctor.sh` (Section 10 appended)
+- `docs/proposals/.gitkeep` (new)
+- `docs/adr/README.md` (ADR-016 index row appended)
+- `BUILD_LOG.md` (this entry)
+- `SESSION_HANDOFF.md` (overwritten)
+
+**User action on Colossus (post-pull):**
+1. `cd ~/dev/forge-oh && git pull`
+2. Remove the 35 garbage failed-proposer files:
+   `rm docs/proposals/2026-08-04-smoke-*.md`
+3. Remove the failed selfeval JSON:
+   `rm docs/selfeval/2026-08-04-selfeval.json`
+4. Optional pre-commit hook install (one-time):
+   `source .oh-venv/bin/activate && pip install pre-commit && pre-commit install`
+5. Verify parity: `bash scripts/forge-doctor.sh` — Section 10 should show
+   `OK  no drift`.
+
+**Ports / adapters affected:** none (repo hygiene only)
+
+**PORTING_LEDGER / ADR updated:** ADR-016 (Ratified). ADR-013, ADR-015 unchanged.
+
+**Stop-condition status:** met — mirror parity rule ratified, enforcement
+infrastructure landed, direct-to-GitHub commit workflow established.
+
+**Next:** Perplexity Computer generates F.3 Path A shakeout harness under
+`bench/pathF_swebench/` in a subsequent commit (Track 1 resumes).

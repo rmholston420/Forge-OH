@@ -1,0 +1,19 @@
+# Pre-commit hooks for Forge-OH (ADR-016 enforcement)
+#
+# Install once per Colossus checkout:
+#   source ~/dev/forge-oh/.oh-venv/bin/activate
+#   pip install pre-commit
+#   pre-commit install
+#
+# After that, `git commit` runs the drift check automatically.
+# Override with `git commit --no-verify` for legitimate WIP.
+
+repos:
+  - repo: local
+    hooks:
+      - id: colossus-github-parity
+        name: ADR-016 Colossus<->GitHub parity (no untracked-unignored files)
+        entry: bash scripts/pre_commit_drift_check.sh
+        language: system
+        pass_filenames: false
+        always_run: true

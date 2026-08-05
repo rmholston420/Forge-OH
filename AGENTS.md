@@ -33,6 +33,27 @@ Claude Code, OpenHands, Copilot) working on this repository.
    Never rename: Run, AgentPreset, Workspace, ToolEvent, Artifact, Integration,
    TraceSpan, SecretRef, PlanNode, CommandExecution, BrowserSession.
 
+9. **Colossus <-> GitHub mirror parity is mandatory** (ADR-016). Every file on
+   Colossus at `~/dev/forge-oh/` is either tracked in git or explicitly ignored
+   via `.gitignore` with a comment justifying why. No untracked-but-not-ignored
+   files. **Perplexity Computer commits directly to GitHub via `bash` with
+   `api_credentials=["github"]`; the user pulls with `git pull`.** No paste-
+   block commit workflows. Every commit pushes the same turn. Run
+   `bash scripts/forge-doctor.sh` at session start and end to detect drift. The
+   pre-commit hook at `scripts/pre_commit_drift_check.sh` (installed via
+   `.pre-commit-config.yaml`) blocks accidental drift-introducing commits
+   (overridable with `git commit --no-verify` only for legitimate WIP).
+
+10. **Selfeval artifact retention policy** (ADR-016). Commit selfeval outputs
+    only when they carry signal:
+    - `docs/selfeval/*.md` analysis/scope docs -> always commit.
+    - `docs/selfeval/*.json` result summaries -> commit only if at least one
+      task produced real signal (not all-environmental-error like vLLM :8501
+      down).
+    - `docs/proposals/*.md` proposer LLM outputs -> commit only if the proposer
+      LLM was healthy for that run (not `Connection refused` failures).
+    Environmental failures belong in `DEBUG_LOG.md`, not `docs/proposals/`.
+
 ---
 
 ## Working with Slices
