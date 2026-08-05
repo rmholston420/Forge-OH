@@ -1133,3 +1133,34 @@ The kernel dispatch on Blackwell (SM_120) still goes through the CT path to the 
 **Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c10 up 2>&1 | tee ~/.forge-oh/c10_up.log` — expect READY within 60-120s and no ValidationError.
 
 **Prevention for future benches**: **always** inspect `config.json:quantization_config.quant_method` BEFORE deciding whether to pass `--quantization` to vLLM. If it says `compressed-tensors`, never pass an explicit `--quantization` flag regardless of what the repo name suggests. Repos naming themselves `-awq-4bit`, `-nvfp4`, `-fp8`, etc. may still ship as CT-wrapped.
+
+
+## 2026-08-05 01:16 EDT — Devstral tokenizer has no default chat_template (c10 + c11)
+
+**Symptom** (from `POST /v1/chat/completions` smoke test against c10):
+```
+{
+    "error": {
+        "message": "As of transformers v4.44, default chat template is no longer allowed, so you must provide a chat template if the tokenizer does not define one.",
+        "type": "BadRequestError",
+        "code": 400
+    }
+}
+```
+
+c10 booted successfully (READY in 84s), served /v1/models correctly, but every chat completion returned 400.
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh (c10, c11)
+
+**Root cause**: Devstral-Small-2-2512 (both quant variants) ships the Mistral `[INST]`-format chat template as a standalone `chat_template.jinja` file in the model directory, NOT baked into `tokenizer_config.json` as a `chat_template` string. Since transformers v4.44, HF refuses to fall back to a hardcoded default when the tokenizer doesn't declare one. vLLM inherits this: without an explicit `--chat-template` flag, chat completions 400 with the message above.
+
+Both `Devstral-Small-2-24B-Instruct-2512-nvfp4/chat_template.jinja` and `Devstral-Small-2-24B-Instruct-2512-AWQ-4bit/chat_template.jinja` are identical 5320-byte files (system prompt + `[INST]...[/INST]` framing).
+
+**Fix applied**: added `--chat-template "/models/<MODEL_DIR>/chat_template.jinja"` to both c10 and c11 EXTRA_FLAGS. The docker mount `~/models:/models:ro` makes the file visible inside the container (confirmed via `docker exec vllm-bench ls /models/.../chat_template.jinja`).
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 and c11 stanzas)
+
+**Verify with**: after relaunching c10 up, POST /v1/chat/completions with a plain `{"role":"user","content":"..."}` message should return 200 and a completion. No `[INST]` tokens needed in the client payload — vLLM applies the template server-side.
+
+**Prevention**: on any VLM/Mistral-family model, always check for a standalone `chat_template.jinja` file before assuming the tokenizer_config has a baked-in template. If a `.jinja` file is present, wire it via `--chat-template` regardless of what the tokenizer_config claims.

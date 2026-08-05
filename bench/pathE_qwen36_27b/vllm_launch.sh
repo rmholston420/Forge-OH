@@ -131,10 +131,13 @@ case "$CELL" in
     # Weights are genuine NVFP4 (float, 4-bit, format=nvfp4-pack-quantized) BUT wrapped in
     # compressed-tensors registry — DO NOT pass --quantization; vLLM auto-detects and dispatches
     # to the Blackwell FP4 kernel via the CT path. See DEBUG_LOG 2026-08-05 01:11 EDT.
+    # Devstral tokenizer has no default chat_template — must pass jinja file explicitly.
+    # See DEBUG_LOG 2026-08-05 01:16 EDT.
     MODEL_DIR="Devstral-Small-2-24B-Instruct-2512-nvfp4"
     SERVED_NAME="c10_coder_vllm_devstral24b_nvfp4"
     EXTRA_FLAGS=(
       --limit-mm-per-prompt '{"image":0}'
+      --chat-template "/models/Devstral-Small-2-24B-Instruct-2512-nvfp4/chat_template.jinja"
     )
     ;;
   c11)
@@ -142,10 +145,13 @@ case "$CELL" in
     # Mistral3ForConditionalGeneration (VLM) — served text-only via --limit-mm-per-prompt.
     # Like c03b: DO NOT pass --quantization; vLLM auto-detects compressed-tensors.
     # See DEBUG_LOG 2026-08-05 00:00 EDT and 2026-08-05 01:04 EDT.
+    # Devstral tokenizer has no default chat_template — must pass jinja file explicitly.
+    # See DEBUG_LOG 2026-08-05 01:16 EDT.
     MODEL_DIR="Devstral-Small-2-24B-Instruct-2512-AWQ-4bit"
     SERVED_NAME="c11_coder_vllm_devstral24b_awq"
     EXTRA_FLAGS=(
       --limit-mm-per-prompt '{"image":0}'
+      --chat-template "/models/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit/chat_template.jinja"
     )
     ;;
   c12a)
