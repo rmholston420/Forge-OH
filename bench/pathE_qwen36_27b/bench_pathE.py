@@ -45,14 +45,34 @@ CELLS = {
     # planner-role cells
     "c04": ("planner", "vllm",   "http://localhost:8000/v1",  "c04_planner_vllm_qwen36_27b_nvfp4",  "thinking"),
     "c05": ("planner", "vllm",   "http://localhost:8000/v1",  "c05_planner_vllm_qwen3thinking_awq", "thinking"),
+    # F.19-post expansion — broader coder/planner matrix.
+    "c07": ("coder",   "vllm",   "http://localhost:8000/v1",  "c07_coder_vllm_qwen3coder_fp8",      "coder_nothink"),
+    "c08": ("coder",   "ollama", "http://localhost:11434/v1", "yi-1.5:34b",                         "coder"),
+    "c09": ("coder",   "vllm",   "http://localhost:8000/v1",  "c09_coder_vllm_codestral22b_awq",    "coder_nothink"),
+    "c10": ("coder",   "vllm",   "http://localhost:8000/v1",  "c10_coder_vllm_devstral24b_nvfp4",   "coder_nothink"),
+    "c11": ("coder",   "vllm",   "http://localhost:8000/v1",  "c11_coder_vllm_devstral24b_awq",     "coder_nothink"),
+    # DeepSeek-R1 distill — same weights benched under two roles.
+    "c12a":("coder",   "vllm",   "http://localhost:8000/v1",  "c12a_coder_vllm_dsr1_distill32b_awq", "coder_nothink"),
+    "c12b":("planner", "vllm",   "http://localhost:8000/v1",  "c12b_planner_vllm_dsr1_distill32b_awq", "thinking"),
 }
 
 # Ordering rule (Ollama first, then vLLM grouped by model):
-# c03 -> c01 -> c02 -> c04 -> c05
+# Full-matrix ordering (Ollama first — hot-swap free; vLLM grouped by model to minimize restarts):
+#   c03  → c08         (Ollama)
+#   c01 → c02 → c02-rerun → c04 → c05 → c07 → c03b → c09 → c10 → c11 → c12a → c12b   (vLLM)
 # (c01/c02/c04/c05 are separate vLLM launches; c01 & c04 share weights but
 #  differ in --reasoning-parser / --enable-reasoning flags so they run in
 #  separate containers).
-CELL_ORDER = ["c03", "c01", "c02", "c03b", "c04", "c05"]
+CELL_ORDER = [
+    # Ollama first (hot-swap, no container restart cost)
+    "c03", "c08",
+    # vLLM — grouped by model to minimize container reloads
+    "c01", "c02", "c04", "c05",
+    "c07", "c03b",
+    "c09",
+    "c10", "c11",
+    "c12a", "c12b",
+]
 
 SAMPLING = {
     "coder": {
