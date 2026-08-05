@@ -1385,3 +1385,25 @@ ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than
 - **Related commit:** 5009a95
 - **Verification pending:** rerun smoke-25 on Colossus, confirm pass@1 lift.
 
+
+## 2026-08-05 08:38 EDT — F.3 apply-fail: duplicate '--- a/PATH' file sections in same patch
+
+- **Symptom:** sphinx-doc__sphinx-8035 harness stdout:
+  ```
+  patching file sphinx/ext/autodoc/__init__.py
+  Hunk #1 succeeded at 584 (offset 41 lines).
+  ... (all 5 hunks succeed) ...
+  patching file sphinx/ext/autodoc/__init__.py     ← SAME FILE, second section
+  Reversed (or previously applied) patch detected!  Assuming -R.
+  Hunk #2 FAILED at 582.
+  1 out of 5 hunks FAILED
+  ```
+- **Affected stage/plugin/port:** Path F · SWE-bench Verified harness · normalize_patch
+- **Root cause:** Model (c01 = Qwen3.6-27B-Coder INT4) emitted 2 `--- a/PATH / +++ b/PATH` sections against the same file. Verified: `jq -r '.patch' | grep -c '^--- a/'` → 2. GNU patch applies each section as an independent file-patch operation, so section 2 sees section 1's already-applied changes, guesses `-R`, then fails.
+- **Fix applied:** Added `merge_duplicate_file_sections()` to `bench/pathF_swebench/apply_and_test.py`. Walks the diff, keeps first `--- a/PATH / +++ b/PATH` header per unique path, drops subsequent duplicates plus any trailing `index/diff --git/new file mode/deleted file mode` metadata, preserves all hunks in order. Wired into `normalize_patch()` BEFORE `recount_hunks()` (must merge structure first, then fix counts on merged patch).
+- **Files changed:**
+  - `bench/pathF_swebench/apply_and_test.py`
+- **Related BUILD_LOG entry:** 2026-08-05 08:38 EDT
+- **Related commit:** b2e89a6
+- **Verified locally** against 5 unit cases; expects sphinx-8035 to become applyable on rerun.
+

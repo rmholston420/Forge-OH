@@ -4677,3 +4677,25 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - Confirmed `git apply --recount --check` fixes the class of error against a scratch checkout.
 - Ship pure-Python equivalent so no scratch git required.
 
+
+## 2026-08-05 08:38 EDT — F.3 harness: smoke-25 rerun 16%→36% + duplicate-file-section fix
+
+- **Stage / plugin / port:** Path F · SWE-bench Verified harness · bench/pathF_swebench
+- **What changed:**
+  - Reran smoke-25 with hunk-recount fix: pass@1 jumped 16% → 36% (4/25 → 9/25). 13 of 25 patches had wrong hunk counts (patch_recounted=true).
+  - Sampled 3 residual apply-fails: 1 truncation (django-12708 at max_tokens=4096), 1 context-mismatch (scikit-learn-15100 — model rewrote docstring context around removed lines), 1 duplicate-file-section (sphinx-8035 — model emitted same file twice).
+  - Fixed the duplicate-file case: `merge_duplicate_file_sections(text)` in `apply_and_test.py`, wired into `normalize_patch()` BEFORE `recount_hunks()`.
+- **Files touched:**
+  - `bench/pathF_swebench/apply_and_test.py` (added `merge_duplicate_file_sections` + regexes)
+- **Ports / adapters affected:** none (bench-internal only)
+- **PORTING_LEDGER / ADR updated:** none yet — ADR-013 amendment #2 pending final numbers.
+- **Stop-condition status:** in-progress — rerun smoke-25 once more to lock verdict, then draft ADR amendment #2 and gate full-500.
+
+## Full 25-task diagnostic (0812_run)
+- 9 resolved (real pass@1)
+- 9 real test-fails (patch applied, tests failed — model floor)
+- 3 apply-fails: django-12708 (truncation), scikit-learn-15100 (context-mismatch), sphinx-8035 (duplicate section — FIXED this commit)
+- 4 context-budget-skipped (matplotlib-24149, sympy-13877, sympy-14248, sympy-18189)
+
+On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 51% with 100-turn OpenHands scaffold; we're at 43% with single-turn oracle-retrieval — very close.
+
