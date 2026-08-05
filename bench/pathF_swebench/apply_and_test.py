@@ -1,13 +1,21 @@
 """Patch-apply + test-run stage of the F.3 harness.
 
-Two responsibilities:
+Three responsibilities:
 
 1. `normalize_patch(text)` — strip markdown code fences that some models
    (c01 confirmed via F.3.0 dry-run 2026-08-05 06:53 EDT on
    django__django-10914) wrap around unified diffs. `git apply` rejects
-   fenced text.
+   fenced text. Also recomputes hunk header counts from body via
+   `recount_hunks()` — models frequently emit wrong -/+ counts (verified
+   2026-08-05 08:09 EDT: django__django-11133 emitted `@@ -149,6 +149,7 @@`
+   with 6-old/8-new body; GNU patch aborts "malformed patch at line 10").
 
-2. `apply_patch_and_run_tests(instance_id, patch, model_name, artifacts_root)`
+2. `recount_hunks(text)` — pure-Python equivalent of `git apply --recount`.
+   Rewrites each `@@ -a,b +c,d @@` header so `b` = count of ' ' + '-' body
+   lines and `d` = count of ' ' + '+' body lines. Idempotent on
+   well-formed patches.
+
+3. `apply_patch_and_run_tests(instance_id, patch, model_name, artifacts_root)`
    — shells out to the official SWE-bench harness
    (`python -m swebench.harness.run_evaluation`) with a single-instance
    predictions.jsonl. Reads the per-instance report and returns resolved
@@ -67,14 +75,97 @@ from pathlib import Path
 
 _FENCE_OPEN_RE = re.compile(r"^\s*```(?:diff|patch)?\s*\n", re.IGNORECASE)
 _FENCE_CLOSE_RE = re.compile(r"\n\s*```\s*$")
+_HUNK_HEADER_RE = re.compile(
+    r"^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@(?P<trailer>.*)$"
+)
+
+
+def recount_hunks(text: str) -> str:
+    """Recompute `-a,b +c,d` counts in every hunk header from the body.
+
+    Equivalent of `git apply --recount` but pure-Python (no git checkout
+    required). Handles multiple hunks per file and multiple file sections.
+    Idempotent — well-formed patches pass through unchanged.
+
+    A unified-diff body line belongs to a hunk if it starts with ' ', '+',
+    '-', or '\\' (for "\\ No newline at end of file"). Everything else
+    (blank line, next `@@`, next `---`/`+++`, or EOF) closes the hunk.
+
+    - Old-count = count of body lines starting with ' ' or '-' (not '\\').
+    - New-count = count of body lines starting with ' ' or '+' (not '\\').
+
+    Preserves the hunk-header trailer (the section context after `@@`)
+    and all body content verbatim.
+    """
+    if not text:
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        m = _HUNK_HEADER_RE.match(line)
+        if not m:
+            out.append(line)
+            i += 1
+            continue
+        # Found a hunk header. Scan forward to collect the body.
+        body_start = i + 1
+        j = body_start
+        old_count = 0
+        new_count = 0
+        while j < n:
+            bl = lines[j]
+            if not bl:
+                # Blank line in body is ambiguous. Some tools treat it as a
+                # context line (equivalent to ' '); others as end-of-hunk.
+                # GNU patch and git apply BOTH accept blank-as-context, so
+                # we count it as context and continue. If this is actually
+                # the end of the patch (last hunk with trailing blank),
+                # counting an extra ctx line is harmless — recount only
+                # writes what we counted, and the following non-hunk
+                # content is preserved verbatim below.
+                old_count += 1
+                new_count += 1
+                j += 1
+                continue
+            c0 = bl[0]
+            if c0 == " ":
+                old_count += 1
+                new_count += 1
+            elif c0 == "-":
+                old_count += 1
+            elif c0 == "+":
+                new_count += 1
+            elif c0 == "\\":
+                # "\ No newline at end of file" — doesn't count as a line.
+                pass
+            else:
+                # Not a body line — either next hunk header, next file
+                # section, or trailing prose. Stop here.
+                break
+            j += 1
+        # Rewrite the header with recomputed counts.
+        old_start = m.group("old_start")
+        new_start = m.group("new_start")
+        trailer = m.group("trailer") or ""
+        new_header = f"@@ -{old_start},{old_count} +{new_start},{new_count} @@{trailer}"
+        out.append(new_header)
+        # Append body lines verbatim.
+        out.extend(lines[body_start:j])
+        i = j
+    return "\n".join(out)
 
 
 def normalize_patch(text: str) -> str:
-    """Strip markdown code fences and outer whitespace from model output.
+    """Strip markdown code fences, outer whitespace, and recount hunks.
 
     Handles:
     - Fully-wrapped: ``` ... ``` / ```diff ... ``` / ```patch ... ```
     - Extra leading/trailing whitespace
+    - Malformed hunk counts (via `recount_hunks`) — models routinely emit
+      wrong -/+ counts, which GNU patch rejects as "malformed patch".
     - Trailing prose after the diff — LEFT IN PLACE (git apply will fail
       loudly, which is what we want for scoring — silently swallowing prose
       would mask a bad model output).
@@ -84,7 +175,8 @@ def normalize_patch(text: str) -> str:
     stripped = text.strip()
     stripped = _FENCE_OPEN_RE.sub("", stripped, count=1)
     stripped = _FENCE_CLOSE_RE.sub("", stripped, count=1)
-    return stripped.strip()
+    stripped = stripped.strip()
+    return recount_hunks(stripped)
 
 
 # --- docker apply + test ---------------------------------------------------

@@ -387,6 +387,18 @@ def run_task(
     #    in ```diff ... ``` even when instructed not to. git apply rejects fenced text.
     patch_raw = model_out["content_stripped"]
     patch_text = normalize_patch(patch_raw)
+    # Track whether recount_hunks() actually rewrote any header so we can
+    # tell (post-run) how often the model got hunk math wrong. Cheap: just
+    # re-strip fences from raw and compare pre-recount vs post-recount.
+    _pre_recount = patch_raw
+    # Mirror the fence-strip steps that normalize_patch does, MINUS recount.
+    if _pre_recount:
+        _pre_recount = _pre_recount.strip()
+        import re as _re
+        _pre_recount = _re.sub(r"^\s*```(?:diff|patch)?\s*\n", "", _pre_recount, count=1, flags=_re.IGNORECASE)
+        _pre_recount = _re.sub(r"\n\s*```\s*$", "", _pre_recount, count=1)
+        _pre_recount = _pre_recount.strip()
+    patch_recounted = (patch_text != _pre_recount)
 
     # 6. Apply patch inside the SWE-bench sandbox and run tests via the
     #    official swebench harness (see apply_and_test.py docstring).
@@ -451,6 +463,7 @@ def run_task(
         "content_stripped_chars": model_out["content_stripped_chars"],
         "patch": patch_text,
         "patch_raw": patch_raw,
+        "patch_recounted": patch_recounted,
         "oracle_files": files,
         "fail_to_pass": task.get("FAIL_TO_PASS", []) or [],
         "pass_to_pass": task.get("PASS_TO_PASS", []) or [],
