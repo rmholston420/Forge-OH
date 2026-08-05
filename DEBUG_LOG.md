@@ -1085,3 +1085,25 @@ All 5 HF pulls "succeeded" in <2 seconds each — a real 30 GB weight download o
 
 **Verify with**: `bash bench/pathE_qwen36_27b/pull_new_models.sh` — expect real download times (30-120s per model on Gbit) and `du -sh` should show ~15-30 GB per model dir.
 
+
+
+## 2026-08-05 01:04 EDT — Devstral-Small-2-2512 is a VLM, not a text-only coder (c10 + c11 config discovery)
+
+**Symptom** (exact from operator paste, config.json inspection):
+```
+architectures: ['Mistral3ForConditionalGeneration']
+model_type: mistral3
+has vision_config: True
+```
+Both c10 (`Devstral-Small-2-24B-Instruct-2512-nvfp4`) and c11 (`Devstral-Small-2-24B-Instruct-2512-AWQ-4bit`) config.json declare `Mistral3ForConditionalGeneration` with a full `vision_config` block. c11's `quantization_config.ignore` list further confirms this by naming 24 `model.vision_tower.transformer.layers.*` modules and the `multi_modal_projector`.
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh (c10, c11)
+
+**Root cause**: Mistral's Devstral-Small-2 "2512" release is multimodal-only. There is no text-only sibling in the `-2512-` naming convention. Both quant variants (Fireworks NVFP4 and cyankiwi compressed-tensors AWQ-4bit) inherit the vision tower and multi-modal projector from the base model. Loading these under vLLM without a mm-limit flag will (a) allocate ~2 GB VRAM for the inert vision tower, (b) leave `/v1/chat/completions` accepting image content that our text-only bench never sends.
+
+**Fix applied**: Added `--limit-mm-per-prompt '{"image":0}'` to both c10 and c11 `EXTRA_FLAGS`. This tells vLLM to reject image content per-request at the API boundary while still loading the model. Vision-tower VRAM waste (~2 GB) is accepted as the cost of running the only available Devstral-2512 quants. Both cells remain in the 13-cell matrix (operator decision: option B, keep both text-only).
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 and c11 stanzas)
+
+**Verify with**: after `bash vllm_launch.sh c10 up`, `curl -s http://localhost:8000/v1/models | jq` should list `c10_coder_vllm_devstral24b_nvfp4` with limit `image=0` reflected in vLLM startup log. Same for c11.

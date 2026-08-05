@@ -127,20 +127,25 @@ case "$CELL" in
     ;;
   c10)
     # Firworks/Devstral-Small-2-24B-Instruct-2512-nvfp4 (15 GB).
-    # Mistral3 arch (multimodal ready — text-only for our purposes).
+    # Mistral3ForConditionalGeneration (VLM) — served text-only via --limit-mm-per-prompt.
+    # Vision tower still loads (~2 GB VRAM) but is inert. See DEBUG_LOG 2026-08-05 01:04 EDT.
     MODEL_DIR="Devstral-Small-2-24B-Instruct-2512-nvfp4"
     SERVED_NAME="c10_coder_vllm_devstral24b_nvfp4"
     EXTRA_FLAGS=(
       --quantization modelopt_fp4
+      --limit-mm-per-prompt '{"image":0}'
     )
     ;;
   c11)
     # cyankiwi/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit — compressed-tensors int4 (30 GB).
+    # Mistral3ForConditionalGeneration (VLM) — served text-only via --limit-mm-per-prompt.
     # Like c03b: DO NOT pass --quantization; vLLM auto-detects compressed-tensors.
-    # See DEBUG_LOG 2026-08-05 00:00 EDT.
+    # See DEBUG_LOG 2026-08-05 00:00 EDT and 2026-08-05 01:04 EDT.
     MODEL_DIR="Devstral-Small-2-24B-Instruct-2512-AWQ-4bit"
     SERVED_NAME="c11_coder_vllm_devstral24b_awq"
-    EXTRA_FLAGS=()
+    EXTRA_FLAGS=(
+      --limit-mm-per-prompt '{"image":0}'
+    )
     ;;
   c12a)
     # casperhansen/deepseek-r1-distill-qwen-32b-awq — classic AWQ (group_size=128, GEMM, 18 GB).
