@@ -92,7 +92,13 @@ CELLS: dict[str, dict] = {
     },
 }
 
-MAX_TOKENS = 4096  # coder role
+# Context budgeting. vLLM launches c01 with --max-model-len 32768.
+# We must satisfy: prompt_tokens + max_tokens <= MAX_MODEL_LEN.
+# We dynamically cap max_tokens per request using a live /tokenize probe.
+MAX_MODEL_LEN = 32768
+MAX_TOKENS_CEILING = 4096   # cap for coder diffs; won't grow past this even if room allows
+MAX_TOKENS_FLOOR = 512      # if we can't guarantee at least this much room, skip the task
+CONTEXT_SAFETY_MARGIN = 64  # tokenizer + chat-template can add a few tokens; keep some slack
 REQUEST_TIMEOUT_S = 900  # 15 min per task — plenty for c01 at ~85 tok/s
 GPU_SAMPLE_INTERVAL_S = 0.5  # NVML polling cadence per bench methodology / F.1b
 
@@ -176,12 +182,67 @@ def _empty_gpu_stats() -> dict:
     }
 
 
-def call_model(cell: dict, prompt: str) -> dict:
+def _count_prompt_tokens(cell: dict, prompt: str) -> int | None:
+    """Ask vLLM to tokenize the prompt via the chat template. Returns token
+    count or None if the endpoint doesn't respond (older vLLM without /tokenize).
+    """
+    url = f"{cell['endpoint']}/tokenize"
+    payload = {
+        "model": cell["model_id"],
+        "messages": [{"role": "user", "content": prompt}],
+        "add_generation_prompt": True,
+    }
+    resp, _ = http_post_json(url, payload, timeout=60)
+    if "error" in resp:
+        return None
+    # vLLM /tokenize returns {"count": N, "tokens": [...], ...}
+    if "count" in resp and isinstance(resp["count"], int):
+        return resp["count"]
+    if "tokens" in resp and isinstance(resp["tokens"], list):
+        return len(resp["tokens"])
+    return None
+
+
+def budget_max_tokens(prompt_tokens: int) -> tuple[int, str]:
+    """Compute a safe max_tokens for a given prompt size.
+
+    Returns (max_tokens, note). max_tokens=0 means the prompt is already so
+    large that even MAX_TOKENS_FLOOR won't fit — caller must skip.
+    """
+    room = MAX_MODEL_LEN - prompt_tokens - CONTEXT_SAFETY_MARGIN
+    if room < MAX_TOKENS_FLOOR:
+        return 0, f"prompt_tokens={prompt_tokens} leaves only {room}t room (< floor {MAX_TOKENS_FLOOR})"
+    if room >= MAX_TOKENS_CEILING:
+        return MAX_TOKENS_CEILING, "full ceiling fits"
+    return room, f"reduced from ceiling {MAX_TOKENS_CEILING} → {room} due to prompt size"
+
+
+def call_model(cell: dict, prompt: str, prompt_tokens: int | None = None) -> dict:
+    # Dynamic max_tokens budgeting. If /tokenize is available, respect the true
+    # count; else fall back to the ceiling and let vLLM 400 with a clear reason.
+    if prompt_tokens is None:
+        prompt_tokens = _count_prompt_tokens(cell, prompt)
+    if prompt_tokens is not None:
+        max_tokens, budget_note = budget_max_tokens(prompt_tokens)
+        if max_tokens == 0:
+            return {
+                "error": f"context-budget-skip: {budget_note}",
+                "wall_seconds": 0.0,
+                "prompt_tokens": prompt_tokens,
+                "gpu": _empty_gpu_stats(),
+                "context_budget_skipped": True,
+            }
+    else:
+        # No /tokenize available. Trust MAX_TOKENS_CEILING and let a 400 surface
+        # if the prompt is oversized. Log so we notice.
+        max_tokens = MAX_TOKENS_CEILING
+        budget_note = "tokenize-unavailable-using-ceiling"
+        print(f"  [warn] /tokenize probe returned no count; using ceiling {MAX_TOKENS_CEILING}", flush=True)
     payload = {
         "model": cell["model_id"],
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "max_tokens": MAX_TOKENS,
+        "max_tokens": max_tokens,
         **cell["sampling"],
         **cell["extra_body"],
     }
@@ -195,13 +256,22 @@ def call_model(cell: dict, prompt: str) -> dict:
     finally:
         gpu_stats = sampler.stop().to_dict() if sampler is not None else _empty_gpu_stats()
     if "error" in resp:
-        return {"error": resp["error"], "wall_seconds": round(wall, 2), "gpu": gpu_stats}
+        return {
+            "error": resp["error"],
+            "wall_seconds": round(wall, 2),
+            "gpu": gpu_stats,
+            "max_tokens_requested": max_tokens,
+            "budget_note": budget_note,
+            "prompt_tokens_pre": prompt_tokens,
+        }
     raw = resp["choices"][0]["message"]["content"]
     stripped = THINK_RE.sub("", raw).strip()
     usage = resp.get("usage", {})
     out_toks = usage.get("completion_tokens", 0)
     prompt_toks = usage.get("prompt_tokens", 0)
     tok_per_s = (out_toks / wall) if wall > 0 and out_toks else 0.0
+    finish_reason = resp["choices"][0].get("finish_reason")
+    truncated_by_length = (finish_reason == "length")
     return {
         "wall_seconds": round(wall, 2),
         "prompt_tokens": prompt_toks,
@@ -212,6 +282,10 @@ def call_model(cell: dict, prompt: str) -> dict:
         "content_stripped": stripped,
         "content_stripped_chars": len(stripped),
         "gpu": gpu_stats,
+        "max_tokens_requested": max_tokens,
+        "budget_note": budget_note,
+        "finish_reason": finish_reason,
+        "truncated_by_length": truncated_by_length,
     }
 
 
@@ -293,6 +367,10 @@ def run_task(
             "error": model_out["error"],
             "wall_seconds": model_out.get("wall_seconds", 0),
             "prompt_chars": len(prompt), "oracle_files": files,
+            "context_budget_skipped": model_out.get("context_budget_skipped", False),
+            "budget_note": model_out.get("budget_note"),
+            "prompt_tokens_pre": model_out.get("prompt_tokens_pre"),
+            "resolved": False,
         }
         (out_dir / f"{instance_id}.json").write_text(json.dumps(err_record, indent=2))
         return err_record
@@ -358,6 +436,10 @@ def run_task(
         "prompt_tokens": model_out["prompt_tokens"],
         "completion_tokens": model_out["completion_tokens"],
         "tok_per_s": model_out["tok_per_s"],
+        "max_tokens_requested": model_out.get("max_tokens_requested"),
+        "budget_note": model_out.get("budget_note"),
+        "finish_reason": model_out.get("finish_reason"),
+        "truncated_by_length": model_out.get("truncated_by_length", False),
         "content_raw_chars": model_out["content_raw_chars"],
         "content_stripped_chars": model_out["content_stripped_chars"],
         "patch": patch_text,
@@ -379,11 +461,12 @@ def run_task(
         if gpu_inf.get("samples", 0) > 0
         else ""
     )
+    trunc = " TRUNCATED_BY_LENGTH" if model_out.get("truncated_by_length") else ""
     print(
         f"  [{task_idx}/{task_total}] ok  wall={model_out['wall_seconds']}s "
-        f"toks={model_out['completion_tokens']} "
+        f"toks={model_out['completion_tokens']}/{model_out.get('max_tokens_requested', '?')} "
         f"resolved={result_payload.get('resolved')}"
-        f"{gpu_hint}",
+        f"{gpu_hint}{trunc}",
         flush=True,
     )
     return task_record
@@ -398,6 +481,8 @@ def _emit_summary(out_dir: Path, records: list[dict], total_wall: float) -> None
     unresolved = [r for r in records if r.get("resolved") is False]
     unknown = [r for r in records if r.get("resolved") is None]
     errors = [r for r in records if "error" in r]
+    ctx_skipped = [r for r in records if r.get("context_budget_skipped")]
+    length_truncated = [r for r in records if r.get("truncated_by_length")]
     walls = [r["wall_seconds"] for r in records if isinstance(r.get("wall_seconds"), (int, float))]
     # GPU aggregates across all tasks (inference window only; harness window is
     # usually idle and would drown out the signal).
@@ -422,6 +507,8 @@ def _emit_summary(out_dir: Path, records: list[dict], total_wall: float) -> None
         "resolved_false": len(unresolved),
         "resolved_unknown_or_stubbed": len(unknown),
         "errors": len(errors),
+        "context_budget_skipped": len(ctx_skipped),
+        "truncated_by_length": len(length_truncated),
         "pass_at_1": (len(resolved) / len(records)) if records else 0.0,
         "wall_total_s": round(total_wall, 2),
         "wall_total_hms": _fmt_dur(total_wall),

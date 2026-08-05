@@ -4629,3 +4629,22 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected:** none (bench-only)
 - **PORTING_LEDGER / ADR updated:** ADR-017 ratified.
 - **Stop-condition status:** in-progress. Next: user `git pull` + run `--smoke-25`; green threshold ≥23/25 (92%) to unlock full-500.
+
+## 2026-08-05 07:31 EDT — F.3 harness: dynamic max_tokens budgeting + truncation tracking
+
+- **Stage / plugin / port:** F.3 Path A · bench/pathF_swebench
+- **What changed:** smoke-25 first run exposed two harness bugs at task 9 (matplotlib__matplotlib-24149):
+    1. **Context overflow** — prompt=28,673t + max_tokens=4096 = 32,769t > MAX_MODEL_LEN=32,768. vLLM 400.
+    2. **Silent length truncation** — task 7 (matplotlib__matplotlib-23299) hit completion_tokens=4096 exactly (finish_reason=length). Model was cut mid-diff; recorded as resolved=False without note.
+  Fixes:
+    - `_count_prompt_tokens()` — probes vLLM `/tokenize` with the same chat template payload BEFORE calling /chat/completions. Returns real token count.
+    - `budget_max_tokens()` — computes safe max_tokens = MAX_MODEL_LEN(32768) - prompt_tokens - SAFETY_MARGIN(64), clipped to [FLOOR=512, CEILING=4096]. Returns 0 if even FLOOR won't fit.
+    - `call_model()` — now takes optional pre-computed prompt_tokens; skips the call with `context_budget_skipped=True` when prompt won't fit. Otherwise sends dynamically-sized max_tokens.
+    - Per-task JSON gains: `max_tokens_requested`, `budget_note`, `finish_reason`, `truncated_by_length`.
+    - Error records (context-budget-skip) gain: `context_budget_skipped`, `budget_note`, `prompt_tokens_pre`, `resolved: False`.
+    - `summary.json` gains: `context_budget_skipped` count, `truncated_by_length` count.
+    - Task print line shows `toks=<used>/<budget>` and appends `TRUNCATED_BY_LENGTH` warning if model hit the length cap.
+- **Files touched:** `bench/pathF_swebench/bench_pathF_swebench.py`
+- **Ports / adapters affected:** none
+- **PORTING_LEDGER / ADR updated:** none (fix, not decision)
+- **Stop-condition status:** blocks smoke-25 until user runs a clean rerun.
