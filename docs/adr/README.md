@@ -26,3 +26,4 @@ New or amended ADRs follow the `kosmos-adr-authoring` skill. Filename pattern: `
 
 | 015 | [SWE-bench Verified end-to-end sandbox](015-swe-bench-sandbox.md) | Proposed | Adds Stage-1H: per-run Docker sandbox for full-Forge-OH Verified acceptance |
 | 016 | [Colossus<->GitHub mirror parity](016-colossus-github-mirror-parity.md) | Ratified | Cross-cutting: every file tracked or explicitly ignored; Perplexity Computer commits directly to GitHub (user pulls); enforced by AGENTS.md #9+#10 + forge-doctor §10 + pre-commit hook |
+| 017 | [NVML GPU sampling mandatory on every bench](017-bench-nvml-mandatory.md) | Ratified | Cross-cutting: every bench harness under `bench/` imports `GpuSampler` from `bench._common.nvml_sampler` and persists per-task `gpu_inference` (+ optional `gpu_harness`) plus a run-level `gpu` aggregate |

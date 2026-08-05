@@ -4608,3 +4608,24 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected**: none
 - **PORTING_LEDGER / ADR updated**: — (F.3.1 verdict → ADR-013 amendment #2 still pending)
 - **Stop-condition status**: F.3.0 gate PASSED. Next stop: F.3.0.5 smoke-25 green (≥90% resolved for a Go on overnight full-500).
+
+## 2026-08-05 07:20 EDT — F.3 bench harness: numbered tasks + mandatory NVML GPU sampling (ADR-017)
+
+- **Stage / plugin / port:** F.3 Path A · bench/pathF_swebench + bench/_common
+- **What changed:**
+  - Promoted NVML sampler from `bench/pathF_instrumented/nvml_sampler.py` to canonical `bench/_common/nvml_sampler.py` (module contents unchanged); left compat shim at old path so F.1b (`bench/pathF_instrumented/bench_pathF.py`) still imports it via its sibling-directory `sys.path` insertion.
+  - Wired `GpuSampler` into `bench_pathF_swebench.py`: separate windows for inference (`gpu_inference`) and docker apply-and-test (`gpu_harness`). Per-task JSON now carries both. `summary.json` gains a `gpu` block with cross-task max/avg for VRAM, temperature, power, utilization.
+  - Added task numbering: `[task N/Total]` header + `[N/Total] ok wall=…` completion line per task; ETA computed from session wall clock ÷ tasks completed this session. Per-task JSON carries `task_index` + `task_total`. On resume, numbering picks up at the correct position within the full run.
+  - Added `progress.json` written after every task (live-tailable): completed / remaining / resolved_true / pass_at_1_so_far / session_elapsed_hms / eta_remaining_hms.
+  - Added `_fmt_dur()` helper (Ns / NmMMs / NhMMm).
+  - Ratified **ADR-017** — NVML GPU sampling mandatory on every bench harness (`docs/adr/017-bench-nvml-mandatory.md`). Codifies the user's 2026-08-05 07:10 EDT instruction "these benchmarking tests, and all such tests, always need to track our GPU metrics" as a permanent bench-harness rule.
+- **Files touched:**
+  - `bench/_common/__init__.py` (new)
+  - `bench/_common/nvml_sampler.py` (new — moved from pathF_instrumented, content unchanged)
+  - `bench/pathF_instrumented/nvml_sampler.py` (replaced with 6-line re-export shim)
+  - `bench/pathF_swebench/bench_pathF_swebench.py` (GPU sampling + task numbering + progress.json)
+  - `docs/adr/017-bench-nvml-mandatory.md` (new)
+  - `docs/adr/README.md` (index entry)
+- **Ports / adapters affected:** none (bench-only)
+- **PORTING_LEDGER / ADR updated:** ADR-017 ratified.
+- **Stop-condition status:** in-progress. Next: user `git pull` + run `--smoke-25`; green threshold ≥23/25 (92%) to unlock full-500.

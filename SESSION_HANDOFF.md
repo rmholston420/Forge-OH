@@ -1,41 +1,37 @@
-# Forge-OH Session Handoff — 2026-08-05 07:07 EDT
+# Kosmos / Forge-OH Session Handoff — 2026-08-05 07:20 EDT
 
 ## Current build-sequencing position
-- **Stage / phase**: Track 1 — F.3 Path A (SWE-bench Verified pass@1, oracle-retrieval, raw c01)
-- **Plugin / kernel component**: bench harness
-- **Port(s) in progress**: —
+- **Stage / phase:** F.3 Path A · SWE-bench Verified oracle-retrieval on ratified coder c01 (Qwen3.6-27B INT4 AutoRound @ :8000)
+- **Plugin / kernel component:** `bench/pathF_swebench/` (harness), `bench/_common/` (shared sampler)
+- **Port(s) in progress:** none (bench-only)
 
 ## Completed this session
-- F.3.0 docker-real gate GREEN: `django__django-10914` resolved by c01 (`pass_at_1=1.0`, wall 46.82s)
-- Fence-stripping fix (`73cc32a`)
-- Official swebench harness integration (`1bb51d4`)
-- Smoke-25 + resumption (HEAD): 25-task cross-repo smoke set + `--resume-run DIR`. All 25 IDs verified in Verified split; all 25 base_commits distinct.
+- F.3.0 docker-real gate GREEN: `django__django-10914` resolved=True, pass@1=1.0, wall 46.82s
+- F.3 harness got numbered tasks + progress.json + ETA
+- Promoted `nvml_sampler.py` to `bench/_common/`; F.1b compat shim in place
+- Wired GpuSampler into F.3: `gpu_inference` + `gpu_harness` per task, `gpu` aggregate in summary.json
+- ADR-017 ratified: NVML sampling mandatory on every bench harness
 
-## Remaining before current Definition of Done
-- **F.3.0.5 smoke-25 pass** (user, next step):
-  1. `cd ~/dev/forge-oh && git pull`
-  2. `python -m bench.pathF_swebench.bench_pathF_swebench --smoke-25 --model c01`
-  3. Expected wall: 20-60 min depending on which instance images are already cached from F.3.0. Most will need first-time pulls (~2-3 GB each).
-  4. Watch stdout for per-task `ok wall=... resolved=True/False` lines.
-  5. If interrupted mid-run, resume with:
-     `python -m bench.pathF_swebench.bench_pathF_swebench --smoke-25 --model c01 --resume-run /home/rmholston/.forge-oh/bench_pathF_swebench/<ts>_run`
-  6. **Green threshold for Go on F.3.1**: ≥90% resolved (23+/25). Below that, diagnose failures from `harness_stderr_tail` in per-task JSONs before overnight run.
-
-- **F.3.1 full-500 overnight** (only after F.3.0.5 green): kicked off before bed; expected 6-10h wall.
-
-- **ADR-013 amendment #2**: after F.3.1 completes → record c01 pass@1 verdict.
-
-- **Post-F.3**: `docker start forge-vllm-planner` to restore steady-state.
-
-- Non-blocking backlog: untracked `scripts/*.sh` parity per ADR-016; stale docker containers; stale git stashes.
+## Remaining before current Definition of Done (F.3 verdict)
+1. User: `cd ~/dev/forge-oh && git pull`
+2. User: verify NVML sampler works — `.oh-venv/bin/python -m bench._common.nvml_sampler` should print a smoke-sample dict with `nvml_available: true`. If it fails with `pynvml` ImportError, `.oh-venv/bin/pip install nvidia-ml-py` and re-verify.
+3. User: run smoke-25 — see "Exact next action" below.
+4. Agent: score smoke-25 results (green threshold ≥23/25 resolved = 92%).
+5. Agent: if green, kick full-500 overnight (`--tasks all`) with `--resume-run` safety.
+6. Agent: ADR-013 amendment #2 with F.3 pass@1 verdict.
+7. Agent: `docker start forge-vllm-planner` to restore steady-state after full-500.
 
 ## Open questions / awaiting user answer
-- None. F.3.0.5 smoke-25 is a user-runs-on-Colossus step.
+- None. User already answered: smoke-25 first, resume-run enabled, "make optimal choices" on sampling-window scope + sampler location. GPU-tracking instruction is now a permanent rule (ADR-017).
 
 ## Exact next action
+On Colossus:
 ```bash
 cd ~/dev/forge-oh && git pull
-python -m bench.pathF_swebench.bench_pathF_swebench --smoke-25 --model c01
+# One-time NVML smoke (only if you want to double-check before a 25-task run):
+.oh-venv/bin/python -m bench._common.nvml_sampler
+# Kick smoke-25:
+.oh-venv/bin/python -m bench.pathF_swebench.bench_pathF_swebench --smoke-25 --model c01
+# Live-tail progress from another shell:
+watch -n 5 'jq . ~/.forge-oh/bench_pathF_swebench/$(ls -1t ~/.forge-oh/bench_pathF_swebench/ | head -1)/progress.json'
 ```
-
-If it goes >60 min without a per-task `ok`/`resolved=` line, `Ctrl-C` and paste last 30 lines of stdout + `ls /home/rmholston/.forge-oh/swebench_runs/ | tail -5`.

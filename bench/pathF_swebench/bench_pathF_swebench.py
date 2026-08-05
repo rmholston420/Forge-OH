@@ -94,6 +94,19 @@ CELLS: dict[str, dict] = {
 
 MAX_TOKENS = 4096  # coder role
 REQUEST_TIMEOUT_S = 900  # 15 min per task — plenty for c01 at ~85 tok/s
+GPU_SAMPLE_INTERVAL_S = 0.5  # NVML polling cadence per bench methodology / F.1b
+
+# GPU sampling: mandatory on every bench harness per the module docstring in
+# bench/_common/nvml_sampler.py ("All future bench runs must use this sampler").
+# Reason: quality + speed alone are misleading when a run is thermally throttled,
+# VRAM-pressured, or contending with another CUDA workload.
+try:
+    from bench._common.nvml_sampler import GpuSampler  # type: ignore
+    _GPU_SAMPLER_AVAILABLE = True
+except Exception as _e:  # pragma: no cover - import guard
+    GpuSampler = None  # type: ignore
+    _GPU_SAMPLER_AVAILABLE = False
+    print(f"[F.3 Path A] warn: NVML sampler unavailable: {_e}", flush=True)
 
 # 25-task cross-repo smoke set. 5 tasks each from 5 different repos to
 # stress-test image pulls + repo-specific test invocations before committing
@@ -153,6 +166,16 @@ def http_post_json(url: str, payload: dict, timeout: int) -> tuple[dict, float]:
     return data, time.time() - t0
 
 
+def _empty_gpu_stats() -> dict:
+    """Placeholder GPU dict when the sampler is unavailable."""
+    return {
+        "samples": 0,
+        "nvml_available": False,
+        "sampling_interval_s": GPU_SAMPLE_INTERVAL_S,
+        "sampling_wall_s": 0.0,
+    }
+
+
 def call_model(cell: dict, prompt: str) -> dict:
     payload = {
         "model": cell["model_id"],
@@ -162,9 +185,17 @@ def call_model(cell: dict, prompt: str) -> dict:
         **cell["sampling"],
         **cell["extra_body"],
     }
-    resp, wall = http_post_json(f"{cell['endpoint']}/chat/completions", payload, REQUEST_TIMEOUT_S)
+    # Wrap the vLLM call in an NVML sample window. This is the coder inference
+    # window — separate from the docker apply-and-test window.
+    sampler = GpuSampler(interval_s=GPU_SAMPLE_INTERVAL_S) if _GPU_SAMPLER_AVAILABLE else None
+    if sampler is not None:
+        sampler.start()
+    try:
+        resp, wall = http_post_json(f"{cell['endpoint']}/chat/completions", payload, REQUEST_TIMEOUT_S)
+    finally:
+        gpu_stats = sampler.stop().to_dict() if sampler is not None else _empty_gpu_stats()
     if "error" in resp:
-        return {"error": resp["error"], "wall_seconds": round(wall, 2)}
+        return {"error": resp["error"], "wall_seconds": round(wall, 2), "gpu": gpu_stats}
     raw = resp["choices"][0]["message"]["content"]
     stripped = THINK_RE.sub("", raw).strip()
     usage = resp.get("usage", {})
@@ -180,6 +211,7 @@ def call_model(cell: dict, prompt: str) -> dict:
         "content_raw_chars": len(raw),
         "content_stripped": stripped,
         "content_stripped_chars": len(stripped),
+        "gpu": gpu_stats,
     }
 
 
@@ -213,10 +245,30 @@ def _repo_checkout_path(task: dict) -> Path:
 # ---------- one task ----------
 
 
-def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep_sandbox: bool) -> dict:
+def _fmt_dur(seconds: float) -> str:
+    """Compact wall-clock: 3s / 47s / 1m23s / 2h05m."""
+    seconds = max(0.0, seconds)
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    m, s = divmod(int(seconds), 60)
+    if m < 60:
+        return f"{m}m{s:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}h{m:02d}m"
+
+
+def run_task(
+    task: dict,
+    cell_key: str,
+    out_dir: Path,
+    dry_plan_only: bool,
+    keep_sandbox: bool,
+    task_idx: int,
+    task_total: int,
+) -> dict:
     cell = CELLS[cell_key]
     instance_id = task["instance_id"]
-    print(f"[task] {dump_task_summary(task)}", flush=True)
+    print(f"[task {task_idx}/{task_total}] {dump_task_summary(task)}", flush=True)
 
     # 1. Determine oracle files from ground-truth patch.
     files = files_touched_by_patch(task["patch"])
@@ -236,6 +288,7 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
         print(f"  ERROR: {model_out['error']}", flush=True)
         err_record = {
             "instance_id": instance_id, "model_id": cell["model_id"],
+            "task_index": task_idx, "task_total": task_total,
             "mode": "oracle-retrieval", "phase": "model_call",
             "error": model_out["error"],
             "wall_seconds": model_out.get("wall_seconds", 0),
@@ -252,7 +305,12 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
 
     # 6. Apply patch inside the SWE-bench sandbox and run tests via the
     #    official swebench harness (see apply_and_test.py docstring).
+    #    Wrap in a SECOND NVML window (`gpu_harness`) — separate from the
+    #    inference window — so we can tell if the docker harness ever wakes
+    #    the GPU. On Verified this is usually near-zero (pytest, CPU-only),
+    #    which is itself the diagnostic signal.
     result_payload: dict = {}
+    gpu_harness_stats: dict = _empty_gpu_stats()
     if dry_plan_only:
         result_payload = {"resolved": None, "phase": "dry-plan-only-skipped-docker"}
     else:
@@ -262,14 +320,22 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
         swebench_root = out_dir.parent.parent / "swebench_runs"
         swebench_root.mkdir(parents=True, exist_ok=True)
         harness_run_id = f"{out_dir.name}__{instance_id}"
-        test_result = apply_patch_and_run_tests(
-            instance_id=instance_id,
-            patch=patch_text,
-            model_name=cell["model_id"],
-            artifacts_root=swebench_root,
-            run_id=harness_run_id,
-            keep_sandbox=keep_sandbox,
-        )
+        harness_sampler = GpuSampler(interval_s=GPU_SAMPLE_INTERVAL_S) if _GPU_SAMPLER_AVAILABLE else None
+        if harness_sampler is not None:
+            harness_sampler.start()
+        try:
+            test_result = apply_patch_and_run_tests(
+                instance_id=instance_id,
+                patch=patch_text,
+                model_name=cell["model_id"],
+                artifacts_root=swebench_root,
+                run_id=harness_run_id,
+                keep_sandbox=keep_sandbox,
+            )
+        finally:
+            gpu_harness_stats = (
+                harness_sampler.stop().to_dict() if harness_sampler is not None else _empty_gpu_stats()
+            )
         result_payload = {
             "resolved": test_result.resolved,
             "phase": "swebench-harness",
@@ -285,6 +351,8 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
     task_record = {
         "instance_id": instance_id,
         "model_id": cell["model_id"],
+        "task_index": task_idx,
+        "task_total": task_total,
         "mode": "oracle-retrieval",
         "wall_seconds": model_out["wall_seconds"],
         "prompt_tokens": model_out["prompt_tokens"],
@@ -297,15 +365,25 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
         "oracle_files": files,
         "fail_to_pass": task.get("FAIL_TO_PASS", []) or [],
         "pass_to_pass": task.get("PASS_TO_PASS", []) or [],
+        "gpu_inference": model_out.get("gpu", _empty_gpu_stats()),
+        "gpu_harness": gpu_harness_stats,
         **result_payload,
     }
 
     out_file = out_dir / f"{instance_id}.json"
     out_file.write_text(json.dumps(task_record, indent=2))
+    # One-line per-task summary. Progress + ETA computed by caller from records list.
+    gpu_inf = task_record["gpu_inference"]
+    gpu_hint = (
+        f" vram_max={gpu_inf['vram_max_mib']}MiB tempC_max={gpu_inf['gpu_temp_max_c']} util_max={gpu_inf['gpu_util_max_pct']}%"
+        if gpu_inf.get("samples", 0) > 0
+        else ""
+    )
     print(
-        f"  ok  wall={model_out['wall_seconds']}s "
+        f"  [{task_idx}/{task_total}] ok  wall={model_out['wall_seconds']}s "
         f"toks={model_out['completion_tokens']} "
-        f"resolved={result_payload.get('resolved')}",
+        f"resolved={result_payload.get('resolved')}"
+        f"{gpu_hint}",
         flush=True,
     )
     return task_record
@@ -321,6 +399,23 @@ def _emit_summary(out_dir: Path, records: list[dict], total_wall: float) -> None
     unknown = [r for r in records if r.get("resolved") is None]
     errors = [r for r in records if "error" in r]
     walls = [r["wall_seconds"] for r in records if isinstance(r.get("wall_seconds"), (int, float))]
+    # GPU aggregates across all tasks (inference window only; harness window is
+    # usually idle and would drown out the signal).
+    gpu_valid = [r.get("gpu_inference", {}) for r in records
+                 if r.get("gpu_inference", {}).get("samples", 0) > 0]
+    gpu_summary = None
+    if gpu_valid:
+        gpu_summary = {
+            "tasks_with_gpu_samples": len(gpu_valid),
+            "vram_max_mib_across_tasks": max(g["vram_max_mib"] for g in gpu_valid),
+            "vram_avg_mib_across_tasks": round(statistics.fmean(g["vram_avg_mib"] for g in gpu_valid), 1),
+            "gpu_temp_max_c_across_tasks": max(g["gpu_temp_max_c"] for g in gpu_valid),
+            "gpu_temp_avg_c_across_tasks": round(statistics.fmean(g["gpu_temp_avg_c"] for g in gpu_valid), 2),
+            "power_max_w_across_tasks": round(max(g["power_max_w"] for g in gpu_valid), 2),
+            "power_avg_w_across_tasks": round(statistics.fmean(g["power_avg_w"] for g in gpu_valid), 2),
+            "gpu_util_max_pct_across_tasks": max(g["gpu_util_max_pct"] for g in gpu_valid),
+            "gpu_util_avg_pct_across_tasks": round(statistics.fmean(g["gpu_util_avg_pct"] for g in gpu_valid), 2),
+        }
     summary = {
         "task_count": len(records),
         "resolved_true": len(resolved),
@@ -329,9 +424,11 @@ def _emit_summary(out_dir: Path, records: list[dict], total_wall: float) -> None
         "errors": len(errors),
         "pass_at_1": (len(resolved) / len(records)) if records else 0.0,
         "wall_total_s": round(total_wall, 2),
+        "wall_total_hms": _fmt_dur(total_wall),
         "wall_median_per_task_s": round(statistics.median(walls), 2) if walls else 0.0,
         "wall_mean_per_task_s": round(statistics.mean(walls), 2) if walls else 0.0,
         "estimated_full_500_wall_hours": round((statistics.mean(walls) * 500 / 3600), 2) if walls else 0.0,
+        "gpu": gpu_summary,
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     print("[F.3 Path A] done. summary:", json.dumps(summary, indent=2), sep="\n")
@@ -430,22 +527,71 @@ def main(argv: list[str]) -> int:
     if args.resume_run:
         print(f"[F.3 Path A] {len(remaining)} tasks remain to run", flush=True)
 
+    # Numbering. task_total = full run size (already-done + remaining).
+    # task_idx counts within the FULL sequence so resumed runs pick up at the
+    # right number, matching what a fresh log would show.
+    task_total = len(already_done) + len(remaining)
+    start_idx = len(already_done) + 1  # 1-based
+
+    def _write_progress(session_elapsed: float, completed_this_session: int) -> None:
+        """Live-tailable progress file. Written after every task + at end."""
+        resolved = sum(1 for r in records if r.get("resolved") is True)
+        unresolved = sum(1 for r in records if r.get("resolved") is False)
+        completed = len(records)
+        remaining_count = task_total - completed
+        eta_s = 0.0
+        if completed_this_session > 0 and remaining_count > 0:
+            per_task = session_elapsed / completed_this_session
+            eta_s = per_task * remaining_count
+        (out_dir / "progress.json").write_text(json.dumps({
+            "task_total": task_total,
+            "completed": completed,
+            "remaining": remaining_count,
+            "resolved_true": resolved,
+            "resolved_false": unresolved,
+            "pass_at_1_so_far": round((resolved / completed), 4) if completed else 0.0,
+            "session_elapsed_s": round(session_elapsed, 2),
+            "session_elapsed_hms": _fmt_dur(session_elapsed),
+            "eta_remaining_s": round(eta_s, 2),
+            "eta_remaining_hms": _fmt_dur(eta_s),
+            "completed_this_session": completed_this_session,
+        }, indent=2))
+
     # Run.
     t0 = time.time()
-    for task in remaining:
+    for i, task in enumerate(remaining):
+        task_idx = start_idx + i
         try:
-            rec = run_task(task, args.model, out_dir, args.dry_plan_only, args.keep_sandbox)
+            rec = run_task(task, args.model, out_dir, args.dry_plan_only, args.keep_sandbox,
+                           task_idx=task_idx, task_total=task_total)
             records.append(rec)
+            session_elapsed = time.time() - t0
+            done_this_session = i + 1
+            _write_progress(session_elapsed, done_this_session)
+            resolved_so_far = sum(1 for r in records if r.get("resolved") is True)
+            per_task = session_elapsed / done_this_session if done_this_session else 0.0
+            eta_s = per_task * (task_total - len(records))
+            print(
+                f"  progress: {len(records)}/{task_total} "
+                f"resolved={resolved_so_far}/{len(records)} "
+                f"elapsed={_fmt_dur(session_elapsed)} "
+                f"eta={_fmt_dur(eta_s)}",
+                flush=True,
+            )
         except KeyboardInterrupt:
             print("[F.3 Path A] interrupted; partial results in", out_dir, flush=True)
-            # Still emit summary of what we've got so it's usable.
+            _write_progress(time.time() - t0, i)
             _emit_summary(out_dir, records, time.time() - t0)
             return 130
         except Exception as e:
             print(f"[F.3 Path A] task {task['instance_id']} failed: {type(e).__name__}: {e}", flush=True)
-            records.append({"instance_id": task["instance_id"], "phase": "harness_error", "error": f"{type(e).__name__}: {e}"})
+            records.append({"instance_id": task["instance_id"], "task_index": task_idx,
+                            "task_total": task_total, "phase": "harness_error",
+                            "error": f"{type(e).__name__}: {e}"})
+            _write_progress(time.time() - t0, i + 1)
 
     total_wall = time.time() - t0
+    _write_progress(total_wall, len(remaining))
     _emit_summary(out_dir, records, total_wall)
     print("[F.3 Path A] artifacts:", out_dir)
     return 0
