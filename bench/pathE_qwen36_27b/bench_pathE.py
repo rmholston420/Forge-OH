@@ -61,6 +61,9 @@ SAMPLING = {
         "min_p": 0.0,
         "presence_penalty": 1.0,
         "max_tokens": 4096,
+        # Ollama-only: cap KV cache at 32K instead of the model's declared 262K.
+        # Full 262K KV would exceed 32 GB VRAM and force CPU-offload (~1 tok/s).
+        "extra_body": {"options": {"num_ctx": 32768, "num_predict": 4096}},
     },
     "coder_nothink": {
         "temperature": 0.7,
