@@ -23,6 +23,11 @@ set -euo pipefail
 
 CELL="${1:?usage: $0 <c01|c02|c04|c05>}"
 
+ts()   { date '+%Y-%m-%d %H:%M:%S %Z'; }
+ts_s() { date +%s; }
+T0=$(ts_s)
+echo "[$(ts)] vllm_launch.sh start (cell=$CELL)"
+
 # Free VRAM before vLLM launch (both Ollama and any prior vLLM container)
 sudo systemctl stop ollama 2>/dev/null || pkill -x ollama 2>/dev/null || true
 docker rm -f vllm-bench 2>/dev/null || true
@@ -83,7 +88,7 @@ if [ ! -d "$HOME/models/$MODEL_DIR" ]; then
   exit 3
 fi
 
-echo "→ launching $CELL: $MODEL_DIR as $SERVED_NAME"
+echo "[$(ts)] → launching $CELL: $MODEL_DIR as $SERVED_NAME"
 
 docker run -d --name vllm-bench --gpus all \
   --ipc=host --shm-size=8g \
@@ -102,16 +107,19 @@ docker run -d --name vllm-bench --gpus all \
   --trust-remote-code \
   "${EXTRA_FLAGS[@]}"
 
-echo "→ waiting for readiness (up to 300s)..."
-for i in $(seq 1 150); do
+T_LAUNCH=$(ts_s)
+echo "[$(ts)] → container launched; waiting for /v1/models (up to 900s)"
+for i in $(seq 1 450); do
   if curl -sf http://localhost:8000/v1/models >/dev/null 2>&1; then
-    echo "READY (${i}0s elapsed)"
+    ELAPSED=$(( $(ts_s) - T_LAUNCH ))
+    TOTAL=$(( $(ts_s) - T0 ))
+    echo "[$(ts)] READY (${ELAPSED}s wait, ${TOTAL}s total)"
     curl -s http://localhost:8000/v1/models | python3 -m json.tool
     exit 0
   fi
   sleep 2
 done
 
-echo "ERROR: vllm-bench did not become ready within 300s. docker logs --tail 60 vllm-bench:" >&2
-docker logs --tail 60 vllm-bench >&2
+echo "[$(ts)] ERROR: vllm-bench did not become ready within 900s. docker logs --tail 80 vllm-bench:" >&2
+docker logs --tail 80 vllm-bench >&2
 exit 1

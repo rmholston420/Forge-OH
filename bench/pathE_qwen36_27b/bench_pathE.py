@@ -131,12 +131,18 @@ def post_chat(endpoint, model, prompt_text, sampling, timeout=900):
     }
 
 
+def _ts():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z").strip()
+
+
 def run_cell(cell_id, prompts_dict, runs=3, warmup=True):
     role, runtime, endpoint, model, profile = CELLS[cell_id]
-    print(f"\n=== {cell_id} ({role}/{runtime}/{model}) ===", flush=True)
+    cell_t0 = time.time()
+    print(f"\n=== [{_ts()}] {cell_id} ({role}/{runtime}/{model}) ===", flush=True)
     results = {}
     for prompt_name, prompt_text in prompts_dict.items():
-        print(f"  [{prompt_name}] ", end="", flush=True)
+        prompt_t0 = time.time()
+        print(f"  [{_ts()}] [{prompt_name}] ", end="", flush=True)
         latencies = []
         final_out = None
         if warmup:
@@ -157,6 +163,7 @@ def run_cell(cell_id, prompts_dict, runs=3, warmup=True):
                 break
             latencies.append(out["latency_s"])
             final_out = out
+        prompt_wall = time.time() - prompt_t0
         if final_out is not None:
             usage = final_out["usage"]
             comp_tokens = usage.get("completion_tokens", 0)
@@ -176,6 +183,7 @@ def run_cell(cell_id, prompts_dict, runs=3, warmup=True):
                 "finish_reason": final_out["finish_reason"],
                 "content_raw": raw,
                 "content_stripped": stripped,
+                "prompt_wall_s": round(prompt_wall, 2),
                 "content_raw_chars": len(raw),
                 "content_stripped_chars": len(stripped),
                 "reasoning_content": final_out["reasoning_content"],
@@ -208,18 +216,23 @@ def main():
 
     prompts_dict = load_prompts()
     all_results = {}
+    overall_t0 = time.time()
     for cell_id in args.cells:
+        cell_start = time.time()
         per_prompt = run_cell(cell_id, prompts_dict, runs=args.runs, warmup=not args.no_warmup)
+        print(f"  [{_ts()}] cell {cell_id} done in {time.time() - cell_start:.1f}s", flush=True)
         for prompt_name, result in per_prompt.items():
             fp = out_dir / f"{cell_id}__{prompt_name}.json"
             fp.write_text(json.dumps(result, indent=2))
             all_results[f"{cell_id}__{prompt_name}"] = result
 
+    print(f"\n[{_ts()}] ALL CELLS DONE in {time.time() - overall_t0:.1f}s", flush=True)
     manifest = out_dir / "manifest.json"
     manifest.write_text(json.dumps({
         "ts": ts,
         "cells_ran": args.cells,
         "runs": args.runs,
+        "total_wall_s": round(time.time() - overall_t0, 2),
         "results_index": sorted(all_results.keys()),
         "cells_definition": {k: {"role": v[0], "runtime": v[1], "endpoint": v[2], "model": v[3], "profile": v[4]}
                              for k, v in CELLS.items()},
