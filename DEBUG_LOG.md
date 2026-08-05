@@ -1347,3 +1347,21 @@ Immediately after every `forge-up.sh`, PID of `next-server (v16.2.10)` climbs to
 **Verified by**: After landing the fix, existing throws render as an error card instead of pegging CPU. Any future contract drift can no longer melt the workstation.
 
 **Related BUILD_LOG entry**: 2026-08-05 06:17 EDT
+
+## 2026-08-05 06:52 EDT — vllm-bench (c01) OOM: forge-vllm-planner holds VRAM
+
+**Symptom**:
+```
+ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than desired GPU memory utilization (0.9, 28.25 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.
+```
+`vllm-bench` container exits (1). `nvidia-smi` shows 29,585 MiB used with no c01 container running.
+
+**Affected**: F.3 · bench/pathF_swebench · c01 launch on :8000
+
+**Root cause**: `forge-vllm-planner` (DSR1-Distill-32B AWQ on :8511) holds ~29 GB VRAM steady-state. c01 (Qwen3.6-27B INT4 AutoRound) requires ~28 GB at `--gpu-memory-utilization 0.9`. RTX 5090's 32 GB VRAM cannot host both simultaneously. This is a hard hardware constraint documented in `forge-oh-llm-serving` skill's VRAM math.
+
+**Fix applied**: `docker stop forge-vllm-planner` before F.3 runs, then `bash bench/pathE_qwen36_27b/vllm_launch.sh c01`, then restore the planner (`docker start forge-vllm-planner`) after F.3 completes. c01 cold-load = 162s on Blackwell.
+
+**Files changed**: none (operational workflow only). BUILD_LOG entry 2026-08-05 06:55 EDT documents the workflow.
+
+**Related BUILD_LOG entry**: 2026-08-05 06:55 EDT

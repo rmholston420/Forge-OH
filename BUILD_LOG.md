@@ -4551,3 +4551,21 @@ infrastructure landed, direct-to-GitHub commit workflow established.
   5. Confirm `~/.forge-oh/bench_pathF_swebench/<TS>_run/django__django-10914.json` written with valid diff-shape content, wall_seconds recorded, `<think>` stripped.
   6. Report wall_seconds — that's the input to the full-500 wall estimate.
 - **Follow-up slice** (docker glue): implement `apply_and_test.py` — pull `swebench/sweb.eval.x86_64.<instance_id>:latest`, run + docker cp patch + `docker exec git apply` + FAIL_TO_PASS / PASS_TO_PASS + parse pytest output → `TestResult`. See `apply_and_test.py` module docstring for the exact 8-step reference.
+
+## 2026-08-05 06:55 EDT — F.3.0 dry-run GREEN + patch fence-stripping fix
+
+- **Stage / plugin / port**: Track 1 / F.3 Path A / F.3.0 gate met
+- **What changed**:
+  - F.3.0 dry-run PASSED on `django__django-10914` with c01. Inference-only wall = **3.45s** (@ 41.46 tok/s, 143 completion tokens, 6448 prompt tokens). Inference-only extrapolation for full-500 = **~29 min**; docker sandbox overhead will dominate the real full-run wall (est. 4-8h based on published SWE-bench harness numbers).
+  - **c01 produced the correct fix**: `FILE_UPLOAD_PERMISSIONS = None → 0o644`, matching the ground-truth patch for `django__django-10914`. The FAIL_TO_PASS test would resolve.
+  - **Wart discovered + fixed**: c01 wrapped the diff in ```` ```diff ... ``` ```` fences even though the oracle prompt says "no code fences". `git apply` rejects fenced text.
+    - `bench/pathF_swebench/apply_and_test.py` gained `normalize_patch()` (fence-stripping) + updated docstring; verified against exact c01 output + no-fence + `\`\`\`patch` variants.
+    - `bench/pathF_swebench/bench_pathF_swebench.py` now records BOTH `patch` (normalized, ready for `git apply`) AND `patch_raw` (as-emitted by model) in each task JSON, so post-mortem never loses the original.
+  - **Coexistence constraint documented**: `forge-vllm-planner` (:8511, ~29GB VRAM) and `c01` (:8000, ~28GB requested @ util=0.9) cannot share the 5090. F.3 requires stopping the planner. Restore after F.3.1 completes.
+- **Files touched**:
+  - `bench/pathF_swebench/apply_and_test.py` (added `normalize_patch` + docstring update)
+  - `bench/pathF_swebench/bench_pathF_swebench.py` (wired fence-strip into task record)
+  - `BUILD_LOG.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`
+- **Ports / adapters affected**: none
+- **PORTING_LEDGER / ADR updated**: — (F.3.1 pending → ADR-013 amendment #2)
+- **Stop-condition status**: **F.3.0 GATE PASSED**. Next: user reruns dry-run to confirm fence-strip works end-to-end, then Perplexity Computer implements docker apply-and-test glue for F.3.1.

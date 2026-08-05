@@ -46,6 +46,7 @@ from pathlib import Path
 from urllib import error as urlerr, request as urlreq
 
 # Import guards: this module runs from repo root under -m so relative imports work.
+from bench.pathF_swebench.apply_and_test import normalize_patch
 from bench.pathF_swebench.load_verified import dump_task_summary, load_tasks
 from bench.pathF_swebench.oracle_prompt import (
     build_prompt,
@@ -205,7 +206,10 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
         return err_record
 
     # 5. Extract the patch from the model output (whole content is the diff).
-    patch_text = model_out["content_stripped"]
+    #    Strip markdown code fences: some models (c01 confirmed) wrap the diff
+    #    in ```diff ... ``` even when instructed not to. git apply rejects fenced text.
+    patch_raw = model_out["content_stripped"]
+    patch_text = normalize_patch(patch_raw)
 
     # 6. Apply patch inside the SWE-bench sandbox and run tests.
     result_payload: dict = {}
@@ -242,6 +246,7 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
         "content_raw_chars": model_out["content_raw_chars"],
         "content_stripped_chars": model_out["content_stripped_chars"],
         "patch": patch_text,
+        "patch_raw": patch_raw,
         "oracle_files": files,
         "fail_to_pass": task.get("FAIL_TO_PASS", []) or [],
         "pass_to_pass": task.get("PASS_TO_PASS", []) or [],
