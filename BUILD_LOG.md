@@ -4648,3 +4648,12 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected:** none
 - **PORTING_LEDGER / ADR updated:** none (fix, not decision)
 - **Stop-condition status:** blocks smoke-25 until user runs a clean rerun.
+
+## 2026-08-05 07:34 EDT — F.3 harness: fix /tokenize endpoint URL
+
+- **Stage / plugin / port:** F.3 Path A · bench/pathF_swebench
+- **What changed:** first smoke-25 rerun showed `[warn] /tokenize probe returned no count; using ceiling 4096` on every task, meaning our dynamic budgeting never kicked in and we would have hit the same context-overflow crash at task 9 again. Root cause: vLLM's tokenize endpoint lives at BASE `/tokenize` (not `/v1/tokenize`) per official PR #5054, but we constructed the URL from the OpenAI-compatible `/v1` base. `_count_prompt_tokens()` now strips the `/v1` suffix before appending `/tokenize`.
+- **Files touched:** `bench/pathF_swebench/bench_pathF_swebench.py`
+- **Ports / adapters affected:** none
+- **PORTING_LEDGER / ADR updated:** none (fix, not decision)
+- **Stop-condition status:** unblocks smoke-25 clean rerun.

@@ -185,8 +185,15 @@ def _empty_gpu_stats() -> dict:
 def _count_prompt_tokens(cell: dict, prompt: str) -> int | None:
     """Ask vLLM to tokenize the prompt via the chat template. Returns token
     count or None if the endpoint doesn't respond (older vLLM without /tokenize).
+
+    NOTE: vLLM's tokenize endpoint lives at BASE `/tokenize`, NOT `/v1/tokenize`
+    (per official PR #5054). The cell's `endpoint` is the OpenAI base ending in
+    `/v1`, so we strip that suffix here.
     """
-    url = f"{cell['endpoint']}/tokenize"
+    base = cell["endpoint"].rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    url = f"{base}/tokenize"
     payload = {
         "model": cell["model_id"],
         "messages": [{"role": "user", "content": prompt}],
@@ -195,7 +202,7 @@ def _count_prompt_tokens(cell: dict, prompt: str) -> int | None:
     resp, _ = http_post_json(url, payload, timeout=60)
     if "error" in resp:
         return None
-    # vLLM /tokenize returns {"count": N, "tokens": [...], ...}
+    # vLLM /tokenize returns {"tokens": [...], "count": N, "max_model_len": ...}
     if "count" in resp and isinstance(resp["count"], int):
         return resp["count"]
     if "tokens" in resp and isinstance(resp["tokens"], list):
