@@ -47,7 +47,7 @@ CELLS = {
     "c05": ("planner", "vllm",   "http://localhost:8000/v1",  "c05_planner_vllm_qwen3thinking_awq", "thinking"),
     # F.19-post expansion — broader coder/planner matrix.
     "c07": ("coder",   "vllm",   "http://localhost:8000/v1",  "c07_coder_vllm_qwen3coder_fp8",      "coder_nothink"),
-    "c08": ("coder",   "ollama", "http://localhost:11434/v1", "yi-1.5:34b",                         "coder"),
+    "c08": ("coder",   "ollama", "http://localhost:11434/v1", "yi:34b-chat-v1.5-q4_K_M",              "coder"),
     "c09": ("coder",   "vllm",   "http://localhost:8000/v1",  "c09_coder_vllm_codestral22b_awq",    "coder_nothink"),
     "c10": ("coder",   "vllm",   "http://localhost:8000/v1",  "c10_coder_vllm_devstral24b_nvfp4",   "coder_nothink"),
     "c11": ("coder",   "vllm",   "http://localhost:8000/v1",  "c11_coder_vllm_devstral24b_awq",     "coder_nothink"),

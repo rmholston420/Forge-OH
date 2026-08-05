@@ -1019,3 +1019,46 @@ Value error, Quantization method specified in the model config (compressed-tenso
 
 **Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c03b` — should reach READY without the quantization-mismatch error.
 
+
+## 2026-08-05 00:33 EDT — pull_new_models.sh: "File not found in repository ... /resolve/main/original/%2A"
+
+**Symptom** (exact from operator paste):
+```
+UserWarning: Ignoring `--exclude` since filenames have been explicitly set.
+Error: File not found in repository.
+URL: https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8/resolve/main/original/%2A
+```
+
+**Affected**: F.19-post · pathE_qwen36_27b · pull_new_models.sh
+
+**Root cause**: The `hf download` CLI on huggingface_hub 1.26.0 treats positional args after the repo id as literal filenames (URL-encodes the `*`). The `original/*` positional was intended as a glob for the deprecated `--exclude` flag, but `--exclude` is silently ignored when any positional filename is present. Result: CLI tried to fetch a literal file called `original/*` (URL-encoded to `original/%2A`), which doesn't exist.
+
+**Fix applied**: rewrite `pull()` to use `--include` patterns instead. Explicitly list inference-time file globs: `*.safetensors`, `*.json`, `*.txt`, `*.model`, `tokenizer*`. This is the huggingface_hub 1.0+ recommended pattern (positional filenames become part of the include set, not an exclude set).
+
+**Also updated**: env-var handling. `HF_HUB_ENABLE_HF_TRANSFER` is deprecated in huggingface_hub >=1.0 in favor of `HF_XET_HIGH_PERFORMANCE`. Script now exports both for backward/forward compatibility.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/pull_new_models.sh` (pull() uses --include; env-var handling updated)
+
+**Verify with**: `bash bench/pathE_qwen36_27b/pull_new_models.sh` — should begin downloading `.safetensors` shards without the "File not found" error.
+
+## 2026-08-05 00:33 EDT — Ollama pull failure: "pull model manifest: file does not exist" for yi-1.5:34b
+
+**Symptom** (exact):
+```
+pulling manifest
+Error: pull model manifest: file does not exist
+```
+
+**Affected**: F.19-post · c08 cell · Ollama tag
+
+**Root cause**: Ollama's registry does not use the `yi-1.5:34b` naming convention. The Yi-1.5 family is exposed under the `yi` model with quantization-suffixed tags: `yi:34b-chat-v1.5-q4_K_M`, `yi:34b-chat-v1.5-q8_0`, etc. Confirmed via `curl https://ollama.com/library/yi/tags`.
+
+**Fix applied**: updated `bench_pathE.py` c08 tag from `yi-1.5:34b` to `yi:34b-chat-v1.5-q4_K_M` (Q4_K_M chosen to fit 32 GB VRAM with KV headroom, matches c03's Ollama quant tier). Also updated pull_new_models.sh comment.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/bench_pathE.py` (c08 model_id)
+- `bench/pathE_qwen36_27b/pull_new_models.sh` (echo hint)
+
+**Verify with**: `ollama pull yi:34b-chat-v1.5-q4_K_M` — should download without manifest error.
+
