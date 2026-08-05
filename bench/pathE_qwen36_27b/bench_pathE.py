@@ -51,7 +51,7 @@ CELLS = {
     # c10 (Devstral NVFP4) dropped 2026-08-05 01:27 EDT — Fireworks repo has no
     # params.json/consolidated.safetensors; MistralCommonBackend hijacks the
     # tokenizer factory and get_chat_template fails. c11 covers Devstral alone.
-    "c11": ("coder",   "vllm",   "http://localhost:8000/v1",  "c11_coder_vllm_devstral24b_awq",     "coder_nothink"),
+    "c11": ("coder",   "vllm",   "http://localhost:8000/v1",  "c11_coder_vllm_devstral24b_awq",     "coder_nothink_mistral"),
     # DeepSeek-R1 distill — same weights benched under two roles.
     "c12a":("coder",   "vllm",   "http://localhost:8000/v1",  "c12a_coder_vllm_dsr1_distill32b_awq", "coder_nothink"),
     "c12b":("planner", "vllm",   "http://localhost:8000/v1",  "c12b_planner_vllm_dsr1_distill32b_awq", "thinking"),
@@ -95,6 +95,21 @@ SAMPLING = {
         "presence_penalty": 1.0,
         "max_tokens": 4096,
         "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    },
+    # coder_nothink_mistral: identical sampling to coder_nothink, but without
+    # chat_template_kwargs. MistralCommonBackend rejects any request that
+    # carries chat_template or chat_template_kwargs fields with
+    # HTTP 400: "chat_template is not supported for Mistral tokenizers".
+    # Mistral tokenizer models have no thinking mode anyway, so the flag is
+    # a no-op even where accepted. Use for cells that launch with
+    # --tokenizer-mode mistral (c11 Devstral AWQ).
+    "coder_nothink_mistral": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 1.0,
+        "max_tokens": 4096,
     },
     "thinking": {
         "temperature": 0.6,

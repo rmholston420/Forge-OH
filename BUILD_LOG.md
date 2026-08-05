@@ -4225,3 +4225,14 @@ until the operator picks the next one.
 - **Ports / adapters affected:** none (bench-only)
 - **PORTING_LEDGER / ADR updated:** —
 - **Stop-condition status:** in-progress — c03b done (fastest cell yet: 275 tok/s); c09 template fix pending relaunch; remaining c11, c12a, c12b.
+
+## 2026-08-05 02:52 EDT — Fix c11 (Devstral-AWQ) mistral tokenizer rejects chat_template_kwargs
+
+- **Stage / plugin / port:** F.19 (Path E rebench) · c11 launch fix
+- **What changed:** MistralCommonBackend rejects `chat_template_kwargs` field in request body. Added new `coder_nothink_mistral` sampling profile with no extra_body; rewired c11 to use it. Qwen cells keep `coder_nothink`.
+- **Files touched:**
+  - `bench/pathE_qwen36_27b/bench_pathE.py` (new profile + c11 CELL_CONFIGS entry)
+  - `DEBUG_LOG.md` (append full diagnosis + Mistral tokenizer rule)
+- **Ports / adapters affected:** none (bench-only)
+- **PORTING_LEDGER / ADR updated:** —
+- **Stop-condition status:** in-progress — c09 done (100 tok/s dense 22B); c11 profile fix pending relaunch; remaining c12a, c12b.

@@ -1277,3 +1277,29 @@ All three prompts (debug/arch/plan) failed instantly at `/v1/chat/completions` �
 
 **General rule for AWQ/GPTQ variants of Mistral-family models**:
 Community requant repos frequently strip `chat_template` from `tokenizer_config.json`. Always check the requant repo's `tokenizer_config.json` before launching; if `chat_template` is absent, mount the canonical template from the upstream base repo and pass `--chat-template`.
+
+## 2026-08-05 02:52 EDT — c11 Devstral-AWQ HTTP 400 chat_template not supported
+
+**Symptom**:
+```
+HTTP 400: {"error":{"message":"chat_template is not supported for Mistral tokenizers.","type":"BadRequestError","code":400}}
+```
+
+All three prompts failed instantly at `/v1/chat/completions`; cell wall time 0.0s. Container came up READY at 70s, `/v1/models` responded fine.
+
+**Affected**: F.19 (Path E rebench) · c11 · cyankiwi/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit
+
+**Root cause**: c11 launches with `--tokenizer-mode mistral --config-format mistral --load-format mistral`, routing chat requests through vLLM's MistralCommonBackend. Per NVIDIA NIM docs and vLLM Ministral guidance, MistralCommonBackend rejects any request payload containing `chat_template` or `chat_template_kwargs` fields — the mistral_common library formats the prompt using its own built-in Mistral formatter and refuses any Jinja override at request time.
+
+Our bench harness's `coder_nothink` profile sends `extra_body={"chat_template_kwargs": {"enable_thinking": False}}` in every request (bench_pathE.py line 97). This is required for Qwen3-family cells (c01/c02/c03b/c09) to disable thinking mode, but MistralCommonBackend 400s the moment it sees the field. Since Mistral models have no thinking mode anyway, the flag is redundant for c11.
+
+**Fix applied**: Added new `coder_nothink_mistral` sampling profile identical to `coder_nothink` but with NO `extra_body` at all (no `chat_template_kwargs`). Rewired c11's CELL_CONFIGS entry to use the new profile. Qwen cells (c01/c02/c03b/c09) keep the original `coder_nothink` profile.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/bench_pathE.py` (added `coder_nothink_mistral` profile; c11 profile rewired)
+
+**References**:
+- NVIDIA NIM VLM 2.0.6 release notes — "Per-request chat_template and chat_template_kwargs overrides are not supported for Mistral tokenizer-based models" (https://docs.nvidia.com/nim/vision-language-models/2.0.6-variant/release-notes.html)
+- Trooper.AI Ministral tuning guide — documents the exact 400 error message for `chat_template_kwargs` under `--tokenizer-mode mistral`
+
+**General rule**: Any cell that launches with `--tokenizer-mode mistral` MUST use a sampling profile with no `chat_template` and no `chat_template_kwargs` in `extra_body`. Applies to future Mistral-family AWQ/NVFP4/FP8 cells.
