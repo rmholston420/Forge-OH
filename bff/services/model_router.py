@@ -114,7 +114,11 @@ LLM_CODER_OLLAMA_FALLBACK = os.getenv(
 )
 
 LLM_PLANNER_URL = os.getenv("LLM_PLANNER_URL", "http://localhost:8511")
-LLM_PLANNER_MODEL = os.getenv("LLM_PLANNER_MODEL", "qwen3-thinking-2507-awq")
+# ADR-013 (2026-08-05): planner canonical flipped to DSR1-Distill-32B AWQ
+# after Path E bench matrix. c12b beat c04 (previous default) within the
+# 3-point tie window and ran ~4x faster (15.5s vs 60.8s plan latency).
+# Rollback: set LLM_PLANNER_MODEL="qwen3-thinking-2507-awq" (ADR-009 baseline).
+LLM_PLANNER_MODEL = os.getenv("LLM_PLANNER_MODEL", "deepseek-r1-distill-32b-awq")
 LLM_PLANNER_MAX_TOKENS = int(os.getenv("LLM_PLANNER_MAX_TOKENS", "8192"))
 # Empty string = no Ollama fallback for planner (ADR-009 rationale above).
 LLM_PLANNER_OLLAMA_FALLBACK = os.getenv("LLM_PLANNER_OLLAMA_FALLBACK", "")

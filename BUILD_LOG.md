@@ -4257,3 +4257,42 @@ until the operator picks the next one.
 | Dense 32B AWQ+Marlin | c12a, c12b | 73 |
 
 All consistent with expected Blackwell 5090 performance envelope.
+
+## 2026-08-05 03:52 EDT — ADR-013 planner ratified; coder deferred to Path F
+
+- **Stage / plugin / port:** F.19 (Path E rebench) · scoring + verdict phase
+- **What changed:** Model Council scoring pass complete (Claude Fable 5 + GPT 5.6 Sol + Gemini 3.1 Pro = 3 scorers × 33 responses = 99 raw scores). ADR-013 amended:
+  - **Planner ratified:** `LLM_PLANNER_MODEL="deepseek-r1-distill-32b-awq"` (c12b, 67.0/100). Beat c04 (66.7) within 3-point tie window; ~4× faster (15.5s vs 60.8s plan latency).
+  - **Coder deferred to Path F:** all 8 coder cells hit arch-task hard-gate universally (bench-design issue, not a model issue). Debug ceiling was 58.7/100 (c11 = c03b), too low to defend a canonical pick on a single-signal ranking. ADR-009 default `qwen3.6-35b-a3b-nvfp4` retained as provisional canonical for coder.
+- **Files touched:**
+  - `docs/adr/013-qwen36-27b-canonical-coder-planner.md` (rewritten — status amendment + Path F contingency spec)
+  - `docs/adr/012-dual-mode-model-routing.md` (catalog seed updated in §3 example)
+  - `docs/adr/README.md` (ADR-013 row updated)
+  - `bff/services/model_router.py` (LLM_PLANNER_MODEL default flipped; rollback env instructions inline)
+- **Ports / adapters affected:** planner vLLM `:8511` — supervisor will pull DSR1-Distill-32B AWQ weights on next restart. Coder `:8501` unchanged.
+- **PORTING_LEDGER / ADR updated:** ADR-013 amended (planner ratified · coder deferred); ADR-012 catalog seed refreshed. PORTING_LEDGER entry for DSR1-Distill-32B AWQ pending weight download on Colossus.
+- **Stop-condition status:** planner selection DONE. Coder selection blocked on Path F (instrumented rebench + SWE-bench Verified).
+
+**Scoring rollup (score = avg of 3 scorers):**
+
+Planner ranking (task=plan):
+| Rank | Cell | Model | Score | Latency (s) |
+|---:|---|---|---:|---:|
+| 1 | c12b | DSR1-Distill-32B AWQ planner | 67.0 | 15.5 |
+| 2 | c04 | Qwen3-27B thinking vLLM | 66.7 | 60.8 |
+| 3 | c05 | Qwen3-35B thinking vLLM | 59.7 | 24.9 |
+
+Coder ranking (score = mean(debug, arch)) — informational, deferred:
+| Rank | Cell | Model | Score | debug | arch |
+|---:|---|---|---:|---:|---:|
+| 1 | c11 | Devstral-24B AWQ | 39.3 | 58.7 | 20.0 |
+| 2 | c03b | Qwen3-Coder-30B AWQ (MoE) | 38.0 | 58.7 | 17.3 |
+| 3 | c08 | Qwen3.6-27B thinking Ollama | 38.0 | 56.3 | 19.7 |
+| 4 | c01 | Qwen3.6-27B INT4 | 37.7 | 55.3 | 20.0 |
+
+**Path F scope (queued):**
+- Instrumented harness: GPU temp/util/VRAM avg+max sampled at 500ms during each request
+- Warm-up pass: first request per (cell, task) is throw-away; scoring uses runs 2-4
+- 3× repetition per (cell, task) — total 4 runs per pair
+- Redesigned arch task: remove or inline the importer-graph twist
+- SWE-bench Verified for top 2-3 coder candidates (best model first for budget estimate)
