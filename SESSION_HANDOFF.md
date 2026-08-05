@@ -1,68 +1,74 @@
-# Forge-OH Session Handoff — 2026-08-05 04:55 EDT
+# Forge-OH Session Handoff — 2026-08-05 05:14 EDT
 
 ## Current build-sequencing position
 
-- **Stage / phase:** F.3 (LiveCodeBench-v6 validation of ratified coder)
-- **Plugin / kernel component:** bench/pathF_instrumented → LiveCodeBench-v6 runner
-- **Port(s) in progress:** LiveCodeBench-v6 harness (upstream `LiveCodeBench/LiveCodeBench`, Apache-2.0). Weights already local: `qwen3.6-27b-int4-autoround` (c01, ratified coder).
+- **Stage / phase:** F.3 (renumbered) — SWE-bench Verified validation of ratified coder (c01 Qwen3.6-27B INT4 AutoRound).
+- **Plugin / kernel component:** `bench/pathF_swebench/` (to be created).
+- **Port(s) in progress:** none — bench-only slice. Coder :8501 (c01) is the consumer.
 
 ## Completed this session
 
-- F.1a NVML smoke test on c11 — instrumentation validated, no VRAM conflict once planner torn down (serial VRAM policy locked in).
-- F.1b full instrumented rebench (c11 Devstral-24B AWQ + c03b Qwen3-Coder-30B MoE AWQ + c01 Qwen3.6-27B INT4 AutoRound) — 3 cells × 3 prompts × (1 warmup + 3 scored runs) with 500ms NVML sampling of VRAM/util/temp/power. All completed 04:32–04:39 EDT.
-- F.2 arch_v2 gold generation — new `bench/prompts/arch_v2_router.txt` (router-design task, solvable from prompt alone) with 3-Council gold + Opus 5 synthesis at `/home/user/workspace/gold-arch_v2-council-synthesis.md`. Council converged on hysteresis + latency-gate + coder-safe-default with 7-level predicate.
-- F.1b Council scoring pass — 3 scorers ranked `c01 > c11 > c03b` unanimously (112.7 > 101.0 > 73.0 /200 combined avg). 11.7-point margin over 2nd and 39.7-point margin over 3rd, both well beyond the 3-point ADR tie window.
-- **ADR-013 amendment #1 filed** ratifying c01 (Qwen3.6-27B INT4 AutoRound) as canonical coder. `LLM_CODER_MODEL` env default flipped in `bff/services/model_router.py`. `ops/vllm_launch_coder.sh` defaults + flags updated (`--tool-call-parser qwen3_coder`, `--enable-auto-tool-choice`; removed `--quantization modelopt_fp4` — compressed-tensors auto-detected). Rollback path documented inline.
-- `docs/adr/README.md`, `PORTING_LEDGER.md`, `BUILD_LOG.md`, `SESSION_HANDOFF.md` all updated.
+- F.1a NVML sampler smoke test on c11 (Devstral-24B AWQ) — instrumentation validated, VRAM-conflict-free once planner torn down.
+- F.1b full instrumented rebench: 3 cells × 3 prompts × (1 warmup + 3 scored runs), 500ms NVML sampling. Completed 04:32–04:39 EDT.
+- F.2 arch_v2 gold generation — new `bench/prompts/arch_v2_router.txt` (prompt-solvable router-design task) + 3-Council gold + Opus 5 synthesis at `/home/user/workspace/gold-arch_v2-council-synthesis.md`.
+- F.1b Council scoring — 3 scorers (Claude Fable 5, GPT 5.6 Sol, Gemini 3.1 Pro) unanimously ranked `c01 > c11 > c03b` (112.7 > 101.0 > 73.0 /200 combined avg, 39.7-point margin over 3rd).
+- **ADR-013 amendment #1 filed and pushed** — c01 (Qwen3.6-27B INT4 AutoRound) ratified as canonical coder. All BFF + launcher configs flipped, PORTING_LEDGER entry #3 added, BUILD_LOG updated, pushed as commit `2661a8c` on `slice/coder-planner-rebench`.
+- **Operator brought c01 live on Colossus** — `qwen3.6-27b-int4-autoround` serving on :8501 (READY after 210s), planner back up on :8511, BFF restarted, all 3 forge-oh services healthy.
+- **F.3 pivot decision** — LiveCodeBench-v6 dropped due to release-window contamination (v6 covers Apr 2025, all our candidates released after). F.5 SWE-bench Verified promoted to F.3 as the sole Tier-2 validation. Documented in BUILD_LOG 2026-08-05 05:14 EDT entry.
 
 ## Remaining before current Definition of Done
 
-Coder ratification (this slice) is done. Next slice is F.3 LiveCodeBench-v6 validation on c01:
+F.3 (SWE-bench Verified on c01) has not been started this session. Next-session tasks:
 
-1. Load `bench/pathF_instrumented/` harness pattern for LiveCodeBench-v6.
-2. Vendor LiveCodeBench-v6 loader (Apache-2.0 — permissive, permitted per Forge-OH porting skill). Log in `PORTING_LEDGER.md`.
-3. Latest-window filter: problems dated Jan 2026 – Aug 2026 (~150 problems, contamination-filtered against Qwen3.6/DSR1/Codestral/Devstral training cutoffs).
-4. **First-model dry run on c01** to establish per-problem latency (needed for time-budget estimate before running the full 3-model matrix in F.4).
-5. Metric: pass@1 with the standard LiveCodeBench evaluator.
-6. F.4 = 3-model matrix (c01 + c11 + c03b) IF F.3 dry run comes in under ~2 hours per model; otherwise winner-only run at F.5.
-7. F.5 = SWE-bench Verified on c01 (Tier 2, overnight run).
-8. **ADR-013 amendment #2** if LiveCodeBench/SWE-bench confirm F.1b verdict (or supersede it if they disagree).
+1. **Verify SWE-bench packaging + Docker requirements on Colossus** — check whether `pip install swebench` (Princeton NLP eval package) works cleanly or whether we need to clone the repo. Confirm Docker sandbox model (SWE-bench spins up one container per task for isolated eval).
+2. **Vendor SWE-bench Verified** — dataset from `princeton-nlp/SWE-bench_Verified` on HF (MIT-licensed, 500 problems). Log in `PORTING_LEDGER.md` as entry #4.
+3. **Create `bench/pathF_swebench/` harness:**
+   - Loader over the 500-problem Verified subset.
+   - Agentic loop wired to c01 via :8501 (or via full BFF stack :8081 if we want end-to-end signal).
+   - Pass@1 metric with the standard SWE-bench Verified evaluator.
+   - Docker sandbox per task.
+   - Time-limit guard: kill run at 12h wall time if incomplete; report partial-corpus verdict.
+4. **Dry run on 5-10 problems** to establish per-problem wall time before committing to the full 500-task overnight run.
+5. **Full run + verdict** — commit results to BUILD_LOG with per-category pass rate + total wall time.
+6. **ADR-013 amendment #2** — SWE-bench verdict (confirming or overturning F.1b).
+7. **After F.3 done: resume `slice/dual-mode-routing-impl`** (git stash pop).
 
 ## Open questions / awaiting user answer
 
-- **VRAM policy for F.3+:** still serial (tear down planner during coder-only bench)? LiveCodeBench-v6 is coder-only, same as F.1b, so serial is the assumed default. Confirm before F.3 dry run.
-- **F.3 model matrix scope:** run c01 only for time estimate first, then decide whether F.4 matrix is worth the token budget vs. skipping straight to F.5 SWE-bench on c01. (Default = run c01 first, decide after.)
+- **SWE-bench harness path:** direct c01 :8501 (fastest, isolates model quality) or full BFF+agent-server stack :8081 (slower, tests production integration path). Default = direct :8501 for the validation run; production-integration test comes later.
+- **Full 500-task budget:** ~4-8h optimistic estimate; may exceed 12h with retries + slow tasks. If dry run shows >90s/problem, we cap the run at a random 200-problem subset instead of full 500.
 
 ## Exact next action
 
-**Operator step 1** — activate ratified coder on Colossus:
+**Agent next-session step 1** — verify SWE-bench Verified packaging (should be doable in 5 min):
 
 ```bash
-cd ~/dev/forge-oh
-git pull
+# On Colossus
+python -c "import swebench; print(swebench.__version__)" 2>&1 || pip show swebench
+# If not installed, check:
+pip install swebench --dry-run 2>&1 | head -20
 
-# Confirm planner is still down (it was torn down for F.1b, not restored)
-docker ps --filter name=forge-vllm
-
-# Bring up ratified coder (c01) via the updated launcher
-docker rm -f forge-vllm-coder 2>/dev/null || true
-bash ops/vllm_supervisor.sh ensure coder
-
-# Verify: should serve as "qwen3.6-27b-int4-autoround"
-curl -s http://localhost:8501/v1/models | jq '.data[].id'
-
-# Bring planner back up
-bash ops/vllm_supervisor.sh ensure planner
-curl -s http://localhost:8511/v1/models | jq '.data[].id'
+# Verify Docker + swebench evaluator container availability:
+docker images | grep -E 'swebench|princeton'
 ```
 
-**Operator step 2** — smoke test via BFF (verify LLM_CODER_MODEL env default picked up):
+**Agent next-session step 2** — inspect the Verified dataset to confirm 500-problem count + license + schema:
 
 ```bash
-cd ~/dev/forge-oh
-bash scripts/forge-restart.sh --bff-only
-bash scripts/forge-status.sh
-# BFF should now default-route coder to qwen3.6-27b-int4-autoround
+python -c "
+from datasets import load_dataset
+ds = load_dataset('princeton-nlp/SWE-bench_Verified', split='test')
+print(f'Rows: {len(ds)}')
+print(f'Columns: {ds.column_names}')
+print(f'Sample instance_id: {ds[0][\"instance_id\"]}')
+"
 ```
 
-**Then:** agent will pick up F.3 (LiveCodeBench-v6 vendoring + c01 dry run) on next resume.
+**Agent next-session step 3** — draft `bench/pathF_swebench/README.md` scoping the harness before writing code, gate on user approval before proceeding.
+
+**Current Colossus state (verified 05:10 EDT):**
+- Coder :8501 serving `qwen3.6-27b-int4-autoround` (F.1b-ratified c01)
+- Planner :8511 serving DSR1-Distill-32B-AWQ (ADR-013 planner-ratified)
+- BFF :8081, agent-server :8090, Next.js :3000 — all healthy per `scripts/forge-status.sh`
+- No git stash pending on `slice/coder-planner-rebench`
+- `slice/dual-mode-routing-impl` still has WIP stashed (from prior session)

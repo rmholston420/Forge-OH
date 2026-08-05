@@ -4381,3 +4381,18 @@ Coder ranking (score = mean(debug, arch)) — informational, deferred:
 - **Ports / adapters affected:** coder role (LLM_CODER_URL :8501); planner unchanged
 - **PORTING_LEDGER / ADR updated:** ADR-013 amendment #1; PORTING_LEDGER.md new entry for Qwen3.6-27B INT4 AutoRound.
 - **Stop-condition status:** Coder ratification DONE. Operator next: `docker rm -f forge-vllm-coder && bash ops/vllm_supervisor.sh ensure coder` to reload with c01 weights. F.3 (LiveCodeBench-v6 validation) queued.
+
+
+## 2026-08-05 05:14 EDT — F.3 pivot: drop LiveCodeBench, promote SWE-bench Verified
+
+- **Stage / plugin / port:** Path F step 3 (validation) — pivot from LiveCodeBench-v6 to SWE-bench Verified.
+- **What changed:** F.3 (LiveCodeBench-v6 dry run) and F.4 (LiveCodeBench 3-model matrix) are cancelled. F.5 (SWE-bench Verified on winner) is renumbered to F.3 and becomes the sole Tier-2 validation.
+- **Rationale:**
+  1. LiveCodeBench-v6 covers May 2023 – Apr 2025. All three F.1b candidates were released *after* v6's Apr 2025 cutoff (Qwen3.6 = 2026-04-21, Devstral-24B = 2025-12, DSR1-Distill-32B ≥ 2025-01). No true post-cutoff filter is possible.
+  2. Qwen3.6-27B knowledge cutoff is undocumented by Alibaba (confirmed via HackerNoon coverage and Magica comparison sheet). Cannot construct contamination-free window.
+  3. Domain mismatch: LiveCodeBench is competitive programming; Forge-OH's actual workload is agentic repo-level bugfixing. SWE-bench Verified (500 hand-curated real GitHub issues on real Python repos) matches Forge-OH's production surface directly.
+  4. F.1b already produced a 39.7-point margin between c01 and c03b across 3 independent Council scorers. Overturning that requires evidence in a domain-relevant benchmark, not a contamination-compromised one.
+- **Files touched:** BUILD_LOG.md (this entry), SESSION_HANDOFF.md (next).
+- **Ports / adapters affected:** none (bench-only decision).
+- **PORTING_LEDGER / ADR updated:** ADR-013 amendment #2 deferred to after SWE-bench Verified run completes.
+- **Stop-condition status:** F.3 renumbered scope defined; setup work not yet started this session.
