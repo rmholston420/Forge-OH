@@ -4526,3 +4526,28 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected**: none
 - **PORTING_LEDGER / ADR updated**: —
 - **Stop-condition status**: met — v4 is documentarily retired for future work; historical BUILD_LOG references remain as append-only history per project instructions.
+
+## 2026-08-05 06:30 EDT — F.3 Path A shakeout harness scaffolded (oracle-retrieval, raw c01)
+
+- **Stage / plugin / port**: Track 1 / F.3 Path A / SWE-bench Verified pass@1 shakeout — oracle-retrieval mode (user decision 2026-08-05 06:27 EDT)
+- **What changed**:
+  - `bench/pathF_swebench/README.md` (new) — scope, mode rationale, F.3.0 dry-run + F.3.1 full-run runbook, output layout.
+  - `bench/pathF_swebench/__init__.py` (new).
+  - `bench/pathF_swebench/load_verified.py` (new) — HF datasets loader for `princeton-nlp/SWE-bench_Verified`; lru-cached full split; instance_id filter or 'all'.
+  - `bench/pathF_swebench/oracle_prompt.py` (new) — files-touched-by-patch parser, `git show <commit>:<path>` reader (with new-file safe handling), oracle prompt builder (issue → files → "return unified diff" instruction).
+  - `bench/pathF_swebench/apply_and_test.py` (new, STUB) — docker apply-and-test stubbed with clear NotImplementedError + follow-up-slice references. Enables `--dry-plan-only` end-to-end run today.
+  - `bench/pathF_swebench/bench_pathF_swebench.py` (new) — full harness: cells (c01 default, c11 + c03b as ADR-013 shortlist comparators), Path E/F sampling profile carried forward, `<think>` strip, JSON per task, manifest + summary, wall estimate for full-500 extrapolation.
+- **Files touched**:
+  - `bench/pathF_swebench/` (5 new files above)
+  - `BUILD_LOG.md`
+  - `SESSION_HANDOFF.md`
+- **Ports / adapters affected**: none (bench harness, not production code)
+- **PORTING_LEDGER / ADR updated**: — (feeds ADR-013 amendment #2 after F.3.0 + F.3.1 complete)
+- **Stop-condition status**: **F.3.0 GATE PENDING** — harness compiles and oracle prompt round-trips on a synthetic patch. User must run on Colossus:
+  1. `pip install datasets` (if missing)
+  2. `bash bench/pathE_qwen36_27b/vllm_launch.sh c01`  (verify c01 up on :8000)
+  3. `docker pull swebench/sweb.eval.x86_64.django__django-10914:latest`
+  4. `python -m bench.pathF_swebench.bench_pathF_swebench --tasks django__django-10914 --model c01 --dry-plan-only`
+  5. Confirm `~/.forge-oh/bench_pathF_swebench/<TS>_run/django__django-10914.json` written with valid diff-shape content, wall_seconds recorded, `<think>` stripped.
+  6. Report wall_seconds — that's the input to the full-500 wall estimate.
+- **Follow-up slice** (docker glue): implement `apply_and_test.py` — pull `swebench/sweb.eval.x86_64.<instance_id>:latest`, run + docker cp patch + `docker exec git apply` + FAIL_TO_PASS / PASS_TO_PASS + parse pytest output → `TestResult`. See `apply_and_test.py` module docstring for the exact 8-step reference.
