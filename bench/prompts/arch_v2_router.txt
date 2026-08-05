@@ -1,0 +1,35 @@
+# Forge-OH Model Router Design (arch_v2)
+
+You are designing `bff/services/model_router.py` for Forge-OH — a single-user, local-first AI coding assistant that runs on one workstation with an RTX 5090 (32 GB VRAM). Two vLLM containers are available: a **coder** endpoint (currently `qwen3.6-35b-a3b-nvfp4` at `:8501`) and a **planner** endpoint (currently `deepseek-r1-distill-32b-awq` at `:8511`). Only ONE model can be resident at a time (each holds ~28 GB VRAM); the supervisor swaps them in/out on demand — a cold swap costs ~90-170 seconds.
+
+The router receives each user turn from OpenHands agent loop and must decide which model handles it. Design the routing rule.
+
+## Inputs available to the router (per turn)
+
+- `user_intent_labels: list[str]` — inferred from the message (e.g. `["debug"]`, `["plan", "arch"]`, `["code_gen"]`, `["review"]`, `["chat"]`). Multiple labels can co-occur.
+- `context_tokens: int` — total prompt tokens including agent history and tool outputs.
+- `latency_budget_ms: int | None` — the client's expected response time. `None` = no budget (background/async run). Interactive turns typically ≤ 2000 ms.
+- `tool_call_expected: bool` — whether the agent frame expects the response to contain a tool call.
+- `prior_role: "coder" | "planner" | None` — which model handled the immediately previous turn in this session.
+- `session_role_hint: "coder" | "planner" | None` — user-provided preference at session start (may be `None`).
+
+## Constraints and trade-offs to weigh
+
+1. **Coder-vs-planner mismatch cost:** wrong-role invocation often produces low-quality output. Coders can degrade on multi-step reasoning; planners can hallucinate on code-heavy debugging.
+2. **Cold-swap cost is asymmetric:** swapping costs 90-170s, so oscillating between roles turn-by-turn is catastrophic. The router should **prefer sticking with `prior_role`** unless the evidence for switching is strong.
+3. **Latency budget interacts with the swap:** if a turn has `latency_budget_ms=1500` and the router chooses the currently-cold role, that violates the budget by ~100x. Latency-sensitive turns must generally stay with `prior_role`.
+4. **User preference is soft, not absolute:** `session_role_hint` says the user meant to use planner, but a debugging question mid-session should still probably go to coder — however, biasing toward the hint when uncertain is right.
+5. **Failure mode:** if the routing predicate throws or returns something invalid, the caller must have a safe default. Which role is the safer default?
+6. **First turn (`prior_role=None`) has no anchor.** How should it be routed?
+
+## Deliverable
+
+Produce a concrete design as follows. Do NOT write full Python — just the algorithm skeleton and reasoning.
+
+1. **Routing predicate:** a plain-English or pseudocode decision rule that maps the inputs above to `("coder" | "planner", swap_needed: bool, confidence: 0.0..1.0)`. Structure it as an explicit priority order — highest-priority rules first, tiebreaker cases at the end.
+2. **Failure mode & safe default:** what does the caller do if the predicate returns low confidence or an error? Which role is the safe default and why?
+3. **Cost analysis:** for each of the 6 constraints above, name the rule in your predicate that addresses it. If any constraint is intentionally deprioritized, say why.
+4. **Test cases:** three concrete `(input → decision)` examples that would exercise different branches of the rule.
+5. **What you'd measure to know the router is good:** name 2-3 metrics and how to log them.
+
+Keep the answer focused and executable — a colleague should be able to translate your design directly into `bff/services/model_router.py` without further clarification.

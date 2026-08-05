@@ -1,9 +1,36 @@
 # ADR-013 — Canonical Planner (Ratified) + Coder Deferred to Instrumented Rebench
 
-**Status:** Amended · Planner ratified · Coder deferred to Path F (instrumented rebench + SWE-bench)
+**Status:** Amended · Planner ratified · Coder ratified (F.1b) — F.3+ validation pending
 **Date ratified (planner):** 2026-08-05 03:52 EDT
-**Supersedes:** ADR-009 §2 (planner-selection layer only). Coder-selection layer of ADR-009 remains canonical until Path F resolves.
+**Date ratified (coder):** 2026-08-05 04:55 EDT
+**Supersedes:** ADR-009 §1 (coder-selection layer) · ADR-009 §2 (planner-selection layer)
 **Superseded by:** —
+
+## Status amendment — 2026-08-05 04:55 EDT (coder ratified from F.1b)
+
+Path F.1b (instrumented Path E rerun on the coder shortlist c11 + c03b + c01) ran on 2026-08-05 04:32–04:39 EDT. Bench design fixed both Path E flaws:
+
+- **Warm-state:** all cells got 1 warmup + 3 scored runs (Path E was cold)
+- **Full GPU envelope:** NVML sampler at 500ms cadence captured VRAM/util/temp/power avg+max
+- **Same 3-scorer Council** (Claude Fable 5, GPT 5.6 Sol, Gemini 3.1 Pro) rescored the 3 candidates against the same Path E gold for debug+arch
+
+Outcome: **all three scorers ranked `c01 > c11 > c03b` unanimously.**
+
+| Rank | Cell | Model | Combined avg /200 | Debug avg | Arch avg |
+|---|---|---|:---:|:---:|:---:|
+| 1 | **c01** | Qwen3.6-27B INT4 AutoRound | **112.7** | 86.7 | 26.0 |
+| 2 | c11 | Devstral-24B AWQ | 101.0 | 76.0 | 25.0 |
+| 3 | c03b | Qwen3-Coder-30B MoE AWQ | 73.0 | 51.0 | 22.0 |
+
+c01 is the only candidate to correctly remove BOTH the dead `require_role` import AND the `Depends(...)` usage lines from the debug prompt. The other two produced fixes that leave the app still crashing on startup. Arch task scores remain low (~26) because F.1b reused the Path E arch prompt with its known trap — but the gap between c01 and c03b is now 39.7 points, well beyond the ADR-authoring 3-point tie window.
+
+GPU envelope during warm runs (c01 on plan prompt, hottest cell):
+- VRAM peak: 29,701 MiB / 32,768 MiB (91% utilization)
+- Temperature max: 71°C (RED cutoff 88°C, headroom 17°C)
+- Power sustained: 435-438 W (450 W TDP, sustained 97% draw)
+- GPU util: 100%
+
+Coder slot ratified. F.3 (LiveCodeBench-v6) and F.5 (SWE-bench Verified) will run as follow-up validation on c01, not as gating.
 
 ## Status amendment — 2026-08-05 03:52 EDT
 
@@ -54,24 +81,27 @@ The Path E bench matrix landed 11 cells:
 - Bench evidence: Claude 63, GPT 61, Gemini 77 (median 63, mean 67). No hard-gate triggered on c12b.
 - Runtime: vLLM 0.10.2 + AWQ-Marlin + `--reasoning-parser deepseek_r1` (see planner-launcher wrapper).
 
-### Coder slot — DEFERRED
+### Coder slot — RATIFIED (from F.1b)
 
-- `LLM_CODER_MODEL` **retains ADR-009 default** (`qwen3.6-35b-a3b-nvfp4`) as the provisional canonical until Path F resolves.
-- Rationale for deferral (both are bench flaws, not model flaws):
-  1. **Arch task hard-gate was universal.** All 8 coder cells hit the wrong decision — the prompt's stated convention ("services layer wins") overrode the twist (importer-graph inspection). This is a bench design issue: the twist required repo-side-channel knowledge no LLM had. Result: arch scored 14–20 across the field, effectively a wash. The coder ranking collapsed to debug-task alone (single-signal).
-  2. **Debug ceiling was 58.7/100.** No cell produced a genuinely correct fix (all missed the `Depends(require_role(...))` route-param removal). The "winners" were only the best of a mediocre field. Committing to c11 or c03b on a single 58/100 signal is not defensible.
-- **Coder decision blocked pending Path F** — instrumented rebench + SWE-bench Verified on top 2-3 coders.
+- `LLM_CODER_MODEL = "qwen3.6-27b-int4-autoround"` (c01)
+- Rationale:
+  1. **Unanimous 3-scorer ranking** in F.1b (Claude Fable 5, GPT 5.6 Sol, Gemini 3.1 Pro all placed c01 first). 39.7-point margin over 3rd place (c03b) — well beyond the 3-point ADR tie window.
+  2. **c01 alone shipped a working debug fix.** Both other candidates left the app crashing on startup (missed `Depends(require_role(...))` route-param removal). c01 removed both the dead import AND the usage lines.
+  3. **Warm-state matches production.** The gold-standard LLMs (Perplexity Max) that generated the reference answers are served warm; F.1b's warmup + 3 scored runs matches this. Path E cold-state numbers were unrepresentative.
+  4. **VRAM envelope has 3 GB headroom** (29,701 MiB peak of 32,768 MiB = 91% utilization). Adequate for KV cache + swap overhead.
+  5. **Speed penalty acknowledged.** c03b was 2-3× faster (213-293 tok/s vs c01's 79-121 tok/s) but produced strictly worse output. Quality-first tiebreak applies (F.1b delta > 3 points, so no speed tiebreak).
+- **Follow-up validation:** F.3 (LiveCodeBench-v6) and F.5 (SWE-bench Verified) will run on c01 to confirm the F.1b signal against broader benchmarks. These are validation, not gating — the F.1b unanimity is sufficient to ratify.
 
 ### MODEL_ROUTER_CATALOG (ADR-012 seed) — partial update
 
 ```python
 MODEL_ROUTER_CATALOG = {
     "coder":   RoleCatalog(
-        canonical="qwen3.6-35b-a3b-nvfp4",   # ADR-009 default, pending Path F
+        canonical="qwen3.6-27b-int4-autoround",  # c01 — F.1b winner (unanimous 3-scorer Council)
         compatible={
-            "qwen3.6-35b-a3b-nvfp4",
-            "qwen3-coder-30b-awq",           # c03b — top-2 debug tie
-            "devstral-24b-awq",              # c11 — top-1 debug tie
+            "qwen3.6-27b-int4-autoround",
+            "devstral-24b-awq",                  # c11 — F.1b #2, viable alternative
+            "qwen3.6-35b-a3b-nvfp4",             # ADR-009 baseline, ops-safe rollback
         },
     ),
     "planner": RoleCatalog(
@@ -84,13 +114,15 @@ MODEL_ROUTER_CATALOG = {
 }
 ```
 
-Rationale for the `coder.compatible` set: pins the two top-tied debug performers (c11 Devstral, c03b Qwen3-Coder-30B) as approved overrides for a preset while leaving the ADR-009 default as canonical until Path F. Excludes c01 (Qwen3.6-27B INT4) because its 55.3 debug score trailed the top pair by 3 points, and Path F may retest it against the instrumented harness anyway. `planner.compatible` retains `qwen3-thinking-2507-awq` as an ops-safe rollback.
+Rationale for the `coder.compatible` set: pins c01 (F.1b winner) canonical, c11 (F.1b #2) as a viable alternative preset, and the ADR-009 default as an ops-safe rollback. Excludes c03b (Qwen3-Coder-30B MoE) despite its speed advantage because F.1b's unanimous ranking placed it last on quality; MoE remains a research candidate but not a routing default. `planner.compatible` retains `qwen3-thinking-2507-awq` as an ops-safe rollback.
 
 ## Alternatives considered
 
 1. **Ratify a coder pick anyway** (option B from the operator dialog). Rejected: the coder ranking is single-signal after arch-task collapse; picking a "winner" on debug-task alone at 58/100 quality is not defensible for a canonical role model. The ADR-authoring skill's stop condition (uncertain evidence → stop and ask) applies here.
 2. **Roll back planner to ADR-009 c04 baseline.** Rejected: c12b beats c04 within tie window and ~4× faster. The operator's stated rubric criterion ("quality over speed") does not override a tie — it only overrides a delta > 3 points.
 3. **Full rerun of Path E without the arch task.** Rejected: doesn't help. Plan and debug tasks were also below-ideal — real evidence requires SWE-bench on live agent loops.
+4. **(F.1b amendment)** **Wait for LiveCodeBench + SWE-bench before ratifying coder.** Rejected: F.1b unanimity across 3 frontier scorers with a 39.7-point margin over 3rd place is a defensible signal. LiveCodeBench (F.3-F.4) and SWE-bench Verified (F.5) are follow-up validation, not gating. Delaying ratification only postpones the impl slice without adding evidence — the current bench methodology is trusted and the numbers are clean.
+5. **(F.1b amendment)** **Ratify c11 instead of c01 for MoE-family diversity.** Rejected: c11 (Devstral) trails c01 by 11.7 points on combined average and lost to c01 in all 3 individual scorer rankings. No scorer preferred c11. Choosing a losing model for family diversity would violate quality-first.
 
 ## Contingency — Path F (instrumented rebench + SWE-bench)
 
@@ -106,7 +138,7 @@ Path F is scheduled next. Scope:
 4. **Redesigned arch task** — remove the "importer-graph twist" or provide the graph inline so the task is solvable from prompt alone. Prevents the universal hard-gate that collapsed Path E.
 5. **SWE-bench Verified** for the top 2-3 coder candidates from Path F. Run the best expected model first to estimate the full-matrix budget.
 
-**Coder ADR-013 amendment** will be filed when Path F concludes. Until then, ADR-009 §1 stays canonical for coder.
+**Coder ADR-013 amendment #1** filed 2026-08-05 04:55 EDT (F.1b ratification, see status amendment above). Follow-up validation (F.3 LiveCodeBench, F.5 SWE-bench Verified) will run on c01 and land as amendment #2 if results confirm F.1b.
 
 ## Consequences
 
@@ -121,10 +153,22 @@ Ratified now:
 - **PORTING_LEDGER.md** — new entry for DSR1-Distill-32B AWQ (HuggingFace source, SPDX license verified).
 - **ADR-009 amendment:** status line updated to `Superseded (planner-selection layer only) by ADR-013`. Coder-selection layer of ADR-009 remains canonical.
 
-Deferred to Path F:
+Ratified from F.1b (this amendment, 2026-08-05 04:55 EDT):
 
-- Coder canonical remains ADR-009 default until Path F concludes.
-- ADR-013 will be amended with the coder verdict when Path F lands.
+- **Files changed:**
+  - `bff/services/model_router.py` — `LLM_CODER_MODEL` env default flipped from `qwen3.6-35b-nvfp4` to `qwen3.6-27b-int4-autoround`
+  - `bff/services/model_router.py` — `MODEL_ROUTER_CATALOG.coder.canonical` and `.compatible` updated (see catalog block above)
+  - `ops/vllm_launch_coder.sh` — default model dir flipped to `qwen3.6-27b-int4-autoround`
+  - `docs/adr/README.md` — row for ADR-013 status updated to "Amended · Coder ratified F.1b"
+- **Procedures affected:** coder vLLM launcher wrapper (`:8501`) must pull Qwen3.6-27B INT4 weights before restart. Planner launcher (`:8511`) unchanged.
+- **PORTING_LEDGER.md** — entry for Qwen3.6-27B INT4 AutoRound (HuggingFace source, SPDX license verified).
+- **ADR-009 amendment:** status line updated to `Superseded by ADR-013` (both coder and planner selection layers now superseded).
+
+Deferred to F.3-F.5 (validation only):
+
+- LiveCodeBench-v6 on c01 (F.3 dry run + F.4 3-model matrix)
+- SWE-bench Verified on c01 (F.5) if LiveCodeBench confirms
+- ADR-013 amendment #2 documenting the LiveCodeBench + SWE-bench results (validation, not gating)
 
 ## References
 

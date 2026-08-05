@@ -13,7 +13,7 @@ Index of ADRs under `docs/adr/`. Numbering is sequential; gaps (e.g. ADR-010) ar
 | [009](./009-local-llm-selection.md) | Local LLM selection (coder + planner roles) | Accepted (routing-layer superseded) | ADR-001 (Ollama-first) | [ADR-012](./012-dual-mode-model-routing.md) (routing contract only; §3a topology + §3b budgets + §5 notes retained) |
 | [011](./011-selfeval-harness.md) | Self-eval harness | Accepted | — | — |
 | [012](./012-dual-mode-model-routing.md) | Dual-mode model routing — role-first with preset model override | Accepted | ADR-009 §1, §2, §3, §3a (routing-layer contract) | — |
-| [013](./013-qwen36-27b-canonical-coder-planner.md) | Canonical planner (ratified) + coder deferred to Path F | Amended · Planner ratified 2026-08-05 · Coder deferred | ADR-009 §2 (planner-selection layer only) | — |
+| [013](./013-qwen36-27b-canonical-coder-planner.md) | Canonical coder + planner (F.1b ratified) | Amended · Planner ratified 2026-08-05 03:52 · Coder ratified 2026-08-05 04:55 (F.1b) | ADR-009 §1 + §2 | — |
 
 ## Authoring workflow
 

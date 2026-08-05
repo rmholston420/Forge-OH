@@ -90,7 +90,7 @@ PRIMARY_CTX_LIMIT = int(os.getenv("PRIMARY_CTX_LIMIT", "28000"))
 # F.19.2a — Role-based routing configuration.
 #
 # ADR-009 assignments (verified by bench/f19pre):
-#   Coder role   -> qwen3.6-35b-nvfp4 on vLLM :8501, max_tokens=2048
+#   Coder role   -> qwen3.6-27b-int4-autoround on vLLM :8501, max_tokens=2048
 #   Planner role -> qwen3-thinking-2507-awq on vLLM :8511, max_tokens=8192
 #
 # Ollama fallback:
@@ -101,7 +101,12 @@ PRIMARY_CTX_LIMIT = int(os.getenv("PRIMARY_CTX_LIMIT", "28000"))
 # ---------------------------------------------------------------------------
 
 LLM_CODER_URL = os.getenv("LLM_CODER_URL", "http://localhost:8501")
-LLM_CODER_MODEL = os.getenv("LLM_CODER_MODEL", "qwen3.6-35b-nvfp4")
+# ADR-013 amendment #1 (2026-08-05 04:55 EDT): coder canonical flipped to
+# Qwen3.6-27B INT4 AutoRound after F.1b instrumented rebench. c01 was ranked
+# #1 unanimously by all 3 Council scorers (Claude Fable 5, GPT 5.6 Sol,
+# Gemini 3.1 Pro) with a 39.7-point combined-average margin over 3rd place.
+# Rollback: set LLM_CODER_MODEL="qwen3.6-35b-nvfp4" (ADR-009 baseline).
+LLM_CODER_MODEL = os.getenv("LLM_CODER_MODEL", "qwen3.6-27b-int4-autoround")
 LLM_CODER_MAX_TOKENS = int(os.getenv("LLM_CODER_MAX_TOKENS", "2048"))
 # ADR-009 §2 / DEBUG_LOG 2026-08-04: the `qwen3-coder:30b` Ollama Modelfile
 # ships with `num_ctx=4096`, which is too small for the self-eval smoke

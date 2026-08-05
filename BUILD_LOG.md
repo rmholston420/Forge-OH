@@ -4327,3 +4327,57 @@ Coder ranking (score = mean(debug, arch)) — informational, deferred:
 - **Ports / adapters affected:** none (bench-only)
 - **PORTING_LEDGER / ADR updated:** none this slice; ADR-013 amendment #2 lands after F.1b completes.
 - **Stop-condition status:** F.1a not yet run. Next: operator runs 5s NVML smoke test + 1-min bench smoke on c11 to validate instrumentation before F.1b full rebench.
+
+## 2026-08-05 04:32 EDT — F.1b full instrumented rebench (c11, c03b, c01) — coder shortlist
+
+- **Stage / plugin / port:** F.1b · Path F bench · coder shortlist rebench
+- **What changed:** Ran `bench/pathF_instrumented/bench_pathF.py` on the ADR-013 coder shortlist (c11 Devstral-24B AWQ, c03b Qwen3-Coder-30B MoE, c01 Qwen3.6-27B INT4) with 1 warmup + 3 scored runs per (cell, task) and full NVML sampling at 500ms cadence. Ran serial (planner :8511 torn down for VRAM per session policy). Bench completed 04:32–04:39 EDT.
+- **Files touched (Colossus, workspace only — bench output is gitignored):**
+  - `~/.forge-oh/bench_pathF/{f1b_c11,f1b_c03b,f1b_c01}/*_run/c*.json` (9 cell JSONs total)
+- **Ports / adapters affected:** none (bench-only; planner :8511 down during run)
+- **PORTING_LEDGER / ADR updated:** ADR-013 amendment #1 (coder ratification) filed as separate entry below.
+- **Stop-condition status:** F.1b bench complete. All 3 cells × 3 prompts × 3 scored runs landed. Full GPU envelope captured (VRAM/util/temp/power avg+max per cell). Warm-state matches production. Data ready for scoring pass.
+
+## 2026-08-05 04:47 EDT — F.2 arch_v2 gold — Council synthesis for prompt-solvable arch task
+
+- **Stage / plugin / port:** F.2 · Path F bench · gold-answer generation
+- **What changed:** Dispatched 3 Council members (Claude Fable 5, GPT 5.6 Sol, Gemini 3.1 Pro) as research subagents to draft gold answers for `bench/prompts/arch_v2_router.txt` (new router-design arch prompt drafted to be solvable from the prompt alone — Path E's arch failure was universal because the twist required repo-side-channel knowledge). Synthesized via Claude Opus 5 into `gold-arch_v2-council-synthesis.md`. Council converged strongly on hysteresis + latency-gate + coder-safe-default design with 7-level priority-ordered predicate.
+- **Files touched (workspace):**
+  - `gold-arch_v2-{claude_fable_5,gpt_5_6_sol,gemini_3_1_pro}.md`
+  - `gold-arch_v2-council-synthesis.md`
+- **Files touched (Colossus):**
+  - `bench/prompts/arch_v2_router.txt` (already committed in prior session)
+- **Ports / adapters affected:** none
+- **PORTING_LEDGER / ADR updated:** none
+- **Stop-condition status:** Gold ready. arch_v2 bench run deferred pending decision on whether to rerun coder shortlist against arch_v2 or accept F.1b's arch-collapsed verdict.
+
+## 2026-08-05 04:50 EDT — F.1b Council scoring pass (3-scorer, unanimous)
+
+- **Stage / plugin / port:** F.1b · Path F bench · scoring
+- **What changed:** Dispatched 3 Council members to score `scoring_bundle_f1b.md` (F.1b responses from c01, c03b, c11 on debug+arch) against Path E's existing gold answers with the same rubrics. All 3 scorers ranked `c01 > c11 > c03b` unanimously.
+
+  | Rank | Cell | Model | Combined avg /200 | Debug avg | Arch avg |
+  |---|---|---|:---:|:---:|:---:|
+  | 1 | **c01** | Qwen3.6-27B INT4 AutoRound | **112.7** | 86.7 | 26.0 |
+  | 2 | c11 | Devstral-24B AWQ | 101.0 | 76.0 | 25.0 |
+  | 3 | c03b | Qwen3-Coder-30B MoE AWQ | 73.0 | 51.0 | 22.0 |
+
+- **Key finding:** c01 is the only candidate to correctly fix BOTH the dead import AND the `Depends(...)` usage in the debug prompt. The other two leave the app still crashing on startup. Speed/thermal envelope favored c03b (2-3× faster, coolest at 54°C max, only 293W avg power) but quality regression disqualifies it under quality-first policy.
+- **Files touched (workspace):**
+  - `scores-f1b-{claude_fable_5,gpt_5_6_sol,gemini_3_1_pro}.json`
+- **Ports / adapters affected:** none
+- **PORTING_LEDGER / ADR updated:** ADR-013 amendment #1 (coder ratification) filed as separate entry below.
+- **Stop-condition status:** F.1b scoring complete. Verdict unanimous with 11.7-point margin over 2nd and 39.7-point margin over 3rd — well beyond 3-point ADR tie window. Ratifiable.
+
+## 2026-08-05 04:55 EDT — ADR-013 amendment #1 — Coder ratified as Qwen3.6-27B INT4 AutoRound (c01)
+
+- **Stage / plugin / port:** ADR-013 amendment · coder-selection layer
+- **What changed:** Filed ADR-013 amendment #1 ratifying c01 (Qwen3.6-27B INT4 AutoRound) as the canonical coder based on F.1b unanimous verdict. Flipped `LLM_CODER_MODEL` env default in `bff/services/model_router.py`. Updated `ops/vllm_launch_coder.sh` defaults and flags (no `--quantization` needed; auto-detected from `config.json`; added `--tool-call-parser qwen3_coder` and `--enable-auto-tool-choice`). Documented rollback path to ADR-009 baseline. Updated ADR-013 status amendment block, decision section, `MODEL_ROUTER_CATALOG` seed, and alternatives-considered list. Updated `docs/adr/README.md` row to reflect coder ratification.
+- **Files touched:**
+  - `docs/adr/013-qwen36-27b-canonical-coder-planner.md` (7 edits: status block, coder decision, catalog seed, alternatives, contingency, consequences)
+  - `docs/adr/README.md` (ADR-013 row)
+  - `bff/services/model_router.py` (LLM_CODER_MODEL env default + comment)
+  - `ops/vllm_launch_coder.sh` (defaults + tool-call parser flags + rollback docs)
+- **Ports / adapters affected:** coder role (LLM_CODER_URL :8501); planner unchanged
+- **PORTING_LEDGER / ADR updated:** ADR-013 amendment #1; PORTING_LEDGER.md new entry for Qwen3.6-27B INT4 AutoRound.
+- **Stop-condition status:** Coder ratification DONE. Operator next: `docker rm -f forge-vllm-coder && bash ops/vllm_supervisor.sh ensure coder` to reload with c01 weights. F.3 (LiveCodeBench-v6 validation) queued.

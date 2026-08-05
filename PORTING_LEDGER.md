@@ -95,3 +95,34 @@ Format per entry:
   - `programming/generators/prompt.py` (transcript template shape).
 - **Our implementation:** [`openhands_tools_ext/verify/breakpoint/inspector.py`](openhands_tools_ext/verify/breakpoint/inspector.py) + 11 tests in [`openhands_tools_ext/tests/verify/breakpoint/test_inspector.py`](openhands_tools_ext/tests/verify/breakpoint/test_inspector.py).
 - **Related ADR:** planned in E.5 (`docs/adr/007-verify-loop.md`).
+
+
+---
+
+## 3. Qwen3.6-27B INT4 AutoRound (Lorbus)
+
+- **Slice:** F.1b (Path F instrumented rebench) + ADR-013 amendment #1 (coder ratification)
+- **Upstream:** [Lorbus/Qwen3.6-27B-int4-AutoRound](https://huggingface.co/Lorbus/Qwen3.6-27B-int4-AutoRound)
+- **Base model:** [Qwen/Qwen3.6-27B](https://huggingface.co/Qwen/Qwen3.6-27B) (`Qwen3.5MoeForCausalLM` architecture; 27B dense variant)
+- **Quantization method:** [AutoRound](https://github.com/intel/auto-round) INT4 (Intel Neural Compressor). Weights packed as compressed-tensors int4; vLLM auto-detects from `config.json` — do NOT pass `--quantization` at launch.
+- **SPDX license:** `Apache-2.0` (inherited from Qwen3 base model)
+- **Port type:** **weights-only** — no upstream code was copied. Weights pulled to `$HOME/models/qwen3.6-27b-int4-autoround/` on Colossus via `bench/pathE_qwen36_27b/pull_models.sh` (2026-08-05, in prior session).
+- **Runtime:** vLLM 0.10.2+ Docker (`vllm/vllm-openai:latest`). Launch flags in `ops/vllm_launch_coder.sh`:
+  - `--tool-call-parser qwen3_coder` (Qwen3-Coder family tool-call schema)
+  - `--enable-auto-tool-choice`
+  - `--trust-remote-code` (Qwen3.5MoE custom modeling code)
+  - `--enable-prefix-caching`
+  - `--max-model-len 32768 --max-num-seqs 128 --gpu-memory-utilization 0.90`
+- **VRAM envelope (F.1b, RTX 5090 32 GB, warm state):**
+  - Peak VRAM: 29,701 MiB / 32,768 MiB (91% utilization)
+  - Peak temperature: 71°C (RED cutoff 88°C, headroom 17°C)
+  - Sustained power: 435-438 W (of 450 W TDP, 97% draw)
+  - GPU util: 100% pinned during generation
+- **Bench evidence:**
+  - F.1b combined avg: 112.7/200 (rank #1 unanimous across Claude Fable 5, GPT 5.6 Sol, Gemini 3.1 Pro)
+  - F.1b debug avg: 86.7/100 (only cell that correctly removed both dead import and `Depends(...)` usage lines)
+  - F.1b arch avg: 26.0/100 (all 3 candidates failed the arch trap identically; 39.7-point margin over 3rd place preserved regardless)
+- **Related ADRs:**
+  - [docs/adr/013-qwen36-27b-canonical-coder-planner.md](docs/adr/013-qwen36-27b-canonical-coder-planner.md) — coder ratification (amendment #1)
+  - [docs/adr/009-local-llm-selection.md](docs/adr/009-local-llm-selection.md) — superseded by ADR-013 for coder-selection layer
+- **Rollback:** set `LLM_CODER_MODEL=qwen3.6-35b-nvfp4` and pass `--quantization modelopt_fp4` to `vllm_launch_coder.sh` (ADR-009 baseline).
