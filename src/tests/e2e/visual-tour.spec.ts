@@ -64,7 +64,6 @@ const ROUTES: Array<{ path: string; slug: string }> = [
   { path: '/observability',slug: '07-observability-empty' },
   { path: '/secrets',      slug: '08-secrets' },
   { path: '/settings',     slug: '09-settings' },
-  { path: '/settings/secrets', slug: '10-settings-secrets' },
   { path: '/metrics',      slug: '20-metrics-dashboard' },
 ];
 

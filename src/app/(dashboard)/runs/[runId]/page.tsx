@@ -29,6 +29,7 @@ import SecurityTab from './tabs/SecurityTab';
 import TraceTab from './tabs/TraceTab';
 import FilesTab from './tabs/FilesTab';
 import TerminalTab from './tabs/TerminalTab';
+import RunMessageComposer from '@/features/run-detail/RunMessageComposer';
 import styles from './run-detail.module.css';
 
 // Tab definitions must stay in sync with:
@@ -316,6 +317,9 @@ export default function RunDetailPage({
       {selectedTab === 'trace' && (
         <TraceTab runId={runId} />
       )}
+
+      {/* Stage 1.6 (reconciliation-plan-v1) — persistent send-message composer. */}
+      <RunMessageComposer runId={runId} status={run?.status} />
     </div>
   );
 }

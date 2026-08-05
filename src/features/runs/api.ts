@@ -71,3 +71,16 @@ export async function forkRun(runId: string): Promise<ForkAck> {
   const result = await bffPost<ForkAck>(ENDPOINTS.RUNS.fork(runId), {});
   return unwrap(result);
 }
+
+// ---------------------------------------------------------------------------
+// Stage 1.6 (reconciliation-plan-v1) — send-message-while-running.
+// POST /api/runs/{run_id}/message → agent-server
+//   POST /api/conversations/{cid}/events with role='user'.
+// ---------------------------------------------------------------------------
+
+export type MessageAck = { ok: boolean; run_id: string; agent_server?: unknown };
+
+export async function sendRunMessage(runId: string, message: string): Promise<MessageAck> {
+  const result = await bffPost<MessageAck>(ENDPOINTS.RUNS.message(runId), { message });
+  return unwrap(result);
+}

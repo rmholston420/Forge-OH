@@ -1,6 +1,6 @@
 import React from 'react';
-import { EmptyState } from '@/components/core/EmptyState';
+import AgentPresetsPage from '@/features/agent-presets/AgentPresetsPage';
 
 export default function AgentsPage() {
-  return <EmptyState title="Agent Presets" description="Agent preset management coming in Phase 1." icon="🤖" />;
+  return <AgentPresetsPage />;
 }

@@ -10,6 +10,7 @@ import {
   approveRun,
   rejectRun,
   forkRun,
+  sendRunMessage,
 } from './api';
 import type { CreateRunRequest } from './schemas';
 import { QUERY_KEYS } from '@/lib/query/query-keys';
@@ -106,6 +107,22 @@ export function useForkRun() {
       if (data?.forked_id) {
         qc.invalidateQueries({ queryKey: QUERY_KEYS.runs.detail(data.forked_id) });
       }
+    },
+  });
+}
+
+// Stage 1.6 (reconciliation-plan-v1) — useSendRunMessage.
+// Invalidates the events query so the new user message renders as soon as
+// agent-server surfaces it back via GET /api/runs/{id}/events (bootstrap)
+// or Socket.IO (live).
+export function useSendRunMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { runId: string; message: string }) =>
+      sendRunMessage(vars.runId, vars.message),
+    onSuccess: (_data, vars) => {
+      invalidateRun(qc, vars.runId);
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.runs.events(vars.runId) });
     },
   });
 }

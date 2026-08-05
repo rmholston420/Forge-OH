@@ -1,102 +1,42 @@
-# SESSION_HANDOFF — 2026-08-04 03:14 EDT
+# Forge-OH Session Handoff — 2026-08-04 21:38 EDT
 
-## Current stage / component
+## Current build-sequencing position
+- **Stage / phase:** Stage 1 · reconciliation-plan-v1 (sub-slices 1.1–1.7).
+- **Slice branch:** `slice/stage1-reconciliation-v1` (pushed after this handoff writes).
+- **Plugin / kernel component:** BFF (`bff/routers/runs.py`, `bff/services/event_relay.py`) + Next.js dashboard (MCP, Secrets, Agent Presets, Run Detail).
+- **Port(s) touched:** none new. All BFF changes ride on the existing `/api` mount; Socket.IO changes ride on the existing sio server.
 
-Queued sequence step 3 — self-eval frontend polish slice complete on
-`slice/selfeval-frontend-polish`. Awaiting PR + squash-merge into
-`main`. Forge-OH-Action-Plan-v4 has no formal stage number for this
-GUI-polish work.
+## Completed this session
+- **1.1** — bumped `openhands-sdk` to `1.40.0` in `bff/requirements.lock`; added `typecheck` and `test:unit` script aliases in `package.json`.
+- **1.2** — MCP `api.ts` `/api`-prefix bug fixed; `(dashboard)/tools-mcp/page.tsx` now renders real `McpPage`.
+- **1.3** — Sidebar entry for `/secrets` added; stub `settings/secrets/page.tsx` deleted; 3 e2e specs redirected to `/secrets`.
+- **1.4** — deleted 3 orphan Next.js API proxy routes; deleted dead Plugins scaffolding (`src/features/plugins/PluginsPage.tsx`, `src/lib/plugins/hooks.ts`) plus 2 orphan tests; deleted `src/lib/runs.ts`; removed `FEATURE_RIGPA_LMS_ENABLED` env var from `docker-compose.yml`; deleted `bff/routers/agents.py` deprecation stub.
+- **1.5.2** — `(dashboard)/agents/page.tsx` now renders real `AgentPresetsPage`; `agent-presets/api.ts` `/api`-prefix bug fixed on all 7 fetches.
+- **1.6** — full stack: `POST /runs/{run_id}/message` in `bff/routers/runs.py` (mirrors agent-server 1.40.0's `SendMessageRequest`/`TextContent`), `ENDPOINTS.RUNS.message`, `sendRunMessage` API, `useSendRunMessage` hook, and new `RunMessageComposer` component rendered persistently at the bottom of the run-detail page.
+- **1.7** — `bff/services/event_relay.py` now emits a dedicated `"approval_required"` Socket.IO event with a proper `type` discriminator when a conversation enters `waiting_for_confirmation`, unblocking the previously-dead frontend listener in `useRunStream`.
 
-## What was completed this session
+## Remaining before current Definition of Done
+- **Colossus runtime verify** (user's job per directive #2):
+  - `bff/requirements.lock` full pip-compile regen on Colossus's actual Python venv (sandbox is 3.14).
+  - `pnpm typecheck` — must be clean.
+  - `pnpm test:unit` — must be clean.
+  - `pnpm build` — must succeed.
+  - `pytest --collect-only bff/tests/` — must be clean.
+  - Playwright: `secrets.spec.ts`, `nav-routes.spec.ts`, `visual-tour.spec.ts` against `next start` on :3100.
+  - Manual smoke: Tools MCP page loads, Agent Presets page loads, Secrets appears in sidebar, Send-Message composer submits during a live run, `approval_required` fires when a confirmation gate triggers.
+- **Merge decision for 1.5.3–1.5.5** — see open question below.
 
-**Prior merged slices this segment (main tip before this slice = `4ce1...`):**
-1. vLLM-primary verification green on Colossus (BUILD_LOG entry
-   2026-08-04 02:19 EDT).
-2. ADR-0001 amendment + supervisor user-scope hygiene bundle merged as
-   PR #3. Supervisor test suite 21/21.
-
-**Current slice — `slice/selfeval-frontend-polish` — COMPLETE, awaiting merge:**
-
-Commit chain on the branch:
-- `252a4a4` scope doc (`docs/selfeval/frontend-polish-scope.md`).
-- `a0117e3` initial code + CSS Module + Playwright extension.
-- `c17834a` fix: `_json<T>()` generic wrap at each fetch call site
-  (prod build TS error).
-- `e7fd4b4` fix: `.gitignore` `tests/` swallowed new spec — force-add
-  documented.
-- `e630f86` force-add the spec.
-- `e6d25fa` Tier-2 assertion mismatches (KPI text case, badge
-  locator, click-then-nav race).
-- `f7abdde` Next.js 16 params → Promise + React.use; align
-  TaskOutcome fields to harness (`trajectory_status`,
-  `failure_detail`, non-nullable `run_id` / `duration_sec`).
-- `921c9d1` predicate URL matcher (previous regex `(?:\?|$)`
-  collapsed to invalid regex at runtime).
-- `216ef30` after-polish screenshots (populated list + detail).
-
-Final verification on Colossus:
-- Prod build clean.
-- `curl /selfeval` → 200. `curl /selfeval/2026-08-04` renders correct
-  DOM after hydration (h1 "Cycle: 2026-08-04", KPIs, task table).
-- Playwright `src/tests/e2e/selfeval.spec.ts`: **7 passed, 1 skipped**
-  (Run-now gated off by default).
-- Screenshots at `screenshots/selfeval-after-list.png` and
-  `screenshots/selfeval-after-detail.png` show the polished, populated
-  pages against the real cycle `2026-08-04-selfeval.json`.
-
-DEBUG_LOG entries appended (4 total this slice):
-- 03:00 EDT — `.then(_json)` generic collapse to `unknown`.
-- 03:04 EDT — `.gitignore` `tests/` line masks `src/tests/*.spec.ts`.
-- 03:10 EDT — Next.js 16 dynamic route params is `Promise<{...}>`.
-- 03:11 EDT — `TaskOutcome` TS type diverged from harness dataclass.
-
-## What remains before Definition of Done
-
-Only the merge ceremony:
-1. Open PR `slice/selfeval-frontend-polish` → `main`.
-2. Squash-merge.
-3. Delete the branch.
-4. `git checkout main && git pull` locally.
-
-No open code changes required.
-
-## Open questions / ambiguity
-
-None.
+## Open questions / awaiting user answer
+1. **ADR-009 vs 1.5.3–1.5.5.** Reconciliation-plan-v1 wants `create_run` to route via `preset.model`. ADR-009 §3a governs routing by role (coder/planner), and `AgentPreset` has no `role` field. Three paths:
+   - (a) Amend ADR-009 to allow preset-driven model override; add `role` to `AgentPreset`.
+   - (b) Supersede ADR-009 with a new ADR that makes preset-driven routing canonical.
+   - (c) Keep ADR-009 canonical and drop 1.5.3/1.5.4 from reconciliation-plan-v1 (retain 1.5.5 SQLite persistence only).
+   - Which path?
+2. **`FEATURE_RIGPA_LMS_ENABLED` env var removal from `docker-compose.yml`** — confirm nothing outside the repo depends on this variable (e.g. an operator's `.env.local` on Colossus). If yes, restore + deprecate.
 
 ## Exact next action
-
-Open the PR via `gh pr create` from the audit checkout (Perplexity
-Computer identity is what has been pushing), squash-merge it, delete
-the branch. See sibling reply for exact commands.
-
-## Files added / touched (final state)
-
-New this slice:
-- `src/features/selfeval/SelfEval.module.css`
-- `src/tests/e2e/selfeval.spec.ts` (force-added past `tests/` gitignore)
-- `docs/selfeval/frontend-polish-scope.md`
-- `screenshots/selfeval-after-list.png` (force-added past `screenshots/` gitignore)
-- `screenshots/selfeval-after-detail.png` (force-added past `screenshots/` gitignore)
-
-Rewritten this slice:
-- `src/features/selfeval/SelfEvalPage.tsx`
-- `src/features/selfeval/SelfEvalDatePage.tsx`
-- `src/features/selfeval/api.ts`
-- `src/app/(dashboard)/selfeval/[date]/page.tsx`
-
-Log appends:
-- `BUILD_LOG.md` (one entry 2026-08-04 03:14 EDT).
-- `DEBUG_LOG.md` (four entries 03:00 / 03:04 / 03:10 / 03:11 EDT).
-
-## Queued sequence status
-
-1. **[DONE]** Step 1: vLLM-primary verification.
-2. **[DONE]** Step 2: ADR-0001 amendment + supervisor user-scope
-   hygiene (PR #3, merged).
-3. **[DONE, PENDING PR MERGE]** Step 3: Self-Eval frontend polish
-   (this slice).
-4. **[SUBSUMED]** Step 4: Playwright visual + workflow verification —
-   completed inside Step 3.
-
-No forward slice queued. Operator picks next.
+1. On Colossus: `cd ~/dev/forge-oh && git fetch origin && git checkout slice/stage1-reconciliation-v1 && git pull`
+2. Regenerate `bff/requirements.lock` under Colossus's `.oh-venv` (Python 3.11+ actual): `.oh-venv/bin/pip-compile --strip-extras --no-annotate --output-file=bff/requirements.lock bff/requirements.txt`
+3. `bash scripts/forge-restart.sh` then `bash scripts/forge-doctor.sh` — paste doctor output.
+4. `pnpm install && pnpm typecheck && pnpm test:unit && pnpm build` from repo root.
+5. Answer the ADR-009 question above so 1.5.3–1.5.5 can proceed.

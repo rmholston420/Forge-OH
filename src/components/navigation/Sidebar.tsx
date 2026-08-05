@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/plugins',       label: 'Plugins',        icon: '🧩' },
   { href: '/metrics',       label: 'Metrics',        icon: '📈' },
   { href: '/observability', label: 'Observability',  icon: '📊' },
+  { href: '/secrets',       label: 'Secrets',        icon: '🔒' },
   { href: '/selfeval',      label: 'Self-Eval',      icon: '⏰' },
   { href: '/settings',      label: 'Settings',       icon: '⚙️' },
 ];
