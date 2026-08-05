@@ -78,6 +78,73 @@ _FENCE_CLOSE_RE = re.compile(r"\n\s*```\s*$")
 _HUNK_HEADER_RE = re.compile(
     r"^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@(?P<trailer>.*)$"
 )
+_OLD_FILE_HEADER_RE = re.compile(r"^--- a/(?P<path>.+)$")
+_NEW_FILE_HEADER_RE = re.compile(r"^\+\+\+ b/(?P<path>.+)$")
+
+
+def merge_duplicate_file_sections(text: str) -> str:
+    """Merge multiple ``--- a/PATH / +++ b/PATH`` sections against the same file.
+
+    Some models (Qwen3.6-27B-Coder INT4 confirmed 2026-08-05 08:37 EDT on
+    sphinx-doc__sphinx-8035) group logically-related changes as separate
+    file sections against the SAME target file:
+
+        --- a/foo.py
+        +++ b/foo.py
+        @@ ... @@ <hunks>
+        --- a/foo.py       ← second section, same file
+        +++ b/foo.py
+        @@ ... @@ <more hunks>
+
+    GNU patch tries to apply each section independently. If the second
+    section's hunks would have already been applied (or reversed) by the
+    first, patch bails with "Reversed (or previously applied) patch
+    detected!" and fails hunks.
+
+    Fix: keep the first ``--- a/... / +++ b/...`` header, drop subsequent
+    duplicates AND their trailing metadata (`index`, `diff --git`) lines,
+    keep all hunks. Result is a single file section with all hunks in
+    order.
+
+    Only merges CONSECUTIVE duplicates or duplicates with no other file
+    section in between. Idempotent when there are no duplicates.
+    """
+    if not text:
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    seen_files: set[str] = set()
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        old_m = _OLD_FILE_HEADER_RE.match(line)
+        if old_m and (i + 1) < n:
+            new_m = _NEW_FILE_HEADER_RE.match(lines[i + 1])
+            if new_m:
+                path = old_m.group("path")
+                if path in seen_files:
+                    # Duplicate section — skip the two header lines AND any
+                    # immediately-preceding ``diff --git`` / ``index`` prose
+                    # already emitted for this section (we can't retro-remove
+                    # what we've emitted, but the model rarely emits those
+                    # for the duplicate section — real cases show bare
+                    # --- / +++ headers).
+                    i += 2
+                    # Also skip any git-format metadata lines that sometimes
+                    # follow the +++ line (index / diff --git / new file mode).
+                    while i < n and (
+                        lines[i].startswith("index ")
+                        or lines[i].startswith("diff --git ")
+                        or lines[i].startswith("new file mode ")
+                        or lines[i].startswith("deleted file mode ")
+                    ):
+                        i += 1
+                    continue
+                seen_files.add(path)
+        out.append(line)
+        i += 1
+    return "\n".join(out)
 
 
 def recount_hunks(text: str) -> str:
@@ -176,6 +243,7 @@ def normalize_patch(text: str) -> str:
     stripped = _FENCE_OPEN_RE.sub("", stripped, count=1)
     stripped = _FENCE_CLOSE_RE.sub("", stripped, count=1)
     stripped = stripped.strip()
+    stripped = merge_duplicate_file_sections(stripped)
     return recount_hunks(stripped)
 
 
