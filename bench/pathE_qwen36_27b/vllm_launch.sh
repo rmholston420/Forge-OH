@@ -12,7 +12,7 @@
 #
 # Requires the following model dirs under ~/models/ (HuggingFace weights):
 #   qwen3.6-27b-int4-autoround/        (Lorbus/Qwen3.6-27B-int4-AutoRound)
-#   qwen3.6-35b-a3b-nvfp4/             (RedHatAI/Qwen3.6-35B-A3B-NVFP4, existing)
+#   qwen3.6-35b-nvfp4/                 (RedHatAI/Qwen3.6-35B-A3B-NVFP4, existing on Colossus)
 #   qwen3.6-27b-nvfp4/                 (nvidia/Qwen3.6-27B-NVFP4)
 #   qwen3-thinking-2507-awq/           (existing, per ADR-009)
 #
@@ -38,7 +38,7 @@ case "$CELL" in
     )
     ;;
   c02)
-    MODEL_DIR="qwen3.6-35b-a3b-nvfp4"
+    MODEL_DIR="qwen3.6-35b-nvfp4"
     SERVED_NAME="c02_coder_vllm_qwen36_35b_nvfp4"
     EXTRA_FLAGS=(
       --quantization modelopt_fp4
