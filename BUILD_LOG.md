@@ -4236,3 +4236,24 @@ until the operator picks the next one.
 - **Ports / adapters affected:** none (bench-only)
 - **PORTING_LEDGER / ADR updated:** —
 - **Stop-condition status:** in-progress — c09 done (100 tok/s dense 22B); c11 profile fix pending relaunch; remaining c12a, c12b.
+
+## 2026-08-05 03:02 EDT — Path E bench matrix execution complete (10/12 cells)
+
+- **Stage / plugin / port:** F.19 (Path E rebench) · bench execution phase
+- **What changed:** c11 (Devstral-24B AWQ) + c12a (DSR1-Distill-32B AWQ coder) + c12b (DSR1-Distill-32B AWQ planner) all executed successfully. Bench matrix at 10/12 cells done (c07 and c10 dropped, documented).
+- **Files touched:**
+  - `~/.forge-oh/bench_pathE/20260805_025748_run/c11_*.json` (Devstral AWQ)
+  - `~/.forge-oh/bench_pathE/20260805_030014_run/c12a_*.json` (DSR1 coder)
+  - `~/.forge-oh/bench_pathE/20260805_030204_run/c12b_*.json` (DSR1 planner)
+- **Ports / adapters affected:** none (bench-only)
+- **PORTING_LEDGER / ADR updated:** —
+- **Stop-condition status:** bench execution DONE — 10/12 cells captured. Next: scoring phase (gold refresh + Model Council scoring + ADR-013 verdict). c11 clocked 97-99 tok/s (dense 24B AWQ+Marlin). c12a/c12b clocked 73 tok/s each (dense 32B AWQ+Marlin) with reasoning-parser deepseek_r1 stripping thinking blocks per role.
+
+**Rate summary (verified physical rate mental model):**
+| Model class | Cell(s) | Observed tok/s |
+|---|---|---|
+| MoE 3B active AWQ | c03b | 275 |
+| Dense 22-24B AWQ+Marlin | c09, c11 | 97-100 |
+| Dense 32B AWQ+Marlin | c12a, c12b | 73 |
+
+All consistent with expected Blackwell 5090 performance envelope.
