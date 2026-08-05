@@ -4312,3 +4312,18 @@ Coder ranking (score = mean(debug, arch)) — informational, deferred:
 - **Stop-condition status:** planner launcher wiring DONE. Operator next: `docker rm -f forge-vllm-planner && bash ops/vllm_supervisor.sh ensure planner` to reload with DSR1.
 
 **Diagnosis note:** first `bash ops/vllm_supervisor.sh ensure planner` after commit c5f118d still loaded `qwen3-thinking-2507-awq` because the supervisor calls `vllm_launch_planner.sh` which had the ADR-009 defaults hardcoded. The BFF env-var default flip alone was not sufficient — launcher script also had to change.
+
+## 2026-08-05 04:20 EDT — F.1 Path F instrumented harness (NVML) — slice 1/N
+
+- **Stage / plugin / port:** F.1 · Path F bench harness · GPU instrumentation
+- **What changed:** New bench dir `bench/pathF_instrumented/`:
+  - `nvml_sampler.py`: pynvml-based background sampler, 500ms cadence, aggregates avg/max for GPU util, VRAM, temperature, power. Thread-safe daemon thread. Degrades to no-op if pynvml unavailable.
+  - `bench_pathF.py`: Path E harness copied + sampler wired around every request (warmup + 3 scored runs). Adds `gpu_aggregate` (cross-run avg/max) + `runs_gpu` (per-run raw) + `sample_interval_s` to each JSON. New `--smoke` flag for F.1a validation. New default `shortlist` = ADR-013 top 3 (c11, c03b, c01).
+  - `README.md`: F.1a smoke-test recipe + F.1b full rebench recipe.
+- **Files touched:**
+  - `bench/pathF_instrumented/nvml_sampler.py` (new)
+  - `bench/pathF_instrumented/bench_pathF.py` (new)
+  - `bench/pathF_instrumented/README.md` (new)
+- **Ports / adapters affected:** none (bench-only)
+- **PORTING_LEDGER / ADR updated:** none this slice; ADR-013 amendment #2 lands after F.1b completes.
+- **Stop-condition status:** F.1a not yet run. Next: operator runs 5s NVML smoke test + 1-min bench smoke on c11 to validate instrumentation before F.1b full rebench.
