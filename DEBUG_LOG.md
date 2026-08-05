@@ -1195,3 +1195,29 @@ Per vLLM's tool-calling doc, Mistral repos in HF format (safetensors + standalon
 **Verify with**: after re-launch, `POST /v1/chat/completions` with `{"role":"user","content":"..."}` should return a completion. If it still 501s, the tokenizer_mode enum was not accepted (vLLM 0.10.x used `{auto,slow,mistral}`; 0.26.0 added `hf`).
 
 **Prevention**: on any Mistral-family repo served in HF format, always pass `--tokenizer-mode hf` explicitly. Do NOT rely on `auto` — it auto-picks mistral-common which breaks `--chat-template`.
+
+
+## 2026-08-05 01:27 EDT — c10 (Devstral NVFP4) dropped from matrix
+
+**Symptom** (persistent, unfixable within reasonable effort):
+- Every route through `--tokenizer-mode hf` still lands in `MistralCommonBackend.get_chat_template` → 501 NotImplementedError
+- vLLM 0.26.0 selects MistralCommonBackend from `tekken.json` presence + `Mistral3ForConditionalGeneration` architecture, NOT from `--tokenizer-mode`
+- Confirmed via `docker logs`: `tokenizer_mode=hf` was accepted by the engine config but the tokenizer factory still routed to mistral-common
+
+**Affected**: F.19-post · pathE_qwen36_27b · c10 (Fireworks/Devstral-Small-2-24B-Instruct-2512-nvfp4)
+
+**Root cause**: This repo ships HF-format weights + `chat_template.jinja` + `tokenizer.json` (BPE, 131k vocab, class=TokenizersBackend) + `tekken.json`. It does NOT ship `params.json` or `consolidated.safetensors`, so `--config-format mistral --load-format mistral` cannot be used (native mistral path unavailable). vLLM's tokenizer routing for Mistral-family models is not overridable via `--tokenizer-mode` when both `tekken.json` and the Mistral3 architecture are present — MistralCommonBackend hijacks unconditionally.
+
+**Fix applied**: dropped c10 from the bench matrix. c11 (cyankiwi AWQ variant) covers Devstral because it ships the full mistral-format files (`params.json`, `consolidated.safetensors`) and can be served via the native `--tokenizer-mode mistral --config-format mistral --load-format mistral` path. Same underlying model — no loss of quality signal.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 stanza removed, help text + case-default list updated)
+- `bench/pathE_qwen36_27b/bench_pathE.py` (c10 removed from CELL_CONFIGS and CELL_ORDER)
+
+**Prevention**: for any HF-format Mistral repo (safetensors + tokenizer.json + chat_template.jinja, no params.json), verify `--tokenizer-mode hf` actually reaches the tokenizer factory (not just the engine config) BEFORE assuming --chat-template will be honored. If MistralCommonBackend is selected regardless, the only path is a repo with full mistral-format files.
+
+Chain summary of the four failed fixes for the record:
+1. **01:11 EDT** — stripped --quantization (CT wrapper). Fixed the ModelConfig ValidationError; container booted.
+2. **01:16 EDT** — added --chat-template jinja. Chat completions returned 400 (no default chat_template) → 501 (MistralCommonBackend.get_chat_template).
+3. **01:20 EDT** — added --tokenizer-mode hf. Engine config accepted it. Tokenizer factory ignored it. Still 501.
+4. **01:27 EDT** — attempted --tokenizer-mode mistral + --config-format mistral + --load-format mistral. Failed check: repo missing params.json/consolidated.safetensors. Abandoned c10.

@@ -49,7 +49,9 @@ CELLS = {
     "c07": ("coder",   "vllm",   "http://localhost:8000/v1",  "c07_coder_vllm_qwen3coder_fp8",      "coder_nothink"),
     "c08": ("coder",   "ollama", "http://localhost:11434/v1", "yi:34b-chat-v1.5-q4_K_M",              "coder"),
     "c09": ("coder",   "vllm",   "http://localhost:8000/v1",  "c09_coder_vllm_codestral22b_awq",    "coder_nothink"),
-    "c10": ("coder",   "vllm",   "http://localhost:8000/v1",  "c10_coder_vllm_devstral24b_nvfp4",   "coder_nothink"),
+    # c10 (Devstral NVFP4) dropped 2026-08-05 01:27 EDT — Fireworks repo has no
+    # params.json/consolidated.safetensors; MistralCommonBackend hijacks the
+    # tokenizer factory and get_chat_template fails. c11 covers Devstral alone.
     "c11": ("coder",   "vllm",   "http://localhost:8000/v1",  "c11_coder_vllm_devstral24b_awq",     "coder_nothink"),
     # DeepSeek-R1 distill — same weights benched under two roles.
     "c12a":("coder",   "vllm",   "http://localhost:8000/v1",  "c12a_coder_vllm_dsr1_distill32b_awq", "coder_nothink"),
@@ -59,7 +61,7 @@ CELLS = {
 # Ordering rule (Ollama first, then vLLM grouped by model):
 # Full-matrix ordering (Ollama first — hot-swap free; vLLM grouped by model to minimize restarts):
 #   c03  → c08         (Ollama)
-#   c01 → c02 → c02-rerun → c04 → c05 → c07 → c03b → c09 → c10 → c11 → c12a → c12b   (vLLM)
+#   c01 → c02 → c02-rerun → c04 → c05 → c07 → c03b → c09 → c11 → c12a → c12b   (vLLM)
 # (c01/c02/c04/c05 are separate vLLM launches; c01 & c04 share weights but
 #  differ in --reasoning-parser / --enable-reasoning flags so they run in
 #  separate containers).
@@ -70,7 +72,7 @@ CELL_ORDER = [
     "c01", "c02", "c04", "c05",
     "c07", "c03b",
     "c09",
-    "c10", "c11",
+    "c11",
     "c12a", "c12b",
 ]
 

@@ -12,7 +12,6 @@
 #   c05  = Qwen3-Thinking-2507 AWQ                   (planner, ADR-009 baseline)
 #   c07  = Qwen3-Coder-30B-A3B FP8                   (coder,   quant-ceiling check vs c03b)
 #   c09  = Codestral-22B-v0.1 AWQ                    (coder,   Mistral generalist)
-#   c10  = Devstral-Small-2-24B-2512 NVFP4           (coder,   Mistral coder-specialist NVFP4)
 #   c11  = Devstral-Small-2-24B-2512 compressed-int4 (coder,   Mistral coder-specialist AWQ path)
 #   c12a = DeepSeek-R1-Distill-Qwen-32B AWQ          (coder,   reasoning-model-as-coder)
 #   c12b = DeepSeek-R1-Distill-Qwen-32B AWQ          (planner, reasoning-model-as-planner, same weights as c12a)
@@ -34,7 +33,7 @@
 
 set -euo pipefail
 
-CELL="${1:?usage: $0 <c01|c02|c03b|c04|c05|c07|c09|c10|c11|c12a|c12b>}"
+CELL="${1:?usage: $0 <c01|c02|c03b|c04|c05|c07|c09|c11|c12a|c12b>}"
 
 ts()   { date '+%Y-%m-%d %H:%M:%S %Z'; }
 ts_s() { date +%s; }
@@ -125,22 +124,13 @@ case "$CELL" in
       --quantization awq_marlin
     )
     ;;
-  c10)
-    # Firworks/Devstral-Small-2-24B-Instruct-2512-nvfp4 (15 GB).
-    # Mistral3ForConditionalGeneration (VLM) — served text-only via --limit-mm-per-prompt.
-    # Weights are genuine NVFP4 (float, 4-bit, format=nvfp4-pack-quantized) BUT wrapped in
-    # compressed-tensors registry — DO NOT pass --quantization; vLLM auto-detects and dispatches
-    # to the Blackwell FP4 kernel via the CT path. See DEBUG_LOG 2026-08-05 01:11 EDT.
-    # Devstral tokenizer has no default chat_template — must pass jinja file explicitly.
-    # See DEBUG_LOG 2026-08-05 01:16 EDT.
-    MODEL_DIR="Devstral-Small-2-24B-Instruct-2512-nvfp4"
-    SERVED_NAME="c10_coder_vllm_devstral24b_nvfp4"
-    EXTRA_FLAGS=(
-      --limit-mm-per-prompt '{"image":0}'
-      --tokenizer-mode hf
-      --chat-template "/models/Devstral-Small-2-24B-Instruct-2512-nvfp4/chat_template.jinja"
-    )
-    ;;
+  # c10 (Devstral NVFP4) dropped 2026-08-05 01:27 EDT — the Fireworks repo
+  # does not ship params.json/consolidated.safetensors, so it can't use the
+  # native mistral tokenizer path. All three HF-mode workarounds failed
+  # (--chat-template ignored, --tokenizer-mode hf ignored, MistralCommonBackend
+  # unconditionally hijacks the tokenizer factory). c11 covers Devstral
+  # coverage on its own — same underlying model, cleanly serveable.
+  # See DEBUG_LOG 2026-08-05 01:16, 01:20, 01:25, 01:27 EDT.
   c11)
     # cyankiwi/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit — compressed-tensors int4 (30 GB).
     # Mistral3ForConditionalGeneration (VLM) — served text-only via --limit-mm-per-prompt.
@@ -152,8 +142,9 @@ case "$CELL" in
     SERVED_NAME="c11_coder_vllm_devstral24b_awq"
     EXTRA_FLAGS=(
       --limit-mm-per-prompt '{"image":0}'
-      --tokenizer-mode hf
-      --chat-template "/models/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit/chat_template.jinja"
+      --tokenizer-mode mistral
+      --config-format mistral
+      --load-format mistral
     )
     ;;
   c12a)
@@ -177,7 +168,7 @@ case "$CELL" in
     )
     ;;
   *)
-    echo "unknown cell: $CELL (valid: c01 c02 c03b c04 c05 c07 c09 c10 c11 c12a c12b)" >&2
+    echo "unknown cell: $CELL (valid: c01 c02 c03b c04 c05 c07 c09 c11 c12a c12b)" >&2
     exit 2
     ;;
 esac

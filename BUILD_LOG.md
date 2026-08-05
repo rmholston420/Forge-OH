@@ -4188,3 +4188,16 @@ until the operator picks the next one.
 - **Ports / adapters affected:** none this slice. Bench harness is out-of-band tooling; the ADR ratification (deferred) will touch `bff/services/model_router.py` and env defaults.
 - **PORTING_LEDGER / ADR updated:** ADR-013 authored (Proposed). Weight pulls are bench-only, not production vendoring — PORTING_LEDGER entry deferred to ADR ratification.
 - **Stop-condition status:** bench artifacts + ADR stub complete. Awaiting operator to execute bench on Colossus (see `bench/pathE_qwen36_27b/README.md`) and paste dump back for Perplexity Max gold-scoring.
+
+
+## 2026-08-05 01:27 EDT — c10 dropped, c11 finalized on native mistral path (F.19-post)
+
+- **Stage / plugin / port:** F.19-post · pathE_qwen36_27b · vLLM bench matrix
+- **What changed:** dropped c10 (Devstral NVFP4) from the matrix after four failed tokenizer-routing fixes; c11 (Devstral AWQ-4bit) locked to native mistral tokenizer/config/load path (repo ships `params.json` + `consolidated.safetensors` + `tekken.json`, cleanly serves via `--tokenizer-mode mistral --config-format mistral --load-format mistral`)
+- **Files touched:**
+  - `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 stanza removed, header + valid-cells list + usage message updated)
+  - `bench/pathE_qwen36_27b/bench_pathE.py` (c10 removed from CELL_CONFIGS and CELL_ORDER)
+  - `DEBUG_LOG.md` (2026-08-05 01:27 EDT entry appended)
+- **Ports / adapters affected:** none (bench-only)
+- **PORTING_LEDGER / ADR updated:** ADR-013 verdict still pending — matrix now 12 cells (c03, c08 Ollama + c01, c02, c04, c05, c07, c03b, c09, c11, c12a, c12b vLLM)
+- **Stop-condition status:** c10/c11 pre-flight complete (c10 dropped, c11 on native mistral path); ready to launch c11 smoke, then begin full matrix
