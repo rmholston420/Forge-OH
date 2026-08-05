@@ -27,12 +27,8 @@
 - **Merge decision for 1.5.3–1.5.5** — see open question below.
 
 ## Open questions / awaiting user answer
-1. **ADR-009 vs 1.5.3–1.5.5.** Reconciliation-plan-v1 wants `create_run` to route via `preset.model`. ADR-009 §3a governs routing by role (coder/planner), and `AgentPreset` has no `role` field. Three paths:
-   - (a) Amend ADR-009 to allow preset-driven model override; add `role` to `AgentPreset`.
-   - (b) Supersede ADR-009 with a new ADR that makes preset-driven routing canonical.
-   - (c) Keep ADR-009 canonical and drop 1.5.3/1.5.4 from reconciliation-plan-v1 (retain 1.5.5 SQLite persistence only).
-   - Which path?
-2. **`FEATURE_RIGPA_LMS_ENABLED` env var removal from `docker-compose.yml`** — confirm nothing outside the repo depends on this variable (e.g. an operator's `.env.local` on Colossus). If yes, restore + deprecate.
+1. **ADR-009 vs 1.5.3–1.5.5 — RESOLVED (option b).** Operator chose to supersede ADR-009 with a new dual-mode routing ADR: role-based routing remains canonical and takes precedence; preset-driven model override layers on top only when `preset.model` is compatible with the resident role's model. `AgentPreset` gains a `role: Literal["coder","planner"]` field. Next slice will draft `docs/adrs/ADR-0XX-dual-mode-routing.md` per `kosmos-adr-authoring` workflow, then implement 1.5.3–1.5.5.
+2. **`FEATURE_RIGPA_LMS_ENABLED` removal from `docker-compose.yml` — RESOLVED (option 2).** Colossus grep confirmed no `.env.local` / systemd / shell rc / Caddy dependency on the var. In-repo references (`src/lib/feature-flags/flags.ts`, `index.ts`, `schemas/rigpa-lms.ts`, `tests/unit/feature-flags.test.ts`, ADR-003, ADR-004) intentionally kept — the flag stays alive in the frontend registry; only the dead compose declaration was removed. Operators toggle via `.env.local`.
 
 ## Exact next action
 1. On Colossus: `cd ~/dev/forge-oh && git fetch origin && git checkout slice/stage1-reconciliation-v1 && git pull`

@@ -4141,3 +4141,10 @@ until the operator picks the next one.
 - 1.1, 1.2, 1.3, 1.4, 1.5.2, 1.6, 1.7 — code landed on `slice/stage1-reconciliation-v1`, ready for Colossus runtime verify.
 - 1.5.3, 1.5.4, 1.5.5 — DEFERRED pending ADR-009 alignment decision.
 - Slice-branch push and PR follow this entry.
+
+## 2026-08-04 21:57 EDT — Stage 1 reconciliation-plan-v1: open questions resolved
+
+- **ADR-009 vs 1.5.3–1.5.5:** operator picked option (b) — supersede ADR-009 with a new dual-mode routing ADR. Role-based routing remains canonical + takes precedence; `preset.model` layers on as an override only when compatible with the resident role's model. `AgentPreset` will gain a `role` field. Draft + implementation to land in the next slice.
+- **`FEATURE_RIGPA_LMS_ENABLED`:** operator picked option (2) — Colossus grep verified no external dependency; compose removal stands; in-repo flag registry and ADR-003/004 references intentionally kept.
+- **Files touched:** SESSION_HANDOFF.md (question section rewritten with resolutions), BUILD_LOG.md (this entry).
+- **Both halves shipped together:** n/a — bookkeeping only.
