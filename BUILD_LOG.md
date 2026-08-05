@@ -4509,3 +4509,20 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected**: none
 - **PORTING_LEDGER / ADR updated**: —
 - **Stop-condition status**: met — CPU-peg feedback-loop failure mode structurally prevented.
+
+## 2026-08-05 06:20 EDT — Reconciliation Plan v1 supersedes Action-Plan-v4
+
+- **Stage / plugin / port**: docs / planning
+- **What changed**:
+  - `docs/reconciliation-plan-v1.md` — full plan committed to repo (was previously project-files-only). Prepended with a canonical / supersedes-v4 status header.
+  - `docs/reconciliation-plan-stage-1H.md` — header updated to point at the in-repo canonical path and reiterate the supersession note.
+  - `AGENTS.md` — added "Canonical Planning Documents" section above "Working with Slices", rewrote "Working with Slices" so slice mechanics apply as sub-mechanics of the reconciliation plan (not as an independent planning system).
+- **Files touched**:
+  - `AGENTS.md`
+  - `docs/reconciliation-plan-v1.md` (new)
+  - `docs/reconciliation-plan-stage-1H.md`
+  - `BUILD_LOG.md`
+  - `SESSION_HANDOFF.md`
+- **Ports / adapters affected**: none
+- **PORTING_LEDGER / ADR updated**: —
+- **Stop-condition status**: met — v4 is documentarily retired for future work; historical BUILD_LOG references remain as append-only history per project instructions.

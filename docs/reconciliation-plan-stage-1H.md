@@ -1,6 +1,10 @@
 # Forge-OH Reconciliation Plan v1 — Stage-1H (Harness Engineering: SWE-bench sandbox)
 
-Companion to `Forge-OH-reconciliation-plan-v1.md` (in Perplexity project files) §6 "Harness Engineering Upgrades." Stage-1H is inserted between the plan's existing Stage 1 (Bootstrap) and Stage 2 (`ModelClient` port) for eval / acceptance-test infrastructure. Locked in by ADR-015.
+> **Canonical planning source:** `docs/reconciliation-plan-v1.md`.
+> The v1 reconciliation plan is authoritative and **supersedes
+> `Forge-OH-Action-Plan-v4.md` entirely** (see `AGENTS.md` § Canonical Planning Documents).
+
+Companion to `docs/reconciliation-plan-v1.md` §6 "Harness Engineering Upgrades." Stage-1H is inserted between the plan's existing Stage 1 (Bootstrap) and Stage 2 (`ModelClient` port) for eval / acceptance-test infrastructure. Locked in by ADR-015.
 
 ## Scope
 

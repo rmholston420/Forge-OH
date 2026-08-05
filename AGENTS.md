@@ -56,16 +56,32 @@ Claude Code, OpenHands, Copilot) working on this repository.
 
 ---
 
+## Canonical Planning Documents
+
+`docs/reconciliation-plan-v1.md` is the **canonical, authoritative execution
+plan** for all Forge-OH work. It supersedes `Forge-OH-Action-Plan-v4.md`
+entirely. Historical BUILD_LOG.md entries reference v4 by name — those
+remain as append-only history, but no new work stages from v4.
+
+Stage-specific companion docs live at `docs/reconciliation-plan-stage-*.md`
+(e.g. `docs/reconciliation-plan-stage-1H.md`).
+
+Before starting any stage or slice: read `SESSION_HANDOFF.md` first, then
+the relevant stage in `docs/reconciliation-plan-v1.md`.
+
 ## Working with Slices
 
-Before implementing any slice:
-- Read the slice checklist in `docs/slices/<slice-id>/CHECKLIST.md`.
-- Read the route contract in `docs/slices/<slice-id>/README.md`.
+Slice mechanics (checklist + route contract + Definition of Done) still apply
+when a stage of the reconciliation plan is broken into slices:
+
+- Read the slice checklist in `docs/slices/<slice-id>/CHECKLIST.md` if it exists.
+- Read the route contract in `docs/slices/<slice-id>/README.md` if it exists.
 - Read `.openhands/context/conventions.md` for coding standards.
 - Read `.openhands/context/architecture.md` for layer boundaries.
 
-Every slice deliverable must satisfy the **Definition of Done** in
-`docs/DEFINITION_OF_DONE.md` before it can be merged.
+Every deliverable must satisfy the **Definition of Done** in
+`docs/DEFINITION_OF_DONE.md` before it can be merged. When the reconciliation
+plan's per-stage stop condition is stricter than DoD, the stricter condition wins.
 
 ---
 
