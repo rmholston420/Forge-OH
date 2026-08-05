@@ -1164,3 +1164,34 @@ Both `Devstral-Small-2-24B-Instruct-2512-nvfp4/chat_template.jinja` and `Devstra
 **Verify with**: after relaunching c10 up, POST /v1/chat/completions with a plain `{"role":"user","content":"..."}` message should return 200 and a completion. No `[INST]` tokens needed in the client payload — vLLM applies the template server-side.
 
 **Prevention**: on any VLM/Mistral-family model, always check for a standalone `chat_template.jinja` file before assuming the tokenizer_config has a baked-in template. If a `.jinja` file is present, wire it via `--chat-template` regardless of what the tokenizer_config claims.
+
+
+## 2026-08-05 01:20 EDT — MistralCommonBackend does not implement get_chat_template (c10 + c11)
+
+**Symptom** (from `POST /v1/chat/completions` against c10 with --chat-template set):
+```
+{
+    "error": {
+        "message": "`MistralCommonBackend` does not implement `get_chat_template`.",
+        "type": "NotImplementedError",
+        "code": 501
+    }
+}
+```
+
+c10 booted, /v1/models returned 200, but chat completions returned 501.
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh (c10, c11)
+
+**Root cause**: vLLM 0.26.0 `--tokenizer-mode auto` prioritizes `MistralCommonBackend` for any Mistral-family repo (`Mistral3ForConditionalGeneration` matches). MistralCommonBackend uses `mistral-common` for tokenization and format enforcement and does NOT support the `apply_chat_template` / `get_chat_template` path — even when `--chat-template` is passed.
+
+Per vLLM's tool-calling doc, Mistral repos in HF format (safetensors + standalone `chat_template.jinja`, no baked-in `chat_template` in tokenizer_config.json) MUST be served with `--tokenizer-mode hf` (and companion `--config_format hf --load_format hf` when the repo has multiple format options). Our repo is safetensors-only so config/load format autodetect to `hf`; only `--tokenizer-mode` needs to be forced.
+
+**Fix applied**: added `--tokenizer-mode hf` to both c10 and c11 EXTRA_FLAGS. This routes tokenization through the HF `AutoTokenizer` path which respects `--chat-template` and reads the jinja file.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 and c11 stanzas)
+
+**Verify with**: after re-launch, `POST /v1/chat/completions` with `{"role":"user","content":"..."}` should return a completion. If it still 501s, the tokenizer_mode enum was not accepted (vLLM 0.10.x used `{auto,slow,mistral}`; 0.26.0 added `hf`).
+
+**Prevention**: on any Mistral-family repo served in HF format, always pass `--tokenizer-mode hf` explicitly. Do NOT rely on `auto` — it auto-picks mistral-common which breaks `--chat-template`.

@@ -137,6 +137,7 @@ case "$CELL" in
     SERVED_NAME="c10_coder_vllm_devstral24b_nvfp4"
     EXTRA_FLAGS=(
       --limit-mm-per-prompt '{"image":0}'
+      --tokenizer-mode hf
       --chat-template "/models/Devstral-Small-2-24B-Instruct-2512-nvfp4/chat_template.jinja"
     )
     ;;
@@ -151,6 +152,7 @@ case "$CELL" in
     SERVED_NAME="c11_coder_vllm_devstral24b_awq"
     EXTRA_FLAGS=(
       --limit-mm-per-prompt '{"image":0}'
+      --tokenizer-mode hf
       --chat-template "/models/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit/chat_template.jinja"
     )
     ;;
