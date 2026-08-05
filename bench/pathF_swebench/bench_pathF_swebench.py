@@ -194,13 +194,15 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
     model_out = call_model(cell, prompt)
     if "error" in model_out:
         print(f"  ERROR: {model_out['error']}", flush=True)
-        return {
+        err_record = {
             "instance_id": instance_id, "model_id": cell["model_id"],
             "mode": "oracle-retrieval", "phase": "model_call",
             "error": model_out["error"],
             "wall_seconds": model_out.get("wall_seconds", 0),
             "prompt_chars": len(prompt), "oracle_files": files,
         }
+        (out_dir / f"{instance_id}.json").write_text(json.dumps(err_record, indent=2))
+        return err_record
 
     # 5. Extract the patch from the model output (whole content is the diff).
     patch_text = model_out["content_stripped"]
