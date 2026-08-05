@@ -211,29 +211,37 @@ def run_task(task: dict, cell_key: str, out_dir: Path, dry_plan_only: bool, keep
     patch_raw = model_out["content_stripped"]
     patch_text = normalize_patch(patch_raw)
 
-    # 6. Apply patch inside the SWE-bench sandbox and run tests.
+    # 6. Apply patch inside the SWE-bench sandbox and run tests via the
+    #    official swebench harness (see apply_and_test.py docstring).
     result_payload: dict = {}
     if dry_plan_only:
         result_payload = {"resolved": None, "phase": "dry-plan-only-skipped-docker"}
     else:
-        # Deferred until docker glue lands.
         from bench.pathF_swebench.apply_and_test import apply_patch_and_run_tests
-        try:
-            test_result = apply_patch_and_run_tests(
-                instance_id=instance_id,
-                patch=patch_text,
-                fail_to_pass=task.get("FAIL_TO_PASS", []) or [],
-                pass_to_pass=task.get("PASS_TO_PASS", []) or [],
-                keep_sandbox=keep_sandbox,
-            )
-            result_payload = {
-                "resolved": test_result.resolved,
-                "fail_to_pass_output": test_result.fail_to_pass_output,
-                "pass_to_pass_output": test_result.pass_to_pass_output,
-                "error": test_result.error,
-            }
-        except NotImplementedError as e:
-            result_payload = {"resolved": None, "phase": "apply_and_test_stub", "error": str(e)}
+        # Give the harness its own dir under the run so its logs/, evaluation_results/
+        # don't collide with our per-task JSON.
+        swebench_root = out_dir.parent.parent / "swebench_runs"
+        swebench_root.mkdir(parents=True, exist_ok=True)
+        harness_run_id = f"{out_dir.name}__{instance_id}"
+        test_result = apply_patch_and_run_tests(
+            instance_id=instance_id,
+            patch=patch_text,
+            model_name=cell["model_id"],
+            artifacts_root=swebench_root,
+            run_id=harness_run_id,
+            keep_sandbox=keep_sandbox,
+        )
+        result_payload = {
+            "resolved": test_result.resolved,
+            "phase": "swebench-harness",
+            "harness_return_code": test_result.harness_return_code,
+            "harness_run_id": harness_run_id,
+            "harness_artifacts_dir": str(swebench_root / harness_run_id),
+            "harness_error": test_result.error,
+            "harness_stdout_tail": test_result.stdout_tail,
+            "harness_stderr_tail": test_result.stderr_tail,
+            "harness_report": test_result.report,
+        }
 
     task_record = {
         "instance_id": instance_id,

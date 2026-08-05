@@ -4569,3 +4569,20 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected**: none
 - **PORTING_LEDGER / ADR updated**: — (F.3.1 pending → ADR-013 amendment #2)
 - **Stop-condition status**: **F.3.0 GATE PASSED**. Next: user reruns dry-run to confirm fence-strip works end-to-end, then Perplexity Computer implements docker apply-and-test glue for F.3.1.
+
+## 2026-08-05 07:04 EDT — F.3 docker glue (swebench-harness bridge)
+
+- **Stage / plugin / port**: Track 1 / F.3 Path A / F.3.0 docker-real gate
+- **What changed**:
+  - `apply_and_test.py`: `apply_patch_and_run_tests()` fully implemented. Shells out to `python -m swebench.harness.run_evaluation` with a single-instance predictions.jsonl, reads the per-instance `report.json`, extracts `resolved` bool. Full stdout/stderr captured to `harness_stdout.log` / `harness_stderr.log` under artifacts dir.
+  - Return shape: `TestResult(resolved, stdout_tail, stderr_tail, report, error, harness_return_code)`. Failure modes handled: empty patch, swebench not installed, harness timeout, missing report, malformed report.
+  - `bench_pathF_swebench.py`: wires new signature. Artifacts land at `~/.forge-oh/swebench_runs/<harness_run_id>/` (parallel to `~/.forge-oh/bench_pathF_swebench/`). Task JSON records `harness_return_code`, `harness_run_id`, `harness_artifacts_dir`, error/stdout/stderr tails, and the full report dict.
+  - Rationale (see apply_and_test.py docstring): reuse the official harness rather than roll our own docker exec + pytest parser. Each SWE-bench Verified task has repo-specific test-invocation quirks that the harness maintains. 8-step DIY approach would be ~150 fragile lines duplicating that.
+  - Dependency: `pip install swebench` (Python ≥3.10, verified against SWE-bench main pyproject.toml).
+- **Files touched**:
+  - `bench/pathF_swebench/apply_and_test.py` (rewrite: stub → 278 lines)
+  - `bench/pathF_swebench/bench_pathF_swebench.py` (new call site)
+  - `BUILD_LOG.md`, `SESSION_HANDOFF.md`
+- **Ports / adapters affected**: none
+- **PORTING_LEDGER / ADR updated**: — (F.3.1 pending → ADR-013 amendment #2)
+- **Stop-condition status**: **Docker glue implemented; awaits confirmation run**. User to: (1) `pip install swebench` in `.oh-venv`, (2) rerun F.3.0 without `--dry-plan-only`, (3) confirm `resolved=true` for django__django-10914. On green, unblocks F.3.1.
