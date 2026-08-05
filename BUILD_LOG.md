@@ -4165,3 +4165,26 @@ until the operator picks the next one.
 - **Ports / adapters affected:** none this slice. Implementation lands next slice per ADR-012 §Consequences.
 - **PORTING_LEDGER / ADR updated:** ADR-012 authored; ADR-009 amended; ADR index created.
 - **Stop-condition status:** ADR slice complete. Next slice `slice/dual-mode-routing-impl` implements ADR-012 §Consequences bullet list (`bff/services/model_router.py`, `bff/routers/agent_presets.py`, `bff/routers/runs.py`, SQLite migration, three test files, frontend catalog endpoint + role selector).
+
+## 2026-08-04 22:35 EDT — Path E bench harness + ADR-013 skeleton: Qwen3.6-27B rebench
+
+- **Stage / plugin / port:** Stage 1 reconciliation-plan-v1 · pre-work for ADR-013 model-selection flip · BFF `MODEL_ROUTER_CATALOG` seed (deferred until bench validates).
+- **Slice branch:** `slice/coder-planner-rebench` off `slice/dual-mode-routing-adr`.
+- **What changed:** authored Path E bench (5 cells, quality-first per user directive; planner is quality-first, no speed tiebreak) and ADR-013 stub. Bench targets Qwen3.6-27B in two quant variants against the ADR-009 baseline:
+  - c01 coder = `Lorbus/Qwen3.6-27B-int4-AutoRound` (proposed coder)
+  - c02 coder = `qwen3.6-35b-a3b-nvfp4` (ADR-009 baseline coder)
+  - c03 coder = Ollama `qwen3-coder:32k` (current fallback floor)
+  - c04 planner = `nvidia/Qwen3.6-27B-NVFP4` (proposed planner)
+  - c05 planner = `qwen3-thinking-2507-awq` (ADR-009 baseline planner)
+  - Bench methodology: `forge-oh-bench-methodology` + `local-llm-bench` skills — one JSON per cell×prompt, `<think>` stripped, Perplexity Max gold-standard scoring, quality-first with 3-point tie window and speed tiebreak (planner exempt from tiebreak).
+- **Files touched:**
+  - `bench/pathE_qwen36_27b/bench_pathE.py` (new, 229 lines) — harness
+  - `bench/pathE_qwen36_27b/vllm_launch.sh` (new, 108 lines) — per-cell vLLM launcher with correct flags per role (tool-call parser for coder, reasoning parser for planner)
+  - `bench/pathE_qwen36_27b/vllm_down.sh` (new)
+  - `bench/pathE_qwen36_27b/pull_models.sh` (new) — HF weight fetcher for the two new models
+  - `bench/pathE_qwen36_27b/README.md` (new, 141 lines) — run book with success criteria
+  - `docs/adr/013-qwen36-27b-canonical-coder-planner.md` (new, 95 lines) — Proposed status pending bench
+  - `docs/adr/README.md` — added row for ADR-013
+- **Ports / adapters affected:** none this slice. Bench harness is out-of-band tooling; the ADR ratification (deferred) will touch `bff/services/model_router.py` and env defaults.
+- **PORTING_LEDGER / ADR updated:** ADR-013 authored (Proposed). Weight pulls are bench-only, not production vendoring — PORTING_LEDGER entry deferred to ADR ratification.
+- **Stop-condition status:** bench artifacts + ADR stub complete. Awaiting operator to execute bench on Colossus (see `bench/pathE_qwen36_27b/README.md`) and paste dump back for Perplexity Max gold-scoring.
