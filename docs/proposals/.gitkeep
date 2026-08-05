@@ -1,0 +1,8 @@
+# docs/proposals/ — selfeval proposer LLM outputs
+#
+# Per ADR-016 + AGENTS.md Rule #10, files land here ONLY when the proposer
+# LLM was healthy during the selfeval run. Environmental-failure proposals
+# ([Errno 111] Connection refused, vLLM down, transport timeouts) belong
+# in DEBUG_LOG.md, not here.
+#
+# This file exists to track the directory in git while it's empty.

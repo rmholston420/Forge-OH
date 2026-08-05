@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # F.19 coder-role vLLM launcher (Docker; matches bench/f19pre/vllm_launch.sh).
 #
-# Serves qwen3.6-35b-nvfp4 on :8501 as "qwen3.6-35b-nvfp4".
+# ADR-013 amendment #1 (2026-08-05 04:55 EDT): default flipped to Qwen3.6-27B
+# INT4 AutoRound after F.1b instrumented rebench. Ratified via unanimous
+# 3-scorer Council pass. See docs/adr/013-qwen36-27b-canonical-coder-planner.md.
+#
+# Serves qwen3.6-27b-int4-autoround on :8501 as "qwen3.6-27b-int4-autoround".
+#
+# The Lorbus/Qwen3.6-27B-int4-AutoRound weights are packaged as compressed-
+# tensors int4; vLLM auto-detects the quant method from config.json — do NOT
+# pass --quantization here. Tool-call parser matches Qwen3-Coder family.
 #
 # Native venv (~/venv/vllm-new, vLLM 0.10.2) does NOT support qwen3_5_moe.
 # ADR-009 §5 requires vLLM ≥ 0.26.0 → we run the pinned Docker image the
@@ -11,14 +19,19 @@
 #   FORGE_COMPOSE_MODELS_DIR   host dir mounted as /models (default $HOME/models)
 #   FORGE_VLLM_IMAGE           docker image (default vllm/vllm-openai:latest)
 #   FORGE_VLLM_CODER_PORT      host port (default 8501)
-#   FORGE_VLLM_CODER_NAME      served-model-name / container tag (default qwen3.6-35b-nvfp4)
-#   FORGE_VLLM_CODER_MODEL_DIR model dir under /models (default qwen3.6-35b-nvfp4)
+#   FORGE_VLLM_CODER_NAME      served-model-name / container tag (default qwen3.6-27b-int4-autoround)
+#   FORGE_VLLM_CODER_MODEL_DIR model dir under /models (default qwen3.6-27b-int4-autoround)
+#
+# Rollback to ADR-009 baseline (qwen3.6-35b-nvfp4):
+#   FORGE_VLLM_CODER_NAME=qwen3.6-35b-nvfp4 \
+#   FORGE_VLLM_CODER_MODEL_DIR=qwen3.6-35b-nvfp4 \
+#     bash ops/vllm_launch_coder.sh --quantization modelopt_fp4
 
 MODELS_DIR="${FORGE_COMPOSE_MODELS_DIR:-$HOME/models}"
 IMAGE="${FORGE_VLLM_IMAGE:-vllm/vllm-openai:latest}"
 PORT="${FORGE_VLLM_CODER_PORT:-8501}"
-NAME="${FORGE_VLLM_CODER_NAME:-qwen3.6-35b-nvfp4}"
-MODEL_DIR="${FORGE_VLLM_CODER_MODEL_DIR:-qwen3.6-35b-nvfp4}"
+NAME="${FORGE_VLLM_CODER_NAME:-qwen3.6-27b-int4-autoround}"
+MODEL_DIR="${FORGE_VLLM_CODER_MODEL_DIR:-qwen3.6-27b-int4-autoround}"
 CONTAINER="forge-vllm-coder"
 
 if [ ! -d "$MODELS_DIR/$MODEL_DIR" ]; then
@@ -50,7 +63,8 @@ docker run -d --name "$CONTAINER" --gpus all \
   --max-num-seqs 128 \
   --dtype auto \
   --trust-remote-code \
-  --quantization modelopt_fp4 \
+  --tool-call-parser qwen3_coder \
+  --enable-auto-tool-choice \
   --enable-prefix-caching \
   "$@"
 RC=$?

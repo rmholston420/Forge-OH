@@ -5,7 +5,12 @@ const BASE = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 export const fetchPresets = async (): Promise<AgentPreset[]> => {
   const r = await fetch(`${BASE}/api/agent-presets`);
   if (!r.ok) throw new Error('Failed to fetch presets');
-  return r.json();
+  // BFF returns {data: [...]} envelope (see bff/routers/agent_presets.py::list_presets).
+  // Unwrap here so consumers always receive AgentPreset[].
+  const body = await r.json().catch(() => null);
+  if (Array.isArray(body)) return body;
+  if (body && Array.isArray(body.data)) return body.data;
+  return [];
 };
 
 export const fetchPreset = async (id: string): Promise<AgentPreset> => {

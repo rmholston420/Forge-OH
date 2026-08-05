@@ -33,18 +33,55 @@ Claude Code, OpenHands, Copilot) working on this repository.
    Never rename: Run, AgentPreset, Workspace, ToolEvent, Artifact, Integration,
    TraceSpan, SecretRef, PlanNode, CommandExecution, BrowserSession.
 
+9. **Colossus <-> GitHub mirror parity is mandatory** (ADR-016). Every file on
+   Colossus at `~/dev/forge-oh/` is either tracked in git or explicitly ignored
+   via `.gitignore` with a comment justifying why. No untracked-but-not-ignored
+   files. **Perplexity Computer commits directly to GitHub via `bash` with
+   `api_credentials=["github"]`; the user pulls with `git pull`.** No paste-
+   block commit workflows. Every commit pushes the same turn. Run
+   `bash scripts/forge-doctor.sh` at session start and end to detect drift. The
+   pre-commit hook at `scripts/pre_commit_drift_check.sh` (installed via
+   `.pre-commit-config.yaml`) blocks accidental drift-introducing commits
+   (overridable with `git commit --no-verify` only for legitimate WIP).
+
+10. **Selfeval artifact retention policy** (ADR-016). Commit selfeval outputs
+    only when they carry signal:
+    - `docs/selfeval/*.md` analysis/scope docs -> always commit.
+    - `docs/selfeval/*.json` result summaries -> commit only if at least one
+      task produced real signal (not all-environmental-error like vLLM :8501
+      down).
+    - `docs/proposals/*.md` proposer LLM outputs -> commit only if the proposer
+      LLM was healthy for that run (not `Connection refused` failures).
+    Environmental failures belong in `DEBUG_LOG.md`, not `docs/proposals/`.
+
 ---
+
+## Canonical Planning Documents
+
+`docs/reconciliation-plan-v1.md` is the **canonical, authoritative execution
+plan** for all Forge-OH work. It supersedes `Forge-OH-Action-Plan-v4.md`
+entirely. Historical BUILD_LOG.md entries reference v4 by name — those
+remain as append-only history, but no new work stages from v4.
+
+Stage-specific companion docs live at `docs/reconciliation-plan-stage-*.md`
+(e.g. `docs/reconciliation-plan-stage-1H.md`).
+
+Before starting any stage or slice: read `SESSION_HANDOFF.md` first, then
+the relevant stage in `docs/reconciliation-plan-v1.md`.
 
 ## Working with Slices
 
-Before implementing any slice:
-- Read the slice checklist in `docs/slices/<slice-id>/CHECKLIST.md`.
-- Read the route contract in `docs/slices/<slice-id>/README.md`.
+Slice mechanics (checklist + route contract + Definition of Done) still apply
+when a stage of the reconciliation plan is broken into slices:
+
+- Read the slice checklist in `docs/slices/<slice-id>/CHECKLIST.md` if it exists.
+- Read the route contract in `docs/slices/<slice-id>/README.md` if it exists.
 - Read `.openhands/context/conventions.md` for coding standards.
 - Read `.openhands/context/architecture.md` for layer boundaries.
 
-Every slice deliverable must satisfy the **Definition of Done** in
-`docs/DEFINITION_OF_DONE.md` before it can be merged.
+Every deliverable must satisfy the **Definition of Done** in
+`docs/DEFINITION_OF_DONE.md` before it can be merged. When the reconciliation
+plan's per-stage stop condition is stricter than DoD, the stricter condition wins.
 
 ---
 

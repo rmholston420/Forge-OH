@@ -1,0 +1,437 @@
+"""Patch-apply + test-run stage of the F.3 harness.
+
+Three responsibilities:
+
+1. `normalize_patch(text)` — strip markdown code fences that some models
+   (c01 confirmed via F.3.0 dry-run 2026-08-05 06:53 EDT on
+   django__django-10914) wrap around unified diffs. `git apply` rejects
+   fenced text. Also recomputes hunk header counts from body via
+   `recount_hunks()` — models frequently emit wrong -/+ counts (verified
+   2026-08-05 08:09 EDT: django__django-11133 emitted `@@ -149,6 +149,7 @@`
+   with 6-old/8-new body; GNU patch aborts "malformed patch at line 10").
+
+2. `recount_hunks(text)` — pure-Python equivalent of `git apply --recount`.
+   Rewrites each `@@ -a,b +c,d @@` header so `b` = count of ' ' + '-' body
+   lines and `d` = count of ' ' + '+' body lines. Idempotent on
+   well-formed patches.
+
+3. `apply_patch_and_run_tests(instance_id, patch, model_name, artifacts_root)`
+   — shells out to the official SWE-bench harness
+   (`python -m swebench.harness.run_evaluation`) with a single-instance
+   predictions.jsonl. Reads the per-instance report and returns resolved
+   True/False plus captured stdout/stderr.
+
+Design rationale (see BUILD_LOG 2026-08-05 06:55 EDT):
+- Reuse the official harness — it maintains per-repo test-invocation quirks
+  (each SWE-bench task has repo-specific pytest incantations).
+- Rolling our own docker pull + git apply + pytest parser would be ~150
+  fragile lines that duplicate what the harness already does correctly.
+- The harness is `pip install swebench` (Python ≥3.10). Confirmed against
+  SWE-bench GitHub main branch pyproject.toml on 2026-08-05.
+
+Predictions.jsonl schema (verified against harness source
+`swebench/harness/run_evaluation.py`):
+    {
+      "instance_id": "<instance>",
+      "model_name_or_path": "<name>",
+      "model_patch": "<unified diff>"
+    }
+    one JSON object per line, `\\n`-terminated.
+
+Result-file location (verified against harness source):
+    <run_cwd>/logs/run_evaluation/<run_id>/<model_slug>/<instance_id>/report.json
+    with schema {instance_id: {"resolved": bool, ...}}
+    model_slug = model_name.replace("/", "__")
+
+Artifacts layout (this module):
+    <artifacts_root>/<run_id>/
+      predictions.jsonl
+      logs/                      (harness-managed)
+      evaluation_results/        (harness-managed)
+      harness_stdout.log
+      harness_stderr.log
+
+Failure modes handled:
+- swebench not importable → RuntimeError with install hint.
+- Empty/None patch → resolved=False, error="empty patch".
+- Harness subprocess non-zero exit → resolved=False, error captured.
+- Report file missing after harness exit → resolved=False,
+  error="no report; likely image pull failure".
+- Report has no `resolved` key → resolved=False, error="report shape unexpected".
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+# --- fence stripper --------------------------------------------------------
+
+_FENCE_OPEN_RE = re.compile(r"^\s*```(?:diff|patch)?\s*\n", re.IGNORECASE)
+_FENCE_CLOSE_RE = re.compile(r"\n\s*```\s*$")
+_HUNK_HEADER_RE = re.compile(
+    r"^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@(?P<trailer>.*)$"
+)
+_OLD_FILE_HEADER_RE = re.compile(r"^--- a/(?P<path>.+)$")
+_NEW_FILE_HEADER_RE = re.compile(r"^\+\+\+ b/(?P<path>.+)$")
+
+
+def merge_duplicate_file_sections(text: str) -> str:
+    """Merge multiple ``--- a/PATH / +++ b/PATH`` sections against the same file.
+
+    Some models (Qwen3.6-27B-Coder INT4 confirmed 2026-08-05 08:37 EDT on
+    sphinx-doc__sphinx-8035) group logically-related changes as separate
+    file sections against the SAME target file:
+
+        --- a/foo.py
+        +++ b/foo.py
+        @@ ... @@ <hunks>
+        --- a/foo.py       ← second section, same file
+        +++ b/foo.py
+        @@ ... @@ <more hunks>
+
+    GNU patch tries to apply each section independently. If the second
+    section's hunks would have already been applied (or reversed) by the
+    first, patch bails with "Reversed (or previously applied) patch
+    detected!" and fails hunks.
+
+    Fix: keep the first ``--- a/... / +++ b/...`` header, drop subsequent
+    duplicates AND their trailing metadata (`index`, `diff --git`) lines,
+    keep all hunks. Result is a single file section with all hunks in
+    order.
+
+    Only merges CONSECUTIVE duplicates or duplicates with no other file
+    section in between. Idempotent when there are no duplicates.
+    """
+    if not text:
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    seen_files: set[str] = set()
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        old_m = _OLD_FILE_HEADER_RE.match(line)
+        if old_m and (i + 1) < n:
+            new_m = _NEW_FILE_HEADER_RE.match(lines[i + 1])
+            if new_m:
+                path = old_m.group("path")
+                if path in seen_files:
+                    # Duplicate section — skip the two header lines AND any
+                    # immediately-preceding ``diff --git`` / ``index`` prose
+                    # already emitted for this section (we can't retro-remove
+                    # what we've emitted, but the model rarely emits those
+                    # for the duplicate section — real cases show bare
+                    # --- / +++ headers).
+                    i += 2
+                    # Also skip any git-format metadata lines that sometimes
+                    # follow the +++ line (index / diff --git / new file mode).
+                    while i < n and (
+                        lines[i].startswith("index ")
+                        or lines[i].startswith("diff --git ")
+                        or lines[i].startswith("new file mode ")
+                        or lines[i].startswith("deleted file mode ")
+                    ):
+                        i += 1
+                    continue
+                seen_files.add(path)
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
+def recount_hunks(text: str) -> str:
+    """Recompute `-a,b +c,d` counts in every hunk header from the body.
+
+    Equivalent of `git apply --recount` but pure-Python (no git checkout
+    required). Handles multiple hunks per file and multiple file sections.
+    Idempotent — well-formed patches pass through unchanged.
+
+    A unified-diff body line belongs to a hunk if it starts with ' ', '+',
+    '-', or '\\' (for "\\ No newline at end of file"). Everything else
+    (blank line, next `@@`, next `---`/`+++`, or EOF) closes the hunk.
+
+    - Old-count = count of body lines starting with ' ' or '-' (not '\\').
+    - New-count = count of body lines starting with ' ' or '+' (not '\\').
+
+    Preserves the hunk-header trailer (the section context after `@@`)
+    and all body content verbatim.
+    """
+    if not text:
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        m = _HUNK_HEADER_RE.match(line)
+        if not m:
+            out.append(line)
+            i += 1
+            continue
+        # Found a hunk header. Scan forward to collect the body.
+        body_start = i + 1
+        j = body_start
+        old_count = 0
+        new_count = 0
+        while j < n:
+            bl = lines[j]
+            if not bl:
+                # Blank line in body is ambiguous. Some tools treat it as a
+                # context line (equivalent to ' '); others as end-of-hunk.
+                # GNU patch and git apply BOTH accept blank-as-context, so
+                # we count it as context and continue. If this is actually
+                # the end of the patch (last hunk with trailing blank),
+                # counting an extra ctx line is harmless — recount only
+                # writes what we counted, and the following non-hunk
+                # content is preserved verbatim below.
+                old_count += 1
+                new_count += 1
+                j += 1
+                continue
+            c0 = bl[0]
+            if c0 == " ":
+                old_count += 1
+                new_count += 1
+            elif c0 == "-":
+                old_count += 1
+            elif c0 == "+":
+                new_count += 1
+            elif c0 == "\\":
+                # "\ No newline at end of file" — doesn't count as a line.
+                pass
+            else:
+                # Not a body line — either next hunk header, next file
+                # section, or trailing prose. Stop here.
+                break
+            j += 1
+        # Rewrite the header with recomputed counts.
+        old_start = m.group("old_start")
+        new_start = m.group("new_start")
+        trailer = m.group("trailer") or ""
+        new_header = f"@@ -{old_start},{old_count} +{new_start},{new_count} @@{trailer}"
+        out.append(new_header)
+        # Append body lines verbatim.
+        out.extend(lines[body_start:j])
+        i = j
+    return "\n".join(out)
+
+
+def normalize_patch(text: str) -> str:
+    """Strip markdown code fences, outer whitespace, and recount hunks.
+
+    Handles:
+    - Fully-wrapped: ``` ... ``` / ```diff ... ``` / ```patch ... ```
+    - Extra leading/trailing whitespace
+    - Malformed hunk counts (via `recount_hunks`) — models routinely emit
+      wrong -/+ counts, which GNU patch rejects as "malformed patch".
+    - Trailing prose after the diff — LEFT IN PLACE (git apply will fail
+      loudly, which is what we want for scoring — silently swallowing prose
+      would mask a bad model output).
+    """
+    if not text:
+        return text
+    stripped = text.strip()
+    stripped = _FENCE_OPEN_RE.sub("", stripped, count=1)
+    stripped = _FENCE_CLOSE_RE.sub("", stripped, count=1)
+    stripped = stripped.strip()
+    stripped = merge_duplicate_file_sections(stripped)
+    return recount_hunks(stripped)
+
+
+# --- docker apply + test ---------------------------------------------------
+
+@dataclass
+class TestResult:
+    resolved: bool
+    stdout_tail: str = ""
+    stderr_tail: str = ""
+    report: dict = field(default_factory=dict)
+    error: str | None = None
+    harness_return_code: int | None = None
+
+
+def _slug(model_name: str) -> str:
+    """SWE-bench harness slug rule: replace '/' with '__' for path safety."""
+    return model_name.replace("/", "__")
+
+
+def _tail(s: str, n: int = 4000) -> str:
+    if s is None:
+        return ""
+    return s if len(s) <= n else s[-n:]
+
+
+def _swebench_available() -> tuple[bool, str]:
+    """Confirm the harness is importable + CLI reachable. Returns (ok, hint)."""
+    try:
+        import swebench  # noqa: F401
+    except ImportError:
+        return False, (
+            "swebench not installed. Install into the same interpreter as "
+            "this script: `pip install swebench` (needs Python >= 3.10)."
+        )
+    # Try `python -m swebench.harness.run_evaluation --help` — cheap sanity.
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "swebench.harness.run_evaluation", "--help"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "swebench CLI hung on --help (>30s); investigate the install."
+    if r.returncode != 0:
+        return False, (
+            f"swebench CLI exited {r.returncode} on --help. stderr tail:\n"
+            f"{_tail(r.stderr, 800)}"
+        )
+    return True, ""
+
+
+def apply_patch_and_run_tests(
+    instance_id: str,
+    patch: str,
+    model_name: str,
+    artifacts_root: Path,
+    run_id: str,
+    dataset_name: str = "princeton-nlp/SWE-bench_Verified",
+    split: str = "test",
+    max_workers: int = 1,
+    timeout_seconds: int = 1800,
+    keep_sandbox: bool = False,
+) -> TestResult:
+    """Run one prediction through the official SWE-bench harness.
+
+    Args:
+        instance_id: SWE-bench Verified instance id, e.g. "django__django-10914".
+        patch: unified diff text (must already be fence-stripped via
+            `normalize_patch`).
+        model_name: identifier used in report paths, e.g.
+            "c01_coder_vllm_qwen36_27b_int4".
+        artifacts_root: parent directory for this run's outputs. Will contain
+            `<artifacts_root>/<run_id>/predictions.jsonl` plus harness-managed
+            `logs/` and `evaluation_results/` subdirs.
+        run_id: string used by the harness for its own directory naming.
+        dataset_name: HF dataset id. Defaults to Verified.
+        split: HF dataset split. Defaults to "test".
+        max_workers: harness parallelism. F.3.0 single-task = 1.
+        timeout_seconds: hard cap on the whole harness invocation.
+        keep_sandbox: harness passes `--cache_level` env by default, which
+            keeps images and containers around. If False (default), we still
+            leave them — cleaning up midway breaks concurrent runs. Reserved
+            for future cleanup hooks.
+    """
+    if not patch or not patch.strip():
+        return TestResult(
+            resolved=False,
+            error="empty patch; model produced no output",
+        )
+
+    ok, hint = _swebench_available()
+    if not ok:
+        return TestResult(resolved=False, error=hint)
+
+    run_dir = artifacts_root / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    pred_line = json.dumps(
+        {
+            "instance_id": instance_id,
+            "model_name_or_path": model_name,
+            "model_patch": patch,
+        },
+        ensure_ascii=False,
+    )
+    pred_path = run_dir / "predictions.jsonl"
+    pred_path.write_text(pred_line + "\n", encoding="utf-8")
+
+    cmd = [
+        sys.executable, "-m", "swebench.harness.run_evaluation",
+        "--dataset_name", dataset_name,
+        "--split", split,
+        "--predictions_path", str(pred_path),
+        "--run_id", run_id,
+        "--instance_ids", instance_id,
+        "--max_workers", str(max_workers),
+    ]
+
+    stdout_log = run_dir / "harness_stdout.log"
+    stderr_log = run_dir / "harness_stderr.log"
+
+    try:
+        r = subprocess.run(
+            cmd,
+            cwd=run_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as te:
+        stdout_log.write_text(te.stdout or "", encoding="utf-8")
+        stderr_log.write_text(te.stderr or "", encoding="utf-8")
+        return TestResult(
+            resolved=False,
+            stdout_tail=_tail(te.stdout or ""),
+            stderr_tail=_tail(te.stderr or ""),
+            error=f"harness timeout after {timeout_seconds}s",
+            harness_return_code=None,
+        )
+
+    stdout_log.write_text(r.stdout or "", encoding="utf-8")
+    stderr_log.write_text(r.stderr or "", encoding="utf-8")
+
+    slug = _slug(model_name)
+    report_path = (
+        run_dir / "logs" / "run_evaluation" / run_id / slug
+        / instance_id / "report.json"
+    )
+
+    if not report_path.exists():
+        return TestResult(
+            resolved=False,
+            stdout_tail=_tail(r.stdout or ""),
+            stderr_tail=_tail(r.stderr or ""),
+            error=(
+                f"harness produced no report at {report_path}. "
+                "Common causes: docker image pull failure, patch failed to "
+                "apply, harness aborted before per-instance execution."
+            ),
+            harness_return_code=r.returncode,
+        )
+
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as je:
+        return TestResult(
+            resolved=False,
+            stdout_tail=_tail(r.stdout or ""),
+            stderr_tail=_tail(r.stderr or ""),
+            error=f"report.json unreadable: {je}",
+            harness_return_code=r.returncode,
+        )
+
+    inst = report.get(instance_id, {})
+    if "resolved" not in inst:
+        return TestResult(
+            resolved=False,
+            stdout_tail=_tail(r.stdout or ""),
+            stderr_tail=_tail(r.stderr or ""),
+            report=report,
+            error="report shape unexpected: no 'resolved' key",
+            harness_return_code=r.returncode,
+        )
+
+    return TestResult(
+        resolved=bool(inst["resolved"]),
+        stdout_tail=_tail(r.stdout or ""),
+        stderr_tail=_tail(r.stderr or ""),
+        report=report,
+        harness_return_code=r.returncode,
+    )

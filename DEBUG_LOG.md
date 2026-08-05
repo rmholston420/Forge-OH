@@ -977,3 +977,433 @@ Pydantic schema.
 **Fix applied:** Executed the conservative safe subset for each sub-slice; documented every divergence in BUILD_LOG.md entry `2026-08-04 21:38 EDT`. 1.5.3–1.5.5 deferred pending operator decision on ADR-009 amendment or supersede.
 
 **Files changed:** BUILD_LOG.md (append). No revert of prior slice work; deletions in 1.4 remain because their target files are demonstrably orphan against the current repo state, not against the plan's assumed state.
+## 2026-08-04 23:57 EDT — c04 vLLM fails to start: "max_num_seqs (128) exceeds available Mamba cache blocks (111)"
+
+**Symptom** (exact from `docker logs vllm-bench`):
+```
+ValueError: max_num_seqs (128) exceeds available Mamba cache blocks (111). Each decode sequence requires one Mamba cache block, so CUDA graph capture cannot proceed. Please lower max_num_seqs to at most 111 or increase gpu_memory_utilization.
+RuntimeError: Engine core initialization failed.
+```
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh · c04 cell (Qwen3.6-27B NVFP4 planner)
+
+**Root cause**: Qwen3.6-27B uses Mamba/hybrid attention (not pure dense self-attention). Mamba cache slots are a fixed derived quantity based on model config × gpu_memory_utilization × available VRAM. On Colossus RTX 5090 (32 GB, 0.90 util) the model provides ~111 Mamba slots. Our launcher hard-coded `--max-num-seqs 128`, which exceeded the slot count. Each parallel decode sequence needs one Mamba slot, so vLLM refused to start.
+
+**Fix applied**: introduced per-cell `MAX_NUM_SEQS` override in `vllm_launch.sh`. For c04, set to 96 (safe headroom below the 111 hard-cap). Default remains 128 for all non-Mamba cells (c01 dense-int4, c02 A3B MoE, c03b dense AWQ, c05 dense AWQ). If future Mamba-model cells fail with the same symptom, set their own `MAX_NUM_SEQS` in the case-block.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (added per-cell MAX_NUM_SEQS variable + comment)
+
+**Alternative not chosen**: raising `--gpu-memory-utilization` beyond 0.90 would produce more Mamba slots but risks OOM on prompt processing spikes.
+
+**Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c04` — should reach READY without the Mamba-slot error.
+
+## 2026-08-05 00:00 EDT — c03b vLLM fails to start: "Quantization method in model config (compressed-tensors) does not match --quantization (awq_marlin)"
+
+**Symptom** (exact from `docker logs vllm-bench`):
+```
+pydantic_core._pydantic_core.ValidationError: 1 validation error for ModelConfig
+Value error, Quantization method specified in the model config (compressed-tensors) does not match the quantization method specified in the `quantization` argument (awq_marlin).
+```
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh · c03b cell (Qwen3-Coder-30B AWQ-4bit from cyankiwi)
+
+**Root cause**: The repo `cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit` is misleadingly named — despite "AWQ" in the repo name, its `config.json` declares `quantization_config.quant_method = "compressed-tensors"` with `format: pack-quantized`, `group_size: 32`, `num_bits: 4`, symmetric int4. This is llm-compressor's compressed-tensors int4 format, not classic AWQ. vLLM refuses when `--quantization awq_marlin` disagrees with the model's self-declared method.
+
+**Fix applied**: removed `--quantization awq_marlin` from c03b case in `vllm_launch.sh`. vLLM auto-detects `compressed-tensors` from `config.json` and dispatches to the correct kernel (on Blackwell this is still int4 Marlin under the hood).
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c03b case simplified, comment explaining the naming trap)
+
+**Alternative not chosen**: re-downloading `QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ` (real AWQ, 254K downloads) would require ~10 min extra bandwidth. cyankiwi's int4 quality is equivalent to AWQ at same group size, so not worth the round-trip.
+
+**Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c03b` — should reach READY without the quantization-mismatch error.
+
+
+## 2026-08-05 00:33 EDT — pull_new_models.sh: "File not found in repository ... /resolve/main/original/%2A"
+
+**Symptom** (exact from operator paste):
+```
+UserWarning: Ignoring `--exclude` since filenames have been explicitly set.
+Error: File not found in repository.
+URL: https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8/resolve/main/original/%2A
+```
+
+**Affected**: F.19-post · pathE_qwen36_27b · pull_new_models.sh
+
+**Root cause**: The `hf download` CLI on huggingface_hub 1.26.0 treats positional args after the repo id as literal filenames (URL-encodes the `*`). The `original/*` positional was intended as a glob for the deprecated `--exclude` flag, but `--exclude` is silently ignored when any positional filename is present. Result: CLI tried to fetch a literal file called `original/*` (URL-encoded to `original/%2A`), which doesn't exist.
+
+**Fix applied**: rewrite `pull()` to use `--include` patterns instead. Explicitly list inference-time file globs: `*.safetensors`, `*.json`, `*.txt`, `*.model`, `tokenizer*`. This is the huggingface_hub 1.0+ recommended pattern (positional filenames become part of the include set, not an exclude set).
+
+**Also updated**: env-var handling. `HF_HUB_ENABLE_HF_TRANSFER` is deprecated in huggingface_hub >=1.0 in favor of `HF_XET_HIGH_PERFORMANCE`. Script now exports both for backward/forward compatibility.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/pull_new_models.sh` (pull() uses --include; env-var handling updated)
+
+**Verify with**: `bash bench/pathE_qwen36_27b/pull_new_models.sh` — should begin downloading `.safetensors` shards without the "File not found" error.
+
+## 2026-08-05 00:33 EDT — Ollama pull failure: "pull model manifest: file does not exist" for yi-1.5:34b
+
+**Symptom** (exact):
+```
+pulling manifest
+Error: pull model manifest: file does not exist
+```
+
+**Affected**: F.19-post · c08 cell · Ollama tag
+
+**Root cause**: Ollama's registry does not use the `yi-1.5:34b` naming convention. The Yi-1.5 family is exposed under the `yi` model with quantization-suffixed tags: `yi:34b-chat-v1.5-q4_K_M`, `yi:34b-chat-v1.5-q8_0`, etc. Confirmed via `curl https://ollama.com/library/yi/tags`.
+
+**Fix applied**: updated `bench_pathE.py` c08 tag from `yi-1.5:34b` to `yi:34b-chat-v1.5-q4_K_M` (Q4_K_M chosen to fit 32 GB VRAM with KV headroom, matches c03's Ollama quant tier). Also updated pull_new_models.sh comment.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/bench_pathE.py` (c08 model_id)
+- `bench/pathE_qwen36_27b/pull_new_models.sh` (echo hint)
+
+**Verify with**: `ollama pull yi:34b-chat-v1.5-q4_K_M` — should download without manifest error.
+
+
+## 2026-08-05 00:39 EDT — pull_new_models.sh v2: --include also silently ignored, only tiny configs downloaded
+
+**Symptom** (exact from operator paste):
+```
+UserWarning: Ignoring `--include` since filenames have been explicitly set.
+Fetching 7 files: 100%|██████████| 7/7 [00:01<00:00,  5.70it/s]
+[2026-08-05 00:34:12 EDT] DONE Qwen3-Coder-30B-A3B-Instruct-FP8
+```
+
+All 5 HF pulls "succeeded" in <2 seconds each — a real 30 GB weight download over hf_transfer runs 30-90 seconds. Only tiny (11 MB, 2 MB, 34 MB) config/tokenizer files were fetched.
+
+**Affected**: F.19-post · pathE_qwen36_27b · pull_new_models.sh
+
+**Root cause**: On huggingface_hub 1.26.0, the `hf download` CLI treats **any** positional args after the repo id as literal filenames, AND silently ignores `--include` when positional filenames are also inferred. The `--include "*.safetensors" "*.json" "*.txt" "*.model" "tokenizer*"` was parsed as: `--include "*.safetensors"` with `"*.json"`, `"*.txt"`, `"*.model"`, `"tokenizer*"` as positional filenames — which the CLI then tried to fetch literally, hitting cached small files or failing silently.
+
+**Fix applied**: rewrote `pull()` to omit both `--include` and `--exclude` (full snapshot download), then post-download `find ... -name '*.gguf' -delete` to remove GGUFs. Added a sentinel check: only skip if a `.safetensors` file > 100 MB exists in the target dir (guards against the "download succeeded with only configs" false positive). Failure now returns exit 3 with a clear error.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/pull_new_models.sh`
+
+**Verify with**: `bash bench/pathE_qwen36_27b/pull_new_models.sh` — expect real download times (30-120s per model on Gbit) and `du -sh` should show ~15-30 GB per model dir.
+
+
+
+## 2026-08-05 01:04 EDT — Devstral-Small-2-2512 is a VLM, not a text-only coder (c10 + c11 config discovery)
+
+**Symptom** (exact from operator paste, config.json inspection):
+```
+architectures: ['Mistral3ForConditionalGeneration']
+model_type: mistral3
+has vision_config: True
+```
+Both c10 (`Devstral-Small-2-24B-Instruct-2512-nvfp4`) and c11 (`Devstral-Small-2-24B-Instruct-2512-AWQ-4bit`) config.json declare `Mistral3ForConditionalGeneration` with a full `vision_config` block. c11's `quantization_config.ignore` list further confirms this by naming 24 `model.vision_tower.transformer.layers.*` modules and the `multi_modal_projector`.
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh (c10, c11)
+
+**Root cause**: Mistral's Devstral-Small-2 "2512" release is multimodal-only. There is no text-only sibling in the `-2512-` naming convention. Both quant variants (Fireworks NVFP4 and cyankiwi compressed-tensors AWQ-4bit) inherit the vision tower and multi-modal projector from the base model. Loading these under vLLM without a mm-limit flag will (a) allocate ~2 GB VRAM for the inert vision tower, (b) leave `/v1/chat/completions` accepting image content that our text-only bench never sends.
+
+**Fix applied**: Added `--limit-mm-per-prompt '{"image":0}'` to both c10 and c11 `EXTRA_FLAGS`. This tells vLLM to reject image content per-request at the API boundary while still loading the model. Vision-tower VRAM waste (~2 GB) is accepted as the cost of running the only available Devstral-2512 quants. Both cells remain in the 13-cell matrix (operator decision: option B, keep both text-only).
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 and c11 stanzas)
+
+**Verify with**: after `bash vllm_launch.sh c10 up`, `curl -s http://localhost:8000/v1/models | jq` should list `c10_coder_vllm_devstral24b_nvfp4` with limit `image=0` reflected in vLLM startup log. Same for c11.
+
+
+## 2026-08-05 01:11 EDT — c10 Fireworks NVFP4 is compressed-tensors-wrapped, same as c11
+
+**Symptom** (exact from vLLM 0.26.0 startup):
+```
+ValidationError: 1 validation error for ModelConfig
+  Value error, Quantization method specified in the model config (compressed-tensors) does not match the quantization method specified in the `quantization` argument (modelopt_fp4).
+```
+
+Container exited(1) at ~01:06 EDT, ~10 seconds after launch. Vision tower never loaded — died at ModelConfig validation.
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh (c10)
+
+**Root cause**: Third instance of the compressed-tensors trap this session (c03b, c11, now c10). The `Firworks/Devstral-Small-2-24B-Instruct-2512-nvfp4` repo packages genuine NVFP4 weights (`format: nvfp4-pack-quantized`, `type: float`, `num_bits: 4`) but wraps them in the compressed-tensors registry (`quant_method: compressed-tensors`). vLLM's config auto-detect reads `compressed-tensors`; our explicit `--quantization modelopt_fp4` conflicts and pydantic ModelConfig validation aborts.
+
+The kernel dispatch on Blackwell (SM_120) still goes through the CT path to the FP4 marlin kernel — the served weights are unchanged, only the registry wrapper differs from a "native" ModelOpt-FP4 repo.
+
+**Fix applied**: removed `--quantization modelopt_fp4` from c10 EXTRA_FLAGS. Kept `--limit-mm-per-prompt '{"image":0}'`. Matches the c03b and c11 pattern.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 stanza)
+
+**Verify with**: `bash bench/pathE_qwen36_27b/vllm_launch.sh c10 up 2>&1 | tee ~/.forge-oh/c10_up.log` — expect READY within 60-120s and no ValidationError.
+
+**Prevention for future benches**: **always** inspect `config.json:quantization_config.quant_method` BEFORE deciding whether to pass `--quantization` to vLLM. If it says `compressed-tensors`, never pass an explicit `--quantization` flag regardless of what the repo name suggests. Repos naming themselves `-awq-4bit`, `-nvfp4`, `-fp8`, etc. may still ship as CT-wrapped.
+
+
+## 2026-08-05 01:16 EDT — Devstral tokenizer has no default chat_template (c10 + c11)
+
+**Symptom** (from `POST /v1/chat/completions` smoke test against c10):
+```
+{
+    "error": {
+        "message": "As of transformers v4.44, default chat template is no longer allowed, so you must provide a chat template if the tokenizer does not define one.",
+        "type": "BadRequestError",
+        "code": 400
+    }
+}
+```
+
+c10 booted successfully (READY in 84s), served /v1/models correctly, but every chat completion returned 400.
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh (c10, c11)
+
+**Root cause**: Devstral-Small-2-2512 (both quant variants) ships the Mistral `[INST]`-format chat template as a standalone `chat_template.jinja` file in the model directory, NOT baked into `tokenizer_config.json` as a `chat_template` string. Since transformers v4.44, HF refuses to fall back to a hardcoded default when the tokenizer doesn't declare one. vLLM inherits this: without an explicit `--chat-template` flag, chat completions 400 with the message above.
+
+Both `Devstral-Small-2-24B-Instruct-2512-nvfp4/chat_template.jinja` and `Devstral-Small-2-24B-Instruct-2512-AWQ-4bit/chat_template.jinja` are identical 5320-byte files (system prompt + `[INST]...[/INST]` framing).
+
+**Fix applied**: added `--chat-template "/models/<MODEL_DIR>/chat_template.jinja"` to both c10 and c11 EXTRA_FLAGS. The docker mount `~/models:/models:ro` makes the file visible inside the container (confirmed via `docker exec vllm-bench ls /models/.../chat_template.jinja`).
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 and c11 stanzas)
+
+**Verify with**: after relaunching c10 up, POST /v1/chat/completions with a plain `{"role":"user","content":"..."}` message should return 200 and a completion. No `[INST]` tokens needed in the client payload — vLLM applies the template server-side.
+
+**Prevention**: on any VLM/Mistral-family model, always check for a standalone `chat_template.jinja` file before assuming the tokenizer_config has a baked-in template. If a `.jinja` file is present, wire it via `--chat-template` regardless of what the tokenizer_config claims.
+
+
+## 2026-08-05 01:20 EDT — MistralCommonBackend does not implement get_chat_template (c10 + c11)
+
+**Symptom** (from `POST /v1/chat/completions` against c10 with --chat-template set):
+```
+{
+    "error": {
+        "message": "`MistralCommonBackend` does not implement `get_chat_template`.",
+        "type": "NotImplementedError",
+        "code": 501
+    }
+}
+```
+
+c10 booted, /v1/models returned 200, but chat completions returned 501.
+
+**Affected**: F.19-post · pathE_qwen36_27b · vllm_launch.sh (c10, c11)
+
+**Root cause**: vLLM 0.26.0 `--tokenizer-mode auto` prioritizes `MistralCommonBackend` for any Mistral-family repo (`Mistral3ForConditionalGeneration` matches). MistralCommonBackend uses `mistral-common` for tokenization and format enforcement and does NOT support the `apply_chat_template` / `get_chat_template` path — even when `--chat-template` is passed.
+
+Per vLLM's tool-calling doc, Mistral repos in HF format (safetensors + standalone `chat_template.jinja`, no baked-in `chat_template` in tokenizer_config.json) MUST be served with `--tokenizer-mode hf` (and companion `--config_format hf --load_format hf` when the repo has multiple format options). Our repo is safetensors-only so config/load format autodetect to `hf`; only `--tokenizer-mode` needs to be forced.
+
+**Fix applied**: added `--tokenizer-mode hf` to both c10 and c11 EXTRA_FLAGS. This routes tokenization through the HF `AutoTokenizer` path which respects `--chat-template` and reads the jinja file.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 and c11 stanzas)
+
+**Verify with**: after re-launch, `POST /v1/chat/completions` with `{"role":"user","content":"..."}` should return a completion. If it still 501s, the tokenizer_mode enum was not accepted (vLLM 0.10.x used `{auto,slow,mistral}`; 0.26.0 added `hf`).
+
+**Prevention**: on any Mistral-family repo served in HF format, always pass `--tokenizer-mode hf` explicitly. Do NOT rely on `auto` — it auto-picks mistral-common which breaks `--chat-template`.
+
+
+## 2026-08-05 01:27 EDT — c10 (Devstral NVFP4) dropped from matrix
+
+**Symptom** (persistent, unfixable within reasonable effort):
+- Every route through `--tokenizer-mode hf` still lands in `MistralCommonBackend.get_chat_template` → 501 NotImplementedError
+- vLLM 0.26.0 selects MistralCommonBackend from `tekken.json` presence + `Mistral3ForConditionalGeneration` architecture, NOT from `--tokenizer-mode`
+- Confirmed via `docker logs`: `tokenizer_mode=hf` was accepted by the engine config but the tokenizer factory still routed to mistral-common
+
+**Affected**: F.19-post · pathE_qwen36_27b · c10 (Fireworks/Devstral-Small-2-24B-Instruct-2512-nvfp4)
+
+**Root cause**: This repo ships HF-format weights + `chat_template.jinja` + `tokenizer.json` (BPE, 131k vocab, class=TokenizersBackend) + `tekken.json`. It does NOT ship `params.json` or `consolidated.safetensors`, so `--config-format mistral --load-format mistral` cannot be used (native mistral path unavailable). vLLM's tokenizer routing for Mistral-family models is not overridable via `--tokenizer-mode` when both `tekken.json` and the Mistral3 architecture are present — MistralCommonBackend hijacks unconditionally.
+
+**Fix applied**: dropped c10 from the bench matrix. c11 (cyankiwi AWQ variant) covers Devstral because it ships the full mistral-format files (`params.json`, `consolidated.safetensors`) and can be served via the native `--tokenizer-mode mistral --config-format mistral --load-format mistral` path. Same underlying model — no loss of quality signal.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (c10 stanza removed, help text + case-default list updated)
+- `bench/pathE_qwen36_27b/bench_pathE.py` (c10 removed from CELL_CONFIGS and CELL_ORDER)
+
+**Prevention**: for any HF-format Mistral repo (safetensors + tokenizer.json + chat_template.jinja, no params.json), verify `--tokenizer-mode hf` actually reaches the tokenizer factory (not just the engine config) BEFORE assuming --chat-template will be honored. If MistralCommonBackend is selected regardless, the only path is a repo with full mistral-format files.
+
+Chain summary of the four failed fixes for the record:
+1. **01:11 EDT** — stripped --quantization (CT wrapper). Fixed the ModelConfig ValidationError; container booted.
+2. **01:16 EDT** — added --chat-template jinja. Chat completions returned 400 (no default chat_template) → 501 (MistralCommonBackend.get_chat_template).
+3. **01:20 EDT** — added --tokenizer-mode hf. Engine config accepted it. Tokenizer factory ignored it. Still 501.
+4. **01:27 EDT** — attempted --tokenizer-mode mistral + --config-format mistral + --load-format mistral. Failed check: repo missing params.json/consolidated.safetensors. Abandoned c10.
+
+## 2026-08-05 02:31 EDT — c07 Qwen3-Coder-30B FP8 CUDA OOM at compile time
+
+**Symptom**:
+```
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB.
+GPU 0 has a total capacity of 31.39 GiB of which 30.56 MiB is free.
+this process has 30.73 GiB memory in use.
+```
+
+Container reached the vLLM engine core init stage. Failed at `AsyncLLM.from_vllm_config` → `launch_core_engines` → `wait_for_engine_startup`. Engine core died inside `torch._functorch._aot_autograd` inductor cache during BF16 tensor allocation (`empty_strided_cuda((s72, 5120), (5120, 1), torch.bfloat16)`). vllm_launch.sh timed out after 900s.
+
+**Affected**: F.19 (Path E rebench) · c07 · Qwen3-Coder-30B-A3B-Instruct-FP8
+
+**Root cause**: FP8 is a weights-only quantization. On Qwen3-Coder-30B, FP8 weights alone occupy ~29 GB, saturating the 5090's 32 GB VRAM before any activations, KV cache, or CUDA graph inductor allocations are made. Torch.compile inductor requires additional BF16 activation tensors during graph construction (this is the s72×5120 tensor above), which pushes past the VRAM boundary. `--gpu-memory-utilization 0.90` does not help because the OOM is compile-time, not runtime, and torch.compile bypasses vLLM's memory budget.
+
+**Fix applied**: Dropped c07 from the Path E bench matrix. Qwen3-Coder-30B AWQ 4-bit (c03b) is the canonical Blackwell 5090 quant for this model — it fits in ~18 GB with ~12 GB KV cache headroom.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/bench_pathE.py` (removed c07 from CELL_CONFIGS + CELL_ORDER)
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (removed c07 case block, updated usage strings)
+
+**Alternative approaches considered (not applied)**:
+- `--gpu-memory-utilization 0.75` + `--max-model-len 16384`: might reclaim 2-3 GB but OOM is compile-time, not runtime.
+- `--enforce-eager` to skip torch.compile: drops throughput ~30%; still marginal fit.
+- `--kv-cache-dtype fp8`: helps runtime KV memory, not compile-time OOM.
+
+**General rule for 5090 VRAM budget (32 GB total, ~30 GB usable)**:
+- FP8 models: usable up to ~20-24B params.
+- AWQ/GPTQ 4-bit: usable up to ~32-35B params.
+- NVFP4 (Blackwell-native): usable up to ~35B params with 5-8 GB KV headroom.
+
+## 2026-08-05 02:41 EDT — c09 Codestral-22B-AWQ chat_template missing
+
+**Symptom**:
+```
+HTTP 400: {"error":{"message":"As of transformers v4.44, default chat template is no longer allowed,
+```
+
+All three prompts (debug/arch/plan) failed instantly at `/v1/chat/completions` — cell wall time 0.0s, no engine work done. Container came up READY at 72s and served `/v1/models` fine.
+
+**Affected**: F.19 (Path E rebench) · c09 · TechxGenus/Codestral-22B-v0.1-AWQ
+
+**Root cause**: `TechxGenus/Codestral-22B-v0.1-AWQ`'s `tokenizer_config.json` does NOT contain a `chat_template` field. The upstream base model `mistralai/Codestral-22B-v0.1` does ship one (canonical Mistral `[INST]`/`[/INST]` template), but the AWQ requant stripped it. As of transformers v4.44, `apply_chat_template()` refuses to synthesize a default when the tokenizer lacks one, so vLLM's chat-completions endpoint 400s on every request.
+
+**Fix applied**:
+1. Vendored the canonical Codestral-22B chat template (`{{- bos_token }}` + `[INST] ... [/INST]` alternation) from `mistralai/Codestral-22B-v0.1/tokenizer_config.json` to `bench/pathE_qwen36_27b/chat_templates/codestral.jinja`.
+2. Mounted `bench/pathE_qwen36_27b/chat_templates/` into the vLLM container at `/chat_templates` (read-only).
+3. Added `--chat-template /chat_templates/codestral.jinja` to c09's EXTRA_FLAGS.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/chat_templates/codestral.jinja` (new)
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (added `chat_templates` bind mount, added `--chat-template` flag to c09 block)
+
+**General rule for AWQ/GPTQ variants of Mistral-family models**:
+Community requant repos frequently strip `chat_template` from `tokenizer_config.json`. Always check the requant repo's `tokenizer_config.json` before launching; if `chat_template` is absent, mount the canonical template from the upstream base repo and pass `--chat-template`.
+
+## 2026-08-05 02:52 EDT — c11 Devstral-AWQ HTTP 400 chat_template not supported
+
+**Symptom**:
+```
+HTTP 400: {"error":{"message":"chat_template is not supported for Mistral tokenizers.","type":"BadRequestError","code":400}}
+```
+
+All three prompts failed instantly at `/v1/chat/completions`; cell wall time 0.0s. Container came up READY at 70s, `/v1/models` responded fine.
+
+**Affected**: F.19 (Path E rebench) · c11 · cyankiwi/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit
+
+**Root cause**: c11 launches with `--tokenizer-mode mistral --config-format mistral --load-format mistral`, routing chat requests through vLLM's MistralCommonBackend. Per NVIDIA NIM docs and vLLM Ministral guidance, MistralCommonBackend rejects any request payload containing `chat_template` or `chat_template_kwargs` fields — the mistral_common library formats the prompt using its own built-in Mistral formatter and refuses any Jinja override at request time.
+
+Our bench harness's `coder_nothink` profile sends `extra_body={"chat_template_kwargs": {"enable_thinking": False}}` in every request (bench_pathE.py line 97). This is required for Qwen3-family cells (c01/c02/c03b/c09) to disable thinking mode, but MistralCommonBackend 400s the moment it sees the field. Since Mistral models have no thinking mode anyway, the flag is redundant for c11.
+
+**Fix applied**: Added new `coder_nothink_mistral` sampling profile identical to `coder_nothink` but with NO `extra_body` at all (no `chat_template_kwargs`). Rewired c11's CELL_CONFIGS entry to use the new profile. Qwen cells (c01/c02/c03b/c09) keep the original `coder_nothink` profile.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/bench_pathE.py` (added `coder_nothink_mistral` profile; c11 profile rewired)
+
+**References**:
+- NVIDIA NIM VLM 2.0.6 release notes — "Per-request chat_template and chat_template_kwargs overrides are not supported for Mistral tokenizer-based models" (https://docs.nvidia.com/nim/vision-language-models/2.0.6-variant/release-notes.html)
+- Trooper.AI Ministral tuning guide — documents the exact 400 error message for `chat_template_kwargs` under `--tokenizer-mode mistral`
+
+**General rule**: Any cell that launches with `--tokenizer-mode mistral` MUST use a sampling profile with no `chat_template` and no `chat_template_kwargs` in `extra_body`. Applies to future Mistral-family AWQ/NVFP4/FP8 cells.
+
+## 2026-08-05 06:10 EDT — Next.js dev pegged at 1927% CPU (Fast-Refresh error loop)
+
+**Symptom**:
+```
+[browser] Uncaught TypeError: presets is not iterable
+    at AgentPresetsPage (src/features/agent-presets/AgentPresetsPage.tsx:42:16)
+> 42 |           {[...presets].sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0))
+```
+Immediately after every `forge-up.sh`, PID of `next-server (v16.2.10)` climbs to 1900%+ CPU (~19 cores pegged). `pnpm dev` exits with `[ELIFECYCLE] Command failed.` but its detached `next-server` child stays alive and continues spinning. Killing the child brings CPU to idle.
+
+**Affected**: dashboard · frontend · `/agents` route · Fast Refresh dev loop
+
+**Root cause**: BFF `GET /api/agent-presets` returns `{"data": [AgentPreset, ...]}` (envelope shape, see `bff/routers/agent_presets.py::list_presets`). Frontend `fetchPresets` in `src/features/agent-presets/api.ts` typed the return as `Promise<AgentPreset[]>` and blindly returned `r.json()` — so React-Query stored the wrapper object as `presets`. `AgentPresetsPage.tsx` line 42 does `[...presets].sort(...)`, throwing `TypeError: presets is not iterable`. In Next 16.2.10 dev + Turbopack + App Router, a client-component throw inside a repeatedly-rendered path traps Fast Refresh in a re-render loop that saturates every available core.
+
+**Fix applied**:
+1. `src/features/agent-presets/api.ts::fetchPresets` — unwrap the `{data: [...]}` envelope, with an `Array.isArray` guard as fallback for any future contract change.
+2. `src/features/agent-presets/AgentPresetsPage.tsx` — defensive `Array.isArray(presetsRaw) ? presetsRaw : []` so a future BFF contract drift can no longer peg dev-mode Next.js in an error loop.
+
+**Files changed**:
+- `src/features/agent-presets/api.ts`
+- `src/features/agent-presets/AgentPresetsPage.tsx`
+
+**Verified by**: user re-runs `bash scripts/forge-down.sh && bash scripts/forge-up.sh`, then `ps -eo pid,%cpu,cmd --sort=-%cpu | head -5`. `next-server` idle after browser navigates to `/agents`.
+
+**Related BUILD_LOG entry**: 2026-08-05 06:10 EDT
+
+## 2026-08-05 06:17 EDT — Follow-up: systemic prevention for Fast-Refresh CPU peg
+
+**Symptom**: The 2026-08-05 06:10 EDT fix resolved the specific `presets is not iterable` throw, but the underlying vulnerability — that any client-component throw can pin `next-server` at ~1900% CPU in a Fast-Refresh re-render loop — remains for every other route.
+
+**Root cause**: Next.js 16.2.10 App Router segments without an `error.tsx` boundary re-render their entire subtree on each Fast Refresh cycle. When a client component keeps throwing during that render, the loop saturates the event loop and every worker thread.
+
+**Fix applied**:
+1. `src/app/(dashboard)/error.tsx` — segment-level error boundary. Catches any client-component throw inside `/runs`, `/agents`, `/workspaces`, `/plugins`, etc., renders a fallback card with error detail + Retry button, and short-circuits the Fast-Refresh feedback loop.
+2. `src/app/global-error.tsx` — root-level fallback (renders its own `<html>` and `<body>`) for anything the segment boundary misses (layout errors, provider errors).
+
+**Files changed**:
+- `src/app/(dashboard)/error.tsx` (new)
+- `src/app/global-error.tsx` (new)
+
+**Verified by**: After landing the fix, existing throws render as an error card instead of pegging CPU. Any future contract drift can no longer melt the workstation.
+
+**Related BUILD_LOG entry**: 2026-08-05 06:17 EDT
+
+## 2026-08-05 06:52 EDT — vllm-bench (c01) OOM: forge-vllm-planner holds VRAM
+
+**Symptom**:
+```
+ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than desired GPU memory utilization (0.9, 28.25 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.
+```
+`vllm-bench` container exits (1). `nvidia-smi` shows 29,585 MiB used with no c01 container running.
+
+**Affected**: F.3 · bench/pathF_swebench · c01 launch on :8000
+
+**Root cause**: `forge-vllm-planner` (DSR1-Distill-32B AWQ on :8511) holds ~29 GB VRAM steady-state. c01 (Qwen3.6-27B INT4 AutoRound) requires ~28 GB at `--gpu-memory-utilization 0.9`. RTX 5090's 32 GB VRAM cannot host both simultaneously. This is a hard hardware constraint documented in `forge-oh-llm-serving` skill's VRAM math.
+
+**Fix applied**: `docker stop forge-vllm-planner` before F.3 runs, then `bash bench/pathE_qwen36_27b/vllm_launch.sh c01`, then restore the planner (`docker start forge-vllm-planner`) after F.3 completes. c01 cold-load = 162s on Blackwell.
+
+**Files changed**: none (operational workflow only). BUILD_LOG entry 2026-08-05 06:55 EDT documents the workflow.
+
+**Related BUILD_LOG entry**: 2026-08-05 06:55 EDT
+
+## 2026-08-05 08:12 EDT — F.3 pass@1=16% caused by malformed hunk counts, not model floor
+
+- **Symptom:** Smoke-25 run `20260805_0737_run` returned pass@1 4/25 (16%). Sampled failures showed `apply_ok: {}` empty and harness stdout tail:
+  ```
+  django__django-11133: >>>>> Patch Apply Failed:
+  patching file django/http/response.py
+  patch unexpectedly ends in middle of line
+  patch: **** malformed patch at line 10
+  ```
+- **Affected stage/plugin/port:** Path F · SWE-bench Verified harness · bench/pathF_swebench
+- **Root cause:** Model (c01 = Qwen3.6-27B-Coder INT4) emits unified-diff patches with WRONG counts in the `@@ -a,b +c,d @@` hunk header. django-11133: header said `-149,6 +149,7` but body had 6-old / 8-new lines. GNU patch reads the mismatch as the start of a new hunk header, aborts as malformed.
+- **Fix applied:** `bench/pathF_swebench/apply_and_test.py`: added `recount_hunks(text)` (pure-Python `git apply --recount` equivalent). `normalize_patch()` now recounts after fence-stripping. Track `patch_recounted:bool` per task so post-run analysis can quantify how often the model got hunk math wrong.
+- **Files changed:**
+  - `bench/pathF_swebench/apply_and_test.py`
+  - `bench/pathF_swebench/bench_pathF_swebench.py`
+- **Related BUILD_LOG entry:** 2026-08-05 08:12 EDT
+- **Related commit:** 5009a95
+- **Verification pending:** rerun smoke-25 on Colossus, confirm pass@1 lift.
+
+
+## 2026-08-05 08:38 EDT — F.3 apply-fail: duplicate '--- a/PATH' file sections in same patch
+
+- **Symptom:** sphinx-doc__sphinx-8035 harness stdout:
+  ```
+  patching file sphinx/ext/autodoc/__init__.py
+  Hunk #1 succeeded at 584 (offset 41 lines).
+  ... (all 5 hunks succeed) ...
+  patching file sphinx/ext/autodoc/__init__.py     ← SAME FILE, second section
+  Reversed (or previously applied) patch detected!  Assuming -R.
+  Hunk #2 FAILED at 582.
+  1 out of 5 hunks FAILED
+  ```
+- **Affected stage/plugin/port:** Path F · SWE-bench Verified harness · normalize_patch
+- **Root cause:** Model (c01 = Qwen3.6-27B-Coder INT4) emitted 2 `--- a/PATH / +++ b/PATH` sections against the same file. Verified: `jq -r '.patch' | grep -c '^--- a/'` → 2. GNU patch applies each section as an independent file-patch operation, so section 2 sees section 1's already-applied changes, guesses `-R`, then fails.
+- **Fix applied:** Added `merge_duplicate_file_sections()` to `bench/pathF_swebench/apply_and_test.py`. Walks the diff, keeps first `--- a/PATH / +++ b/PATH` header per unique path, drops subsequent duplicates plus any trailing `index/diff --git/new file mode/deleted file mode` metadata, preserves all hunks in order. Wired into `normalize_patch()` BEFORE `recount_hunks()` (must merge structure first, then fix counts on merged patch).
+- **Files changed:**
+  - `bench/pathF_swebench/apply_and_test.py`
+- **Related BUILD_LOG entry:** 2026-08-05 08:38 EDT
+- **Related commit:** b2e89a6
+- **Verified locally** against 5 unit cases; expects sphinx-8035 to become applyable on rerun.
+

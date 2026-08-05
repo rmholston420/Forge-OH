@@ -49,9 +49,16 @@ The preset's `role` is **advisory**: it is exposed in the API response so the fr
 The `ModelId = Literal[...]` in `agent_presets.py` is replaced with runtime validation against a new `MODEL_ROUTER_CATALOG` in `bff/services/model_router.py`:
 
 ```python
+# Seed as of ADR-013 ratification (planner only; coder pending Path F).
 MODEL_ROUTER_CATALOG: dict[str, RoleCatalog] = {
-    "coder":   RoleCatalog(canonical="qwen3.6-35b-nvfp4",           compatible={"qwen3.6-35b-nvfp4", "qwen3-coder:32k"}),
-    "planner": RoleCatalog(canonical="qwen3-thinking-2507-awq",     compatible={"qwen3-thinking-2507-awq"}),
+    "coder":   RoleCatalog(
+        canonical="qwen3.6-35b-a3b-nvfp4",       # ADR-009 default retained; ADR-013 defers coder to Path F
+        compatible={"qwen3.6-35b-a3b-nvfp4", "qwen3-coder-30b-awq", "devstral-24b-awq"},
+    ),
+    "planner": RoleCatalog(
+        canonical="deepseek-r1-distill-32b-awq", # ADR-013 Path E winner (2026-08-05)
+        compatible={"deepseek-r1-distill-32b-awq", "qwen3-thinking-2507-awq"},
+    ),
 }
 ```
 

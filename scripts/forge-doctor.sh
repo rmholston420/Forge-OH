@@ -232,4 +232,27 @@ else
   bad "no $LOG_DIR/frontend.log"
 fi
 
+# ---- 10. Colossus <-> GitHub mirror parity (ADR-016) --------------------
+hdr "10. Colossus <-> GitHub mirror parity (ADR-016)"
+DRIFT="$(git ls-files --others --exclude-standard 2>/dev/null || true)"
+if [ -z "$DRIFT" ]; then
+  echo "  OK  no drift - every file is tracked or explicitly ignored"
+else
+  DRIFT_COUNT=$(echo "$DRIFT" | wc -l)
+  bad "DRIFT: $DRIFT_COUNT file(s) exist on Colossus but are neither tracked nor ignored:"
+  echo "$DRIFT" | sed 's|^|    |'
+  echo ""
+  echo "  Per ADR-016, each must be: tracked (git add), ignored (.gitignore + rationale), or deleted."
+fi
+
+# Unpushed commits check.
+UPSTREAM=$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null || echo "")
+if [ -n "$UPSTREAM" ]; then
+  AHEAD=$(git rev-list --count "$UPSTREAM"..HEAD 2>/dev/null || echo "?")
+  if [ "$AHEAD" != "0" ] && [ "$AHEAD" != "?" ]; then
+    bad "UNPUSHED: local branch is $AHEAD commit(s) ahead of $UPSTREAM."
+    echo "  Per ADR-016 (every commit pushes same turn): git push"
+  fi
+fi
+
 hdr "Done"
