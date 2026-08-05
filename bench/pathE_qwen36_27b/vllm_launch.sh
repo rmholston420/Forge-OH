@@ -111,10 +111,13 @@ case "$CELL" in
   c09)
     # TechxGenus/Codestral-22B-v0.1-AWQ — real classic AWQ (group_size=128, GEMM).
     # Uses --quantization awq_marlin for Blackwell int4 kernel.
+    # AWQ variant strips chat_template from tokenizer_config.json — supply
+    # the canonical Mistral [INST]/[/INST] template from mistralai/Codestral-22B-v0.1.
     MODEL_DIR="Codestral-22B-v0.1-AWQ"
     SERVED_NAME="c09_coder_vllm_codestral22b_awq"
     EXTRA_FLAGS=(
       --quantization awq_marlin
+      --chat-template /chat_templates/codestral.jinja
     )
     ;;
   # c10 (Devstral NVFP4) dropped 2026-08-05 01:27 EDT — the Fireworks repo
@@ -174,9 +177,12 @@ fi
 
 echo "[$(ts)] → launching $CELL: $MODEL_DIR as $SERVED_NAME"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 docker run -d --name vllm-bench --gpus all \
   --ipc=host --shm-size=8g \
   -v "$HOME/models:/models:ro" \
+  -v "$SCRIPT_DIR/chat_templates:/chat_templates:ro" \
   -p 8000:8000 \
   -e HF_HUB_OFFLINE=1 \
   vllm/vllm-openai:latest \

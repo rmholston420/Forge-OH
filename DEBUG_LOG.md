@@ -1252,3 +1252,28 @@ Container reached the vLLM engine core init stage. Failed at `AsyncLLM.from_vllm
 - FP8 models: usable up to ~20-24B params.
 - AWQ/GPTQ 4-bit: usable up to ~32-35B params.
 - NVFP4 (Blackwell-native): usable up to ~35B params with 5-8 GB KV headroom.
+
+## 2026-08-05 02:41 EDT — c09 Codestral-22B-AWQ chat_template missing
+
+**Symptom**:
+```
+HTTP 400: {"error":{"message":"As of transformers v4.44, default chat template is no longer allowed,
+```
+
+All three prompts (debug/arch/plan) failed instantly at `/v1/chat/completions` — cell wall time 0.0s, no engine work done. Container came up READY at 72s and served `/v1/models` fine.
+
+**Affected**: F.19 (Path E rebench) · c09 · TechxGenus/Codestral-22B-v0.1-AWQ
+
+**Root cause**: `TechxGenus/Codestral-22B-v0.1-AWQ`'s `tokenizer_config.json` does NOT contain a `chat_template` field. The upstream base model `mistralai/Codestral-22B-v0.1` does ship one (canonical Mistral `[INST]`/`[/INST]` template), but the AWQ requant stripped it. As of transformers v4.44, `apply_chat_template()` refuses to synthesize a default when the tokenizer lacks one, so vLLM's chat-completions endpoint 400s on every request.
+
+**Fix applied**:
+1. Vendored the canonical Codestral-22B chat template (`{{- bos_token }}` + `[INST] ... [/INST]` alternation) from `mistralai/Codestral-22B-v0.1/tokenizer_config.json` to `bench/pathE_qwen36_27b/chat_templates/codestral.jinja`.
+2. Mounted `bench/pathE_qwen36_27b/chat_templates/` into the vLLM container at `/chat_templates` (read-only).
+3. Added `--chat-template /chat_templates/codestral.jinja` to c09's EXTRA_FLAGS.
+
+**Files changed**:
+- `bench/pathE_qwen36_27b/chat_templates/codestral.jinja` (new)
+- `bench/pathE_qwen36_27b/vllm_launch.sh` (added `chat_templates` bind mount, added `--chat-template` flag to c09 block)
+
+**General rule for AWQ/GPTQ variants of Mistral-family models**:
+Community requant repos frequently strip `chat_template` from `tokenizer_config.json`. Always check the requant repo's `tokenizer_config.json` before launching; if `chat_template` is absent, mount the canonical template from the upstream base repo and pass `--chat-template`.

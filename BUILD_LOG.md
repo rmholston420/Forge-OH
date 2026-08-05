@@ -4213,3 +4213,15 @@ until the operator picks the next one.
 - **Ports / adapters affected:** none (bench-only cleanup)
 - **PORTING_LEDGER / ADR updated:** —
 - **Stop-condition status:** in-progress — c07 dropped, remaining vLLM cells: c03b, c09, c11, c12a, c12b (5 cells). Ollama cells + c01, c02, c04, c05 already complete.
+
+## 2026-08-05 02:41 EDT — Fix c09 (Codestral-22B-AWQ) chat template missing
+
+- **Stage / plugin / port:** F.19 (Path E rebench) · c09 launch fix
+- **What changed:** TechxGenus AWQ requant strips `chat_template` from `tokenizer_config.json`. Vendored canonical Codestral `[INST]`/`[/INST]` template from `mistralai/Codestral-22B-v0.1`, mounted into container at `/chat_templates`, wired `--chat-template` flag into c09 EXTRA_FLAGS.
+- **Files touched:**
+  - `bench/pathE_qwen36_27b/chat_templates/codestral.jinja` (new)
+  - `bench/pathE_qwen36_27b/vllm_launch.sh` (added chat_templates bind mount + --chat-template flag)
+  - `DEBUG_LOG.md` (appended fix + AWQ/GPTQ chat_template rule)
+- **Ports / adapters affected:** none (bench-only)
+- **PORTING_LEDGER / ADR updated:** —
+- **Stop-condition status:** in-progress — c03b done (fastest cell yet: 275 tok/s); c09 template fix pending relaunch; remaining c11, c12a, c12b.
