@@ -4657,3 +4657,23 @@ infrastructure landed, direct-to-GitHub commit workflow established.
 - **Ports / adapters affected:** none
 - **PORTING_LEDGER / ADR updated:** none (fix, not decision)
 - **Stop-condition status:** unblocks smoke-25 clean rerun.
+
+## 2026-08-05 08:12 EDT — F.3 harness: recount hunks to fix malformed-patch failures
+
+- **Stage / plugin / port:** Path F · SWE-bench Verified harness · bench/pathF_swebench
+- **What changed:** Added `recount_hunks(text)` to `apply_and_test.py` — pure-Python equivalent of `git apply --recount`. Recomputes `@@ -a,b +c,d @@` counts from body. Wired into `normalize_patch()`. Added `patch_recounted:bool` diagnostic field to per-task record.
+- **Files touched:**
+  - `bench/pathF_swebench/apply_and_test.py` (added `recount_hunks` + `_HUNK_HEADER_RE`; `normalize_patch` now recounts)
+  - `bench/pathF_swebench/bench_pathF_swebench.py` (added `patch_recounted` diagnostic)
+- **Ports / adapters affected:** none (bench-internal only)
+- **PORTING_LEDGER / ADR updated:** none yet — ADR-013 amendment #2 pending F.3.1 verdict
+- **Stop-condition status:** in-progress — rerun smoke-25 to confirm pass@1 lift, then gate to full-500
+
+## Diagnostic path leading to fix
+- Prior smoke-25 (`20260805_0737_run`): 4/25 (16%) pass@1, far below Qwen3-Coder 51% anchor.
+- Sampled 4 failures: 3 had `apply_ok: {}` empty and 1 real test-level fail.
+- Stdout tail: `django__django-11133: >>>>> Patch Apply Failed: patch unexpectedly ends in middle of line / malformed patch at line 10`.
+- Base64-verified the stored patch bytes: hunk header `@@ -149,6 +149,7 @@`, body had 6-old / 8-new lines. Off-by-one on the new count.
+- Confirmed `git apply --recount --check` fixes the class of error against a scratch checkout.
+- Ship pure-Python equivalent so no scratch git required.
+

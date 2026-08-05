@@ -1365,3 +1365,23 @@ ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than
 **Files changed**: none (operational workflow only). BUILD_LOG entry 2026-08-05 06:55 EDT documents the workflow.
 
 **Related BUILD_LOG entry**: 2026-08-05 06:55 EDT
+
+## 2026-08-05 08:12 EDT — F.3 pass@1=16% caused by malformed hunk counts, not model floor
+
+- **Symptom:** Smoke-25 run `20260805_0737_run` returned pass@1 4/25 (16%). Sampled failures showed `apply_ok: {}` empty and harness stdout tail:
+  ```
+  django__django-11133: >>>>> Patch Apply Failed:
+  patching file django/http/response.py
+  patch unexpectedly ends in middle of line
+  patch: **** malformed patch at line 10
+  ```
+- **Affected stage/plugin/port:** Path F · SWE-bench Verified harness · bench/pathF_swebench
+- **Root cause:** Model (c01 = Qwen3.6-27B-Coder INT4) emits unified-diff patches with WRONG counts in the `@@ -a,b +c,d @@` hunk header. django-11133: header said `-149,6 +149,7` but body had 6-old / 8-new lines. GNU patch reads the mismatch as the start of a new hunk header, aborts as malformed.
+- **Fix applied:** `bench/pathF_swebench/apply_and_test.py`: added `recount_hunks(text)` (pure-Python `git apply --recount` equivalent). `normalize_patch()` now recounts after fence-stripping. Track `patch_recounted:bool` per task so post-run analysis can quantify how often the model got hunk math wrong.
+- **Files changed:**
+  - `bench/pathF_swebench/apply_and_test.py`
+  - `bench/pathF_swebench/bench_pathF_swebench.py`
+- **Related BUILD_LOG entry:** 2026-08-05 08:12 EDT
+- **Related commit:** 5009a95
+- **Verification pending:** rerun smoke-25 on Colossus, confirm pass@1 lift.
+
