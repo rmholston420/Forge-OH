@@ -186,3 +186,12 @@ Format per entry:
   - Kosmos's heap sizing — informational only.
 - **Rollback / drift detection:** if Kosmos changes any of the "depended-on" items above, Forge-OH's `GET /api/repograph/health` breaks. Re-verify against the Kosmos file at the pinned SHA and either re-pin (updating this entry) or file a new ADR if the change is incompatible.
 - **Migration to Option B (if ever required):** see ADR-019 D4 — Kosmos brings up a second DozerDB with a new container name and different port bindings; Forge-OH keeps its existing binding unchanged.
+
+## 2026-08-06 01:39 EDT — Kosmos ports: memory.py, vector.py, embeddings.py
+- Source: rmholston420/kosmos, commit c455165bca0d645f0d43572d0c286dca7033d31d
+- Source paths: ports/memory.py, ports/vector.py, ports/embeddings.py
+- Destination: openhands_tools_ext/memory/ports/
+- Fetch method: raw.githubusercontent.com at pinned SHA (no clone); SHA-256 equality to upstream verified per file
+- License/ownership: same-owner internal port (rmholston420 → rmholston420), logged for traceability per project convention
+- Modification notes: zero modifications — files copied verbatim, no import-path edits were required (upstream files import stdlib only)
+- Included exports beyond Protocols: memory.py ships MEMORY_REQUIRED_FIELDS + validate_zero_trust_write() + MemoryEventId/MemoryHit/MemoryWriteBlocked; vector.py ships REQUIRED_PAYLOAD_KEYS + validate_zero_trust_payload() + VectorHit/SnapshotHandle; embeddings.py ships EmbeddingError/EmbeddingDimensionMismatch. Stage 5.4 will reuse these existing zero-trust helpers rather than introducing a parallel pydantic model.

@@ -5390,3 +5390,11 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   - [x] `AGENTS.md` updated with three-tier retrieval cascade + Graph Storage section.
   - [x] DozerDB consolidation decision (4.5) explicitly confirmed and logged in ADR-019.
 - **Next action:** begin Stage 5.1 — port Kosmos `ports/memory.py`, `ports/vector.py`, `ports/embeddings.py` verbatim from `github.com/rmholston420/kosmos` (pin the SHA in PORTING_LEDGER at port time).
+
+## 2026-08-06 01:39 EDT — Stage 5.1: Kosmos pure interfaces ported
+- Ported ports/memory.py, ports/vector.py, ports/embeddings.py verbatim from rmholston420/kosmos @ c455165bca0d645f0d43572d0c286dca7033d31d
+- Files touched: openhands_tools_ext/memory/ports/{memory.py,vector.py,embeddings.py,__init__.py}
+- Modifications: none (SHA-256 equality to upstream verified per file); no kosmos.* imports present, no import-path fixups required
+- Verification: all three Protocols import cleanly with full expected method set; zero-trust helpers (validate_zero_trust_write, validate_zero_trust_payload) reject empty provenance, out-of-range confidence, and bool confidence as documented
+- Stop-condition status: Stage 5.1 DoD met (ports imported + logged). Stage 5.2 (Qdrant + Ollama embeddings adapters) is next; not started this slice.
+- Frontend pairing: N/A for 5.1 (pure interfaces); the "ships together" rule applies at the Stage 5 boundary and is satisfied by § 5.6.
