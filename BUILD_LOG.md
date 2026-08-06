@@ -5533,3 +5533,30 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   - Contract suite 96/1 green under both baseline and qwen3-embedding:4b embedders
   - Zero-trust guards, AMG NoOp policy, graph write, temporal index, and semantic lane all exercised in a single round-trip
 - **Next stage:** 5.4 — per ADR-021 Consequences, use Kosmos's existing `validate_zero_trust_write` (ports/memory.py) + `validate_zero_trust_payload` (ports/vector.py) instead of the plan §5.4 proposed `MemoryWriteEvent` pydantic model. Confirm scope before starting.
+
+## 2026-08-06 02:44 EDT — Stage 5.4: zero-trust write enforcement — CLOSED as already-satisfied by Stage 5.3b port layer (ADR-022 filed)
+- **Stage/plugin/port:** Stage 5.4 — zero-trust write enforcement (`provenance` required, `confidence` ∈ [0.0, 1.0], non-bypassable at every adapter write path)
+- **Decision:** Stage 5.4 closes with **no new code beyond a verification script**. The Kosmos-ported port-layer validators landed in Stage 5.3b already satisfy the plan §5.4 DoD and are strictly stricter than the plan's proposed `MemoryWriteEvent` (see ADR-022):
+  - `openhands_tools_ext/memory/ports/memory.py::validate_zero_trust_write` — enforces non-empty-string `provenance` + `confidence ∈ [0.0, 1.0]` + bool-rejection (Kosmos ADR-026) + non-Real rejection.
+  - `openhands_tools_ext/memory/ports/vector.py::validate_zero_trust_payload` — enforces required `provenance`/`confidence` keys + truthy `provenance` + numeric `confidence ∈ [0.0, 1.0]`.
+  - Both are called at every live adapter write path: `DozerDbMemoryAdapter.write_event` (adapter.py:366), `.link_entities` (:455), `.quarantine_write` (:489), `QdrantVectorAdapter.upsert` (qdrant/adapter.py:277), `SemanticMemoryPath.embed_and_upsert` (inherits Qdrant upsert).
+- **What was built (this stage):**
+  1. **ADR-022** filed at `docs/adr/022-stage-5-4-zero-trust-satisfied-by-port-layer.md` (Ratified). Records the port-layer-vs-pydantic decision, enumerates why the pydantic wrapper alternative was rejected (would loosen bool/non-Real rejection under pydantic v2 coercion), and pins the invariant: any future `MemoryPort`/`VectorPort` adapter MUST call the matching validator on the first line of every write method.
+  2. **ADR index** updated: `docs/adr/README.md` gets ADR-022 row.
+  3. **Verification script** `scripts/verify_stage_5_4_zero_trust.py` (175 lines) — runs the plan §5.4.3 negative tests against the existing validators AND against the live `DozerDbMemoryAdapter.write_event` call site (using in-memory `GraphBackend`/`TemporalIndex` fixtures so it runs without live infra). Verifier is the canonical Stage 5.4 DoD check going forward.
+- **Files touched:**
+  - `docs/adr/022-stage-5-4-zero-trust-satisfied-by-port-layer.md` (new, 142 lines)
+  - `docs/adr/README.md` (ADR-022 row added)
+  - `scripts/verify_stage_5_4_zero_trust.py` (new, 175 lines)
+  - `BUILD_LOG.md`, `SESSION_HANDOFF.md`
+- **Ports/adapters affected:** none (documentation + verifier only). Behavior identical to Stage 5.3b close.
+- **Verification (sandbox, `/tmp/foh-verify` with `PYTHONPATH=.`):**
+  - `python scripts/verify_stage_5_4_zero_trust.py`: **12/12 checks passed** — 9 model-level negative cases + 1 boundary-acceptance case + 2 live-adapter negative cases (empty provenance + confidence=1.5 both rejected inside `adapter.write_event` before any backend I/O).
+- **Colossus verification (user, one command):**
+  ```
+  cd ~/dev/forge-oh && git pull
+  PYTHONPATH=. python scripts/verify_stage_5_4_zero_trust.py
+  ```
+  Expect: `Stage 5.4 verification: 12/12 checks passed` and exit 0. Nothing else required — no `.env`, no DozerDB, no Ollama/Qdrant.
+- **STAGE 5.4 CLOSED.**
+- **Next stage:** 5.5 — ACE-style memory curation (generation → reflection → curation). Not part of Kosmos ports; must be built fresh informed by ACA-v8 §ACE.
