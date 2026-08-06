@@ -6,59 +6,93 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
-## Last updated: 2026-08-05 23:26 EDT
+## Last updated: 2026-08-05 23:34 EDT
 
 ## Current build-sequencing stage / plugin / port in progress
 
 - **Stage:** Stage 3 · Security & Safety (reconciliation-plan-v1 § 3, stage companion `Forge-OH-reconciliation-plan-v1-stage-3.md`).
-- **Sub-slice just completed:** Stage 3.1 — Security-analyzer risk indicators. DoD verified green on Colossus at 2026-08-05 23:26 EDT (10/10 pytest · 8/8 vitest · typecheck clean · 2/2 Playwright specs).
-- **Next sub-slice:** Stage 3.2 — Real HITL / ConfirmRisky confirmation policy + wire the existing `ApprovalBanner` to real `action:pending` events.
-- **Ports touched (Stage 3.1, closed):** none new. Uses agent-server `POST /api/conversations/{cid}/security_analyzer` (SDK 1.40.0).
+- **Sub-slice just committed:** Stage 3.2 — real HITL (ConfirmRisky policy default + ApprovalBanner wired to real `approval_required` socket events + `_build_confirmation_policy` helper). Pushed; pending Colossus verification.
+- **Next sub-slice:** Stage 3.4 + 3.5 — Commit 3. Fix the `ENDPOINTS.RUNS.compare` helper (`?left=&right=` → `?base=&fork=` per BFF `compare_runs`), centralize 3 direct callers, add contract test.
 
 ## What was completed this session
 
-1. Read the Stage 3 companion plan and reconciled it against live code — flagged and resolved 7 mismatches before writing any code.
-2. Ran 5 Colossus SDK probes to confirm the security-analyzer surface at `openhands-sdk==1.40.0`. Logged findings to DEBUG_LOG as baseline knowledge.
-3. Locked design decisions (Q1-Q5): SDK-inspect first · descope DependencyGuard · fix ENDPOINTS.RUNS.compare in a later commit · three-commit split for Stage 3 · CSS Modules + core Badge · `PatternSecurityAnalyzer` as default.
-4. Wrote and committed Stage 3.1 as commit `5d6f779` — backend surfaces `securityRisk` on every normalized ActionEvent, `PatternSecurityAnalyzer` is attached by default on every new run, frontend renders a color-coded RiskBadge in the timeline, opt-in auto-collapse toggle hides UNKNOWN/absent action events.
-5. Added Vitest coverage (`RiskBadge.test.tsx`, 8 cases) and a Playwright route-mocked spec (`risk-badge.spec.ts`, 2 tests).
-6. First Colossus verification: 3/4 layers green, 2/2 Playwright red. Diagnosed as route-mock envelope mismatch — `fetchRunEvents` unwraps `json.data`, spec returned `{events: [...]}`. Fixed + committed as `9266aa7`. Second run: 2/2 pass in 1.0s.
-7. Updated BUILD_LOG (Stage 3.1 build entry + DoD-verified entry), DEBUG_LOG (SDK surface baseline + envelope-mismatch fix), KNOWN_ISSUES (DependencyGuard descope + stream-normalization follow-up).
+**Stage 3.1 (Commits `5d6f779`, `9266aa7`, `707e938`):**
+
+1. Backend `securityRisk` surfacing + `PatternSecurityAnalyzer` attach on every run.
+2. Frontend `RiskBadge` + auto-collapse toggle in the timeline.
+3. Backend pytest 10/10, vitest 8/8, Playwright 2/2 green.
+
+**Stage 3.2 (pending push):**
+
+1. Locked Q1 = **A** (`ConfirmRisky(threshold=MEDIUM, confirm_unknown=True)` as default; `requireApproval=true` escalates to `AlwaysConfirm`).
+2. Locked Q2 = **defer preset-level override** to Stage 3.2b hygiene slice.
+3. Backend: new `_build_confirmation_policy(require_approval)` pure helper; replaced inline `AlwaysConfirm` block in `create_run`.
+4. Frontend: wired `onApprovalRequest` in `page.tsx` (missing today); replaced generic Banner with real `ApprovalBanner`; dropped transport-only events (`approval_required`, `pending_approval`, `status`) from timeline; clear pending flag on more terminal statuses.
+5. Discovered + patched status enum drift (`awaiting_approval` BFF vs `awaiting-approval` schema) via a boundary normalizer in `fetchRun`. Full unification deferred — logged in KNOWN_ISSUES.
+6. New tests: `bff/tests/test_confirmation_policy.py` (6 cases); `src/tests/e2e/hitl-approval.spec.ts` (3 cases).
+7. BUILD_LOG + KNOWN_ISSUES updated; SESSION_HANDOFF overwritten.
 
 ## What remains before the current Definition of Done is met
 
-Stage 3.1 DoD is CLOSED. Ready to start Commit 2 (Stage 3.2). No blockers.
+**Commit 2 (Stage 3.2) — pending push + Colossus verification.**
+
+Once pushed, run the paste block below on Colossus:
+
+```bash
+cd ~/dev/forge-oh && git pull
+
+# Backend
+.oh-venv/bin/pytest bff/tests/test_confirmation_policy.py bff/tests/test_event_normalize.py -q
+
+# Frontend
+pnpm typecheck
+pnpm vitest run src/tests/unit/RiskBadge.test.tsx
+
+# Restart stack (only if you touched Python or want a clean baseline)
+bash scripts/forge-restart.sh && sleep 2 && bash scripts/forge-status.sh
+
+# Prod build + Playwright
+fuser -k 3100/tcp 2>/dev/null; sleep 2
+npm run build 2>&1 | tail -8
+
+NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \
+  nohup npx next start -H 127.0.0.1 -p 3100 >~/.forge-oh/next-prod.log 2>&1 &
+sleep 6
+curl -s -o /dev/null -w "prod=%{http_code}\n" http://127.0.0.1:3100/runs
+
+cd ~/dev/forge-oh/src
+PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:3100 \
+PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+  npx playwright test tests/e2e/risk-badge.spec.ts tests/e2e/hitl-approval.spec.ts --reporter=list
+```
+
+Expected: 6/6 pytest, typecheck clean, 8/8 vitest, all-green stack, `/runs` 200, prod build succeeds, 5/5 Playwright (2 risk-badge + 3 hitl-approval).
 
 ## Open questions / ambiguity awaiting the user's answer
 
-**Before starting Commit 2 (Stage 3.2), one policy question needs a locked answer:**
-
-- **Default confirmation policy on new runs.** Options:
-  - **A. `ConfirmRisky(threshold=MEDIUM, confirm_unknown=True)`** — asks for approval on MEDIUM+ actions AND on any UNKNOWN-risk action (safe default; some noise on unannotated tools until every path is annotated).
-  - **B. `ConfirmRisky(threshold=MEDIUM, confirm_unknown=False)`** — asks for approval only on MEDIUM+ actions, treats UNKNOWN as safe (less friction; relies on `PatternSecurityAnalyzer` being complete).
-  - **C. `ConfirmRisky(threshold=HIGH, confirm_unknown=False)`** — only HIGH triggers approval (minimal friction; maximum trust in the analyzer).
-  - **D. `AlwaysConfirm` (status quo)** kept as the shipped default, `ConfirmRisky` exposed as an opt-in per-run flag from the composer.
-
-Plan companion § 3.2 implies A. My recommendation: **A** — matches the plan's intent, and `confirm_unknown=True` is the correct fail-closed posture until we prove `PatternSecurityAnalyzer` covers every install/network/destructive path.
-
-**Second (minor) decision — do we want a preset-level override for confirmation policy in Commit 2, or defer to Commit 3?** The plan lists it under Stage 3.2. My recommendation: **defer to a Stage 3.2b follow-up** to keep Commit 2 tight (real HITL + banner wiring), then ship the preset field once we've validated the base contract works end-to-end.
+None. Q1 (default policy) and Q2 (preset override timing) both locked and shipped in Commit 2.
 
 ## Exact next action to take
 
 **When the user resumes:**
 
-1. Read this SESSION_HANDOFF.md.
-2. Ask the user to confirm answers to the two questions above (default confirmation policy · preset-level override in this commit or next).
-3. Then start Commit 2 (Stage 3.2 real HITL):
-   - Replace `{"policy": {"kind": "AlwaysConfirm"}}` in `bff/routers/runs.py` with `{"policy": {"kind": "ConfirmRisky", "threshold": "MEDIUM", "confirm_unknown": true}}` (subject to A/B/C above).
-   - Verify `event_normalize.py` correctly surfaces `action:pending` / `waiting_for_confirmation` shape to the frontend.
-   - Wire the existing `ApprovalBanner` component to fire on real pending events (not the current stub trigger).
-   - Ensure resume/reject via `POST /api/runs/{id}/{resume,reject}` still work end-to-end.
-   - Add BFF unit test that the create-run flow POSTs `ConfirmRisky` with the chosen threshold + `confirm_unknown` value.
-   - Add Playwright spec that a route-mocked pending-approval event surfaces the banner.
-   - Commit + push, then paste the verification block.
+1. Read this SESSION_HANDOFF.
+2. Run the Colossus verification paste block above.
+3. If green: mark Stage 3.2 DONE in BUILD_LOG; start Commit 3.
+4. If red: capture the failure block; if Playwright fails on `pageerror`/`browser error` messages, those are the diagnostic path this session pre-instrumented.
 
-## Reference — last two commits
+**Commit 3 restated scope (Stage 3.4 + 3.5):**
 
-- `5d6f779` feat(stage-3.1): risk indicators — security_risk surfacing + PatternSecurityAnalyzer attach
-- `9266aa7` fix(stage-3.1): route-mock envelope in risk-badge.spec — match fetchRunEvents json.data
+- Fix `ENDPOINTS.RUNS.compare` in `src/lib/api/endpoints.ts` from `?left=<>&right=<>` to `?base=<>&fork=<>` (BFF `compare_runs` signature).
+- Grep for `ENDPOINTS.RUNS.compare` direct callers; centralize any that hand-build the URL.
+- Add contract test asserting the wire query keys.
+- Verify existing `test_run_compare.py` still passes.
+
+## Reference — last three commits (main)
+
+- `5d6f779` feat(stage-3.1): risk indicators — `security_risk` surfacing + `PatternSecurityAnalyzer` attach
+- `9266aa7` fix(stage-3.1): route-mock envelope in `risk-badge.spec` — match `fetchRunEvents` `json.data`
+- `707e938` docs(stage-3.1): DoD verified green on Colossus — pytest 10/10 · vitest 8/8 · playwright 2/2
+
+Pending commit for this session: `feat(stage-3.2): real HITL — ConfirmRisky default + wire ApprovalBanner`.

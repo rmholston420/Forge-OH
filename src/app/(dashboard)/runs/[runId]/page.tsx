@@ -18,6 +18,7 @@ import { RunSecretsModal } from '@/components/domain/RunSecretsModal';
 import { EventCard } from '@/components/domain/EventCard';
 import { StreamBanner } from '@/components/domain/StreamBanner';
 import { Banner } from '@/components/core/Banner';
+import { ApprovalBanner } from '@/components/domain/ApprovalBanner';
 import { Skeleton } from '@/components/core/Skeleton';
 import { EmptyState } from '@/components/core/EmptyState';
 import { Tabs } from '@/components/core/Tabs';
@@ -117,10 +118,36 @@ export default function RunDetailPage({
 
   // handleEvent uses StreamEvent (the socket wire type) — not ToolEvent.
   // Previously typed as ToolEvent which caused a silent schema mismatch.
+  //
+  // Stage 3.2: drop transport-only events (approval_required, status) from
+  // the timeline. They carry no ActionEvent shape and were previously
+  // rendered as unknown-type cards. approval_required is routed to
+  // onApprovalRequest instead; status is handled by useRunStream directly.
   const handleEvent = useCallback((evt: StreamEvent) => {
+    if (evt.type === 'approval_required' || evt.type === 'pending_approval' || evt.type === 'status') {
+      return;
+    }
     appendStreamEvent(evt as Record<string, unknown>);
-    if (evt.type === 'error') setPendingApprovalBanner(false);
+    // Any error event or a resumed/finished/stopped status implies HITL is
+    // no longer pending. `run_paused` is emitted for cancellation, not for
+    // waiting-for-confirmation, so it also clears the pending flag.
+    if (
+      evt.type === 'error' ||
+      evt.type === 'run_failed' ||
+      evt.type === 'run_paused'
+    ) {
+      setPendingApprovalBanner(false);
+    }
   }, [appendStreamEvent, setPendingApprovalBanner]);
+
+  // Stage 3.2 — wire the missing branch: agent-server emits
+  // approval_required whenever the conversation enters
+  // waiting_for_confirmation. Before this, useRunStream had the callback
+  // slot but page.tsx never populated it, so ConfirmRisky-flagged actions
+  // stalled invisibly. See DEBUG_LOG 2026-08-02 22:57 for the socket path.
+  const handleApprovalRequest = useCallback(() => {
+    setPendingApprovalBanner(true);
+  }, [setPendingApprovalBanner]);
 
   // Stabilize inline callbacks so the socket doesn't reconnect on every render.
   // useRunStream does this internally via refs, but we also keep local refs for
@@ -134,6 +161,7 @@ export default function RunDetailPage({
     runId,
     latestEventId: latestStreamEventId,
     onEvent: handleEvent,
+    onApprovalRequest: handleApprovalRequest,
     onConnected: useCallback(() => {
       setStreamConnectedRef.current(true);
       setStreamReconnectingRef.current(false);
@@ -230,11 +258,22 @@ export default function RunDetailPage({
         />
       )}
 
-      {(run?.status === 'awaiting-approval' || pendingApprovalBanner) && (
-        <Banner variant="warning" title="Awaiting Approval">
-          The agent has paused and is waiting for your approval before proceeding.
-          Use the Approve or Reject buttons above.
-        </Banner>
+      {run && (run.status === 'awaiting-approval' || pendingApprovalBanner) && (
+        <ApprovalBanner
+          context="The agent has paused on a risk-flagged action."
+          loading={approveMut.isPending || rejectMut.isPending}
+          onApprove={() =>
+            approveMut.mutate(run.id, {
+              onSuccess: () => setPendingApprovalBanner(false),
+            })
+          }
+          onReject={() =>
+            rejectMut.mutate(
+              { runId: run.id },
+              { onSuccess: () => setPendingApprovalBanner(false) },
+            )
+          }
+        />
       )}
 
       <StreamBanner state={streamState} />

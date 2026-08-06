@@ -4974,3 +4974,28 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Iteration:** first Playwright run failed on both tests with `getByText('terminal: rm -rf /tmp/*')` never rendering. Root cause was a route-mock envelope mismatch — `fetchRunEvents` at `src/features/run-detail/api.ts:14` unwraps `json.data`, but the spec returned `{events: [...]}`. Also filled in the missing `RunSummarySchema` fields on the run mock and added a `**/socket.io/**` stub so `useRunStream` doesn't 404 into the console. Fixed in `9266aa7`; DEBUG_LOG entry filed under `2026-08-05 23:25 EDT`.
 - **Files touched:** `src/tests/e2e/risk-badge.spec.ts`, `DEBUG_LOG.md`.
 - **Stop-condition status:** Stage 3.1 (backend surfaces `security_risk`; frontend renders risk badges + auto-collapse toggle; PatternSecurityAnalyzer attached by default) COMPLETE per plan § 3.1 DoD. Both DoD checks (backend surfaces enum-valid values + attaches analyzer on every run; frontend renders RiskBadge on LOW/MEDIUM/HIGH and hides on UNKNOWN/absent, with an opt-in auto-collapse toggle) met and verified live on Colossus. Ready for Stage 3.2 (Commit 2 — real HITL / ConfirmRisky).
+
+## 2026-08-05 23:34 EDT — Stage 3.2 real HITL (ConfirmRisky + ApprovalBanner wiring)
+
+- **Stage/plugin/port:** Stage 3.2 · Security & Safety · BFF `POST /api/conversations/{cid}/confirmation_policy` + frontend socket `approval_required` channel + `POST /api/runs/{id}/approve|/reject` lifecycle.
+- **What:**
+  - Swapped `AlwaysConfirm` for `ConfirmRisky(threshold=MEDIUM, confirm_unknown=True)` as the default create-run confirmation policy. Kept the per-run `body.requireApproval=true` escape hatch: it now escalates to `AlwaysConfirm` (max-strict, ask on every tool call). Both branches funnel through a new `_build_confirmation_policy(require_approval)` pure helper.
+  - Wired the missing `onApprovalRequest` slot in `page.tsx` → sets `pendingApprovalBanner=true` on the socket `approval_required` event. Prior to this the callback existed in `useRunStream` but was never populated, so ConfirmRisky-flagged pauses would stall invisibly.
+  - Replaced the placeholder generic `<Banner variant="warning">` with the real `<ApprovalBanner>` component (with in-line Approve + Reject buttons) on the run-detail page.
+  - Filtered `approval_required` / `pending_approval` / `status` from `handleEvent` so transport-only frames stop rendering as unknown-type timeline cards.
+  - `handleEvent` also drops the pending flag on `run_paused` / `run_failed`, not just `error`.
+  - Added a `fetchRun` boundary normalizer that translates the BFF wire status `awaiting_approval` (underscore) into the schema's `awaiting-approval` (dash). This unblocks the dead `run?.status === 'awaiting-approval'` branch in `page.tsx`. The full underscore/dash unification across all frontend consumers is out of scope for this commit — logged in KNOWN_ISSUES as a hygiene followup.
+  - New unit tests: `bff/tests/test_confirmation_policy.py` (6 cases — default body, escalation body, JSON-serializable, threshold enum, confirm_unknown boolean, non-empty labels).
+  - New Playwright spec: `src/tests/e2e/hitl-approval.spec.ts` (3 cases — banner renders on `awaiting_approval`, Approve POSTs `/approve`, Reject POSTs `/reject`).
+- **Files touched:**
+  - `bff/routers/runs.py` (new `_build_confirmation_policy` helper + replaced inline policy branch)
+  - `src/app/(dashboard)/runs/[runId]/page.tsx` (wire onApprovalRequest, filter transport events, swap generic Banner → real ApprovalBanner)
+  - `src/features/run-detail/api.ts` (boundary status normalizer)
+  - `bff/tests/test_confirmation_policy.py` (new file, 6 tests)
+  - `src/tests/e2e/hitl-approval.spec.ts` (new file, 3 tests)
+- **Ports / adapters:**
+  - No new formal port. Uses the existing agent-server `confirmation_policy` endpoint contract at openhands-sdk 1.40.0.
+  - No new ADR (Q1/Q2 policy decisions are per-slice; if we later add preset-level override that becomes ADR-worthy).
+- **PORTING_LEDGER:** unchanged. No external code vendored.
+- **KNOWN_ISSUES:** appended — BFF/frontend status enum drift (`awaiting_approval` vs `awaiting-approval`). Boundary normalizer covers the ConfirmRisky HITL path; the broader unification is a separate hygiene commit.
+- **Stop-condition status:** Stage 3.2 (real HITL — ConfirmRisky enabled by default; ApprovalBanner wired to real pending events; Approve/Reject drive `/approve` and `/reject`) COMPLETE per plan § 3.2 DoD. Pending Colossus live-run verification for the paste-block final check.

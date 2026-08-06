@@ -56,3 +56,15 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 - **Attempted fixes:** none in Stage 3.1. Papered over on the frontend by accepting both `securityRisk` and `security_risk` in `toDisplayEvent()`, and documented as a filter limitation in a code comment above `allEventsUnfiltered.filter`.
 - **Next investigation:** In `event_relay.py:_fetch_page`, call `normalize_event(ev)` on each event before emitting. Verify the frontend `normalizeEvent()` in `useRunStream.ts` still handles the merged shape (its trailing `...e` spread should preserve everything). Add a unit test that both paths produce identical event shape given the same raw agent-server dict.
 - **Related BUILD_LOG entry:** 2026-08-05 23:15 EDT — Stage 3.1.
+
+---
+
+## 2026-08-05 23:34 EDT — Status enum drift: `awaiting_approval` vs `awaiting-approval`
+
+- **Symptom:** `bff/routers/runs.py:97` maps agent-server `waiting_for_confirmation` to `awaiting_approval` (underscore). `src/lib/schemas/run.ts:19` declares `awaiting-approval` (dash) for the same status. `src/features/run-detail/api.ts::fetchRun` casts `json.data` to `RunSummary` without calling `.parse()`, so the drift silently ships underscore to the frontend. Every frontend `run.status === 'awaiting-approval'` comparison is dead code today; multiple non-schema files also use underscore (Badge.tsx, PlanNode.tsx, StatusBadge stories).
+- **Root cause:** BFF status vocabulary (underscore) and schema declaration (dash) drifted at some earlier commit; no boundary validation caught it because Zod parse is never invoked.
+- **Attempted fix (Stage 3.2):** Added a `_normalizeRunStatus` helper in `src/features/run-detail/api.ts` that translates `awaiting_approval` → `awaiting-approval` at the `fetchRun` boundary. This unblocks the ConfirmRisky HITL path in `page.tsx` (dead branch now fires). Does NOT unify the rest of the frontend or add Zod enforcement.
+- **Next investigation:** Two hygiene followups in a dedicated commit:
+  1. Pick one canonical form (recommend underscore — it matches the BFF wire and the majority of frontend consumers). Flip the schema, `StatusBadge` component, `RunDetailHeader`, and all tests/fixtures to underscore. Drop the boundary normalizer.
+  2. Add `RunSummarySchema.parse(json.data)` in `fetchRun` + `RunSummarySchema.parse` in the runs list to catch future drift at the boundary.
+- **Related BUILD_LOG entry:** 2026-08-05 23:34 EDT — Stage 3.2.

@@ -124,6 +124,31 @@ _TASK_COMPLEXITY_TO_ROLE: dict[str, str] = {
 }
 
 
+def _build_confirmation_policy(require_approval: bool) -> tuple[dict[str, Any], str]:
+    """Return the confirmation-policy body + a log label for a create-run call.
+
+    Stage 3.2 default is ConfirmRisky(threshold=MEDIUM, confirm_unknown=True).
+    ``require_approval=True`` on the per-run request escalates to AlwaysConfirm.
+
+    Kept as a pure helper so it can be unit-tested without httpx mocking.
+    The wire shape is the openhands-sdk discriminated union at
+    openhands.sdk.security.confirmation_policy; verified against
+    openhands-sdk==1.40.0 on Colossus.
+    """
+    if require_approval:
+        return {"policy": {"kind": "AlwaysConfirm"}}, "AlwaysConfirm"
+    return (
+        {
+            "policy": {
+                "kind": "ConfirmRisky",
+                "threshold": "MEDIUM",
+                "confirm_unknown": True,
+            }
+        },
+        "ConfirmRisky(MEDIUM, confirm_unknown=True)",
+    )
+
+
 def _resolve_role(body_role: str | None, task_complexity: str) -> str:
     """Explicit body.role wins; else map taskComplexity; else default coder."""
     if body_role:
@@ -421,24 +446,30 @@ async def create_run(body: CreateRunRequest) -> dict:
     except Exception as exc:
         log.warning("create_run: security_analyzer attach failed: %s", exc)
 
-    # 3a) Stage 1E — apply confirmation policy BEFORE kicking the loop off.
-    #     'AlwaysConfirm' makes agent-server enter waiting_for_confirmation
-    #     at every tool call; user must click Approve/Reject in the UI.
-    if body.requireApproval:
-        try:
-            pol_resp = await client.post(
-                f"/api/conversations/{cid}/confirmation_policy",
-                json={"policy": {"kind": "AlwaysConfirm"}},
+    # 3a) Stage 3.2 — apply confirmation policy BEFORE kicking the loop off.
+    #     Default: ConfirmRisky(threshold=MEDIUM, confirm_unknown=True).
+    #       - fail-closed on any ActionEvent the analyzer flags MEDIUM or HIGH
+    #       - fail-closed on UNKNOWN so unannotated tool paths still hit HITL
+    #     Opt-in strict: requireApproval=true (per-run) escalates to
+    #     AlwaysConfirm which asks on every tool call (matches Stage 1E behavior).
+    #     Discriminated union at openhands.sdk.security.confirmation_policy;
+    #     wire shape verified on Colossus at openhands-sdk==1.40.0.
+    _policy_body, _policy_label = _build_confirmation_policy(bool(body.requireApproval))
+    try:
+        pol_resp = await client.post(
+            f"/api/conversations/{cid}/confirmation_policy",
+            json=_policy_body,
+        )
+        if pol_resp.status_code >= 400:
+            log.warning(
+                "create_run: setting %s on %s failed: %s %s",
+                _policy_label,
+                cid,
+                pol_resp.status_code,
+                pol_resp.text[:200],
             )
-            if pol_resp.status_code >= 400:
-                log.warning(
-                    "create_run: setting AlwaysConfirm on %s failed: %s %s",
-                    cid,
-                    pol_resp.status_code,
-                    pol_resp.text[:200],
-                )
-        except Exception as exc:
-            log.warning("create_run: confirmation_policy call failed: %s", exc)
+    except Exception as exc:
+        log.warning("create_run: confirmation_policy call failed: %s", exc)
 
     # 3) Kick off in background.
     try:
