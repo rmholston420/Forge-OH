@@ -2183,3 +2183,29 @@ bench_pathF_swebench.py: error: unrecognized arguments: --concurrency 1
 - `bench/pathF_swebench/README.md` (stale `--concurrency 1` removal)
 
 **Related BUILD_LOG entry:** 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED. Note: prior 2026-08-06 15:37 EDT DEBUG_LOG entry only caught the script-vs-module mistake, missed both of these. Two-error cascade.
+
+## 2026-08-06 15:41 EDT — Slice 8.0 smoke: ALL 30 tasks Connection-refused (bench dials :8000, coder serves :8501)
+
+**Symptom:** All 30 smoke tasks returned `URLError: [Errno 111] Connection refused` in 0s each. Run manifest: `~/.forge-oh/bench_pathF_swebench/20260806_1540_run/`. pass@1 = 0.0, errors=30, resolved_true=0, wall_total=1.15s (i.e. never reached the model).
+
+**Affected:** Slice 8.0 DoD attestation · bench harness → vLLM endpoint mismatch.
+
+**Root cause:** `bench/pathF_swebench/bench_pathF_swebench.py` `CELLS["c01"]["endpoint"]` is hardcoded to `http://localhost:8000/v1`. But the canonical Slice 8.0 coder container publishes host port `:8501` → container port `:8000` (per `ops/vllm_launch_coder.sh` line 70: `-p "${PORT}:8000"` where `PORT=${FORGE_VLLM_CODER_PORT:-8501}`). Nothing listens on host `:8000` under the canonical launcher, so every task hits Errno 111 before reaching vLLM.
+
+Bench harness has no env override for `endpoint`. There is no code path that would land requests on `:8501`.
+
+**Open question:** How did the F.3.0 baseline at 20260806_1211_run score 33.3% pass@1? Either:
+1. The baseline was launched with a different (non-canonical) vLLM invocation that bound host `:8000` directly (bypassing `ops/vllm_launch_coder.sh`), OR
+2. The baseline used a different port on `CELLS` at the time (unlikely — git log shows `:8000` has always been the value).
+
+Need to inspect `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/manifest.json` before choosing between:
+- Fix A: patch `CELLS["c01"]["endpoint"]` to `http://localhost:8501/v1`. Re-run baseline if it was `:8000`.
+- Fix B: add env override `FORGE_BENCH_CODER_URL` (matches launcher's `FORGE_VLLM_CODER_PORT` convention), default kept as `:8000` for backward compat.
+
+**Fix applied:** none yet — waiting for baseline manifest before deciding.
+
+**Files changed:** none yet.
+
+**Not a Slice 8.0 regression:** the vLLM flag bundle (fp8 KV, chunked prefill, spec decode, max-model-len 65536) is verified live via `/v1/models` on :8501. This is bench harness / launcher drift that pre-existed Slice 8.0.
+
+**Related BUILD_LOG entry:** 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED.
