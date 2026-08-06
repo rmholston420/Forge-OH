@@ -1,70 +1,98 @@
-# Forge-OH — Session Handoff
+# Forge-OH Session Handoff
 
-**Last update:** 2026-08-06 02:17 EDT
+**Last updated:** 2026-08-06 02:32 EDT
 
-## Current build-sequencing stage
-Stage 5.3b — **DozerDB MemoryPort adapter scope frozen**, awaiting user sign-off before port begins.
+## Current stage / port
 
-## Stage 5.3a — CLOSED
-- Sandbox verification: 54 passed / 1 skipped (both baseline and 4B A/B)
-- Colossus live-tier verification: PASSED
-- `search_semantic('smoke', corpus='default')` returns `[]` cleanly against live Qdrant
+Stage 5.3b — DozerDB `MemoryPort` adapter port. **Sandbox complete.** Awaiting
+Colossus live-tier verification against real DozerDB + Ollama + Qdrant.
 
-## Stage 5.3b — FROZEN SCOPE (see BUILD_LOG entry above)
+## Completed this session
 
-**Files to port from Kosmos @ `c455165`:**
-1. `adapters/memory/dozerdb/adapter.py` (552 lines) — `DozerDbMemoryAdapter` + `TemporalIndex` Protocol + `InMemoryTemporalIndex` + `GraphBackend` Protocol + `InMemoryGraphBackend`
-2. `adapters/memory/dozerdb/dozerdb_graph_backend.py` (215 lines) — real Bolt driver, takes uri/user/password/database as ctor args (no env-var coupling)
-3. `adapters/memory/dozerdb/amg_policy.py` (218 lines) — `AmgGuardPolicy` wrapping `agent_memory_guard==0.3.0`
-4. `adapters/memory/dozerdb/amg_v02_policy.py` (16 lines) — one-release-cycle backward-compat alias
-5. `adapters/memory/dozerdb/test_contract.py` (442 lines) — full contract suite
+1. **ADR-021 filed and amended.**
+   - `docs/adr/021-memory-adapter-graph-shape.md` (Ratified, Stage 5.3b lock-in)
+   - Amendment on same day: adopted Kosmos's actual `write_event` shape
+     verbatim (`(:Entity)-[:SUBJECT_OF]`/`[:OBJECT_OF]` star topology) after
+     re-inspecting `adapter.py` at pinned SHA. Initial hand-designed shape
+     was strictly worse; documented via status-amendment block at top of
+     the ADR.
+   - `docs/adr/README.md` index updated.
 
-**Deps to add to `.oh-venv`:**
-- `neo4j>=5.26` (Bolt driver)
-- `agent-memory-guard==0.3.0` (write-time policy filter, PyPI, license TBD-verify)
+2. **Kosmos DozerDB adapter ported.** Files ported from SHA
+   `c455165bca0d645f0d43572d0c286dca7033d31d`:
+   - `openhands_tools_ext/memory/adapters/dozerdb/adapter.py` (552 lines)
+   - `openhands_tools_ext/memory/adapters/dozerdb/dozerdb_graph_backend.py` (215 lines, verbatim)
+   - `bff/tests/memory/test_dozerdb_memory_adapter_contract.py` (443 lines)
+   - Updated `openhands_tools_ext/memory/adapters/dozerdb/__init__.py`
+     to re-export all new symbols.
+   - **NOT ported** (ADR-021 D5): `amg_policy.py`, `amg_v02_policy.py` —
+     Forge-OH runs `NoOpAmgPolicy` only, no `agent-memory-guard` PyPI dep.
 
-**Kosmos code changes needed (mechanical):**
-- Import path rewrites: `from ports.*` → `from openhands_tools_ext.memory.ports.*`; `from .semantic_memory_path` → keep (relative)
-- Docstring cleanup: remove stale Graphiti references in `adapter.py` (lines 8, 20, 23, 221, 303, 309-310) — replace with post-ADR-075 wording
-- Wiring: remove `GraphitiTemporalIndex` import from smoke.py, replace with either `InMemoryTemporalIndex` (simple) or new plain-Cypher DozerDB-backed `TemporalIndex` (durable but new code)
+3. **New Forge-OH-side code.**
+   - `openhands_tools_ext/memory/adapters/dozerdb/dozerdb_temporal_index.py`
+     (~245 lines) — plain-Cypher TemporalIndex over `:MemoryEvent` nodes
+     (ADR-021 D2/D3). Storage-colocated with graph writes: `record_event`
+     is a no-op, `query_temporal` runs Lucene fulltext + optional
+     `written_at <= as_of` filter.
+   - `openhands_tools_ext/memory/composition.py` (~130 lines) — Forge-OH
+     memory composition root. Reads env vars (`NEO4J_BOLT_URI`,
+     `NEO4J_USER`, `NEO4J_PASSWORD` required, `NEO4J_DATABASE`,
+     `OLLAMA_URL`, `QDRANT_URL`, `FORGEOH_MEMORY_CORPUS`) and returns a
+     wired `DozerDbMemoryAdapter`. Semantic lane is optional.
+   - Extended `openhands_tools_ext/memory/adapters/dozerdb/smoke.py` with
+     `roundtrip()` for Stage 5.3b DoD live smoke.
 
-**Namespace decision (ADR-019 Option A):** node label `MemoryEvent` distinct from RepoGraph's `Symbol`. All memory writes go through `DozerDbGraphBackend(database="forgeoh")`. Both surfaces coexist in the `forgeoh` database.
+4. **Sandbox verification.**
+   - `bff/tests/memory/test_dozerdb_memory_adapter_contract.py`:
+     **42 passed** in 0.07s
+   - Full `bff/tests/memory/`: **96 passed, 1 skipped** under both
+     baseline embedder and `OLLAMA_EMBED_MODEL=qwen3-embedding:4b`
 
-**Composition-root wiring (Forge-OH-side, NEW code):**
-- New `openhands_tools_ext/memory/composition.py` (~40 lines) — reads `NEO4J_BOLT_URI`/`NEO4J_USER`/`NEO4J_PASSWORD`/`NEO4J_DATABASE` + Ollama + Qdrant env vars, wires `DozerDbMemoryAdapter(graph=..., amg=..., temporal=..., embeddings=..., vector=...)`
+5. **Logs / ledger updated.** PORTING_LEDGER.md + BUILD_LOG.md appended.
 
-**Stop condition for 5.3b:**
-1. All ported contract tests green (in-memory backends, no live services required)
-2. Round-trip live smoke: `write_event(subject="Colossus", predicate="hasComponent", object="RTX 5090", provenance="stage-5.3b-smoke", confidence=0.95)` → `search_semantic("Colossus")` returns 1 hit with the same payload; `query_temporal("Colossus")` returns the same event
-3. RepoGraph regression: existing `Symbol` label queries still work — no collision in `forgeoh` DB
+## What remains before Definition of Done
 
-## Three OPEN DECISIONS awaiting user answer before I touch the repo
+- **User runs Colossus live-tier verification** (see block below). No
+  further sandbox work required.
 
-1. **`TemporalIndex` implementation for production:**
-   - **1a.** `InMemoryTemporalIndex` (fastest — the only concrete impl Kosmos ships) — process-restart erases temporal state. Fine for Stage 5.3b's smoke, but a follow-up ADR must decide durable temporal storage before Stage 5.5 curation.
-   - **1b.** Write a new plain-Cypher `DozerDbTemporalIndex` right now — durable, no restart loss, but ~150 new lines of code and a new small ADR to file.
-   - **1c.** Defer temporal surface entirely by using a no-op stub — Stage 5.3b would then NOT satisfy `query_temporal` in the round-trip smoke; only semantic-lookup is proved live.
-   - **My recommendation:** **1a** — smallest scope, matches Kosmos exactly, unblocks 5.4. File a new ADR-021 (Forge-OH-side) declaring "`TemporalIndex` durability deferred to Stage 5.5" so the choice is documented.
+## Colossus verification commands
 
-2. **`agent-memory-guard` v0.3.0 adoption:**
-   - **2a.** Port `AmgGuardPolicy` verbatim + pull `agent-memory-guard` from PyPI — matches Kosmos exactly.
-   - **2b.** Use Kosmos's `NoOpAmgPolicy` (`amg_policy.py` also ships an always-allow variant used in tests) — no PyPI dep pulled, all writes allowed unconditionally. Simpler for a single-user local system; can be swapped later.
-   - **2c.** Use `AlwaysBlockAmgPolicy` (also in Kosmos) — hard-fails all writes, useful for smoke-tests only.
-   - **My recommendation:** **2b (NoOpAmgPolicy)** — you're single-user local; the zero-trust port-level guard (`validate_zero_trust_write`) already enforces the essential invariant (provenance + confidence required). `agent-memory-guard` is designed for multi-agent PII redaction, which does not apply here. Skip the PyPI dep. Revisit only if plugin ecosystem expands.
+```bash
+cd ~/dev/forge-oh && git pull
+source ~/dev/forge-oh/.oh-venv/bin/activate
+pip install 'neo4j>=5.26'
 
-3. **Kosmos docstring drift in `adapter.py`:**
-   - **3a.** Port the docstrings verbatim (stale but harmless — just says "Graphiti in prod" when the file that was Graphiti has been deleted).
-   - **3b.** Clean up the docstrings at port time to say "Uses `InMemoryTemporalIndex` in Forge-OH (see ADR-021)" — cleaner but slightly non-verbatim.
-   - **My recommendation:** **3b** — porting stale docstrings verbatim is a slow-motion bug. Log the docstring cleanup explicitly in PORTING_LEDGER.
+# Full sandbox regression (must stay green in the .oh-venv too)
+python -m pytest bff/tests/memory/ -v
 
-## Exact next action
-Wait for user sign-off on the three OPEN DECISIONS above, then execute Stage 5.3b port with the chosen options.
+# Stage 5.3b DoD live smoke
+python -c "import asyncio, json
+from openhands_tools_ext.memory.adapters.dozerdb.smoke import roundtrip
+print(json.dumps(asyncio.run(roundtrip()), indent=2))"
+```
 
-## Prior deviation still relevant (5.4 gotcha)
-Kosmos ports already ship `validate_zero_trust_write()` (`ports/memory.py`) and `validate_zero_trust_payload()` (`ports/vector.py`). Plan §5.4's proposed pydantic `MemoryWriteEvent` is **redundant** — use verbatim Kosmos helpers when §5.4 begins.
+**Expect:**
+- Contract suite: 96 passed, 1 skipped (both configs).
+- Roundtrip smoke: one `event_id` written, at least one semantic hit
+  matching subject "Colossus", at least one temporal hit matching same
+  subject.
+- Prereqs: `NEO4J_PASSWORD=kosmos-dev-password` in env; DozerDB
+  container up (`docker ps | grep kosmos-dozerdb`); Ollama on port
+  11434 with `qwen3-embedding:0.6b`; Qdrant on port 6333.
 
-## Env-var contract (Forge-OH final naming)
-- `NEO4J_BOLT_URI` (Forge-OH) NOT `NEO4J_URI` (Kosmos) — set at composition root, Kosmos adapter code takes `uri` as ctor arg with zero env coupling so this is Forge-OH-side only
-- `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE=forgeoh` — identical between projects
-- `OLLAMA_URL` (native root, embeddings) vs `OLLAMA_BASE_URL` (OpenAI-compat, chat) — NOT interchangeable
-- `QDRANT_URL` — default `http://localhost:6333` for both
+## Open questions
+
+None. All ADR-021 sub-decisions locked and implemented.
+
+## Next action
+
+- Confirm Colossus roundtrip smoke output.
+- If green: close Stage 5.3b, proceed to Stage 5.4 (which per ADR-021 §Consequences
+  should use Kosmos's existing `validate_zero_trust_write` /
+  `validate_zero_trust_payload` helpers rather than the plan's proposed
+  `MemoryWriteEvent` pydantic model).
+
+## Deferred (not blocking)
+
+- Add `neo4j>=5.26` to `.env.example` deps block and `.oh-venv` bootstrap docs.
+- qdrant-client 1.19 vs server 1.12.4 version drift (from Stage 5.3a).

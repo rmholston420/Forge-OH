@@ -20,6 +20,7 @@ Index of ADRs under `docs/adr/`. Numbering is sequential; gaps (e.g. ADR-010) ar
 | [018](./018-serena-lspclient-integration.md) | Serena LSPClient integration via MCP passthrough (Stage 4.4) | Accepted | — | — |
 | [019](./019-dozerdb-consolidation.md) | DozerDB consolidation: Kosmos-canonical shared instance (Stage 4.5) | Accepted | — | — |
 | [020](./020-qwen3-embedding-default.md) | Qwen3-Embedding as Forge-OH's default EmbeddingsPort model (Stage 5.2) | Accepted | — (departs from Kosmos upstream `nomic-embed-text` default) | — |
+| [021](./021-memory-adapter-graph-shape.md) | Memory adapter graph shape: CIDOC-native triples + MemoryEvent node + fulltext temporal index (Stage 5.3b) | Ratified | — (Kosmos ADR-027 inherited; D5 diverges to `NoOpAmgPolicy`, TemporalIndex replaces deleted `GraphitiTemporalIndex` from Kosmos ADR-075 D1) | — |
 
 ## Authoring workflow
 

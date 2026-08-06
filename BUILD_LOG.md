@@ -5486,3 +5486,35 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   - `TemporalIndex` Protocol still declared in `adapter.py`
   - `InMemoryTemporalIndex` remains as the only concrete implementation Kosmos ships
   - Adapter ctor still requires `temporal: TemporalIndex` — a concrete impl MUST be injected
+
+## 2026-08-06 02:32 EDT — Stage 5.3b: DozerDbMemoryAdapter ported + ADR-021 filed + full contract suite green
+- **Stage/plugin/port:** Stage 5.3b — full DozerDB `MemoryPort` adapter (Kosmos ADR-027 + Forge-OH ADR-021)
+- **What was built:**
+  1. **ADR-021** filed: `docs/adr/021-memory-adapter-graph-shape.md` (Ratified). Amended same-day after re-inspecting Kosmos's actual `write_event` shape — Kosmos already implements the A2+α CIDOC-reified-event topology, so ADR-021 D1 now specifies "adopt Kosmos's shape verbatim" instead of my inferior hand-designed variant. See status-amendment block in the ADR.
+  2. **Ported files (import rewrites + docstring cleanup only):**
+     - `openhands_tools_ext/memory/adapters/dozerdb/adapter.py` (from Kosmos `adapter.py`, 552 lines)
+     - `openhands_tools_ext/memory/adapters/dozerdb/dozerdb_graph_backend.py` (from Kosmos, 215 lines, verbatim)
+     - `bff/tests/memory/test_dozerdb_memory_adapter_contract.py` (from Kosmos `test_contract.py`, 443 lines)
+     - Extended `openhands_tools_ext/memory/adapters/dozerdb/__init__.py` to re-export `DozerDbMemoryAdapter`, `DozerDbGraphBackend`, in-memory backends + AMG test doubles, and the `MemoryPort`-conformant `NoOpAmgPolicy`.
+  3. **New Forge-OH-side code:**
+     - `openhands_tools_ext/memory/adapters/dozerdb/dozerdb_temporal_index.py` (~245 lines) — plain-Cypher TemporalIndex over `:MemoryEvent` nodes per ADR-021 D2/D3. Storage-colocation design: `record_event` is a no-op (graph write already stored searchable fields), `query_temporal` executes Lucene fulltext + optional `written_at <= as_of` filter.
+     - `openhands_tools_ext/memory/composition.py` (~130 lines) — composition root translating env vars (`NEO4J_*`, `OLLAMA_URL`, `QDRANT_URL`, `FORGEOH_MEMORY_CORPUS`) into a fully-wired `DozerDbMemoryAdapter`. Semantic lane is optional (degrades gracefully on missing embeddings/vector imports).
+     - Extended `openhands_tools_ext/memory/adapters/dozerdb/smoke.py` with `roundtrip()` for Stage 5.3b DoD live smoke (write → search_semantic → query_temporal).
+- **NOT ported (deliberate, per ADR-021 D5):** `amg_policy.py` + `amg_v02_policy.py` (Kosmos's `AmgGuardPolicy` + PyPI dep on `agent-memory-guard`). Forge-OH runs `NoOpAmgPolicy` only.
+- **Ports/adapters affected:** `MemoryPort` — first full implementation lands.
+- **ADR / ledger updated:** ADR-021 ratified + amended; ADR index (`docs/adr/README.md`) updated; PORTING_LEDGER.md entry above.
+- **Test results (sandbox, `/tmp/foh-verify`):**
+  - `bff/tests/memory/test_dozerdb_memory_adapter_contract.py`: **42 passed** in 0.07s
+  - Full `bff/tests/memory/`: **96 passed, 1 skipped** in 0.18s (baseline embedder)
+  - Full `bff/tests/memory/` under `OLLAMA_EMBED_MODEL=qwen3-embedding:4b`: **96 passed, 1 skipped** in 0.19s
+- **Stage 5.3b sandbox stop condition:** MET. Contract suite green under both embedder configurations, `MemoryPort` compositional wiring loads without error, `make_memory_adapter()` fails cleanly when `NEO4J_PASSWORD` is unset.
+- **Colossus verification (user to run after pull):**
+  1. `cd ~/dev/forge-oh && git pull`
+  2. `source ~/dev/forge-oh/.oh-venv/bin/activate`
+  3. `pip install 'neo4j>=5.26'`
+  4. `python -c "import asyncio, json; from openhands_tools_ext.memory.adapters.dozerdb.smoke import roundtrip; print(json.dumps(asyncio.run(roundtrip()), indent=2))"`
+     - Expect: one event_id written, one semantic hit (matching subject "Colossus"), one temporal hit (matching subject "Colossus")
+     - Prereqs: `NEO4J_PASSWORD=kosmos-dev-password` in env; DozerDB container up; Ollama + Qdrant reachable
+- **Deferred (follow-up slices):**
+  - Add `neo4j>=5.26` to `.env.example` deps documentation and `.oh-venv` bootstrap script.
+  - qdrant-client 1.19 vs server 1.12.4 version drift (carried over from 5.3a).
