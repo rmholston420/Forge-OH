@@ -2240,3 +2240,29 @@ Confirmed: baseline was launched against a `:8000`-bound vLLM (NOT the canonical
 **Files changed:** `bench/pathF_swebench/bench_pathF_swebench.py`.
 
 **Related BUILD_LOG entry:** 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED. Also appending 2026-08-06 15:45 EDT progress entry for the bench alignment.
+
+## 2026-08-06 15:52 EDT — Slice 8.0 bench: 404 NotFoundError from vLLM (model name mismatch)
+
+**Symptom:** All 30 tasks failed on both Step 1 and Step 2 smokes with:
+```
+HTTPError 404: {"error":{"message":"The model `c01_coder_vllm_qwen36_27b_int4` does not exist.","type":"NotFoundError","param":"model","code":404}}
+```
+Run manifests: `~/.forge-oh/bench_pathF_swebench/20260806_1549_run/` (both steps overwrote due to same-minute timestamp).
+
+**Affected:** Slice 8.0 DoD attestation · bench harness `model` field on OpenAI requests.
+
+**Root cause:** Port alignment reached the server (404, not 111), but the bench sent the bench-internal cell tag as the OpenAI `model` field. vLLM `/v1/models` publishes `qwen3.6-27b-int4-autoround` (per `ops/vllm_launch_coder.sh` line 73: `--served-model-name "$NAME"` where `NAME=${FORGE_VLLM_CODER_NAME:-qwen3.6-27b-int4-autoround}`). The bench's `CELLS[cell]["model_id"]` values were meant as internal cell tags, but two send sites (`/tokenize` probe line 267, `/chat/completions` line 318) sent them verbatim.
+
+The 12:11 baseline must have been paired with a launcher that used the bench cell tag as `--served-model-name` (else 404 would have shown then too).
+
+**Fix applied:**
+- Added `served_model_name` field to each CELL (separate from `model_id` for internal tracking).
+- Both send sites now use `cell["served_model_name"]` instead of `cell["model_id"]`.
+- Env overrides: `FORGE_BENCH_C01_SERVED_NAME` (default `qwen3.6-27b-int4-autoround`, matches canonical launcher), `FORGE_BENCH_C11_SERVED_NAME`, `FORGE_BENCH_C03B_SERVED_NAME` (both default to cell tag pending verification).
+- Manifest now records `served_model_name` + all three env overrides.
+
+**Verification:** module import + `CELLS["c01"]["served_model_name"]` returns `qwen3.6-27b-int4-autoround`, matching live `/v1/models` id on Colossus.
+
+**Files changed:** `bench/pathF_swebench/bench_pathF_swebench.py`.
+
+**Related BUILD_LOG:** 2026-08-06 15:30 EDT (Slice 8.0 executed), 2026-08-06 15:45 EDT (port + max-model-len alignment). Appending 2026-08-06 15:52 EDT entry for the served-name alignment.

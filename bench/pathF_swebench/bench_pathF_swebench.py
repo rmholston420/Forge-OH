@@ -71,15 +71,30 @@ THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 #   launches with --max-model-len 65536, --kv-cache-dtype fp8, chunked
 #   prefill, and speculative n-gram decode.
 #
-# Environment overrides (set BOTH together when reproducing an older run):
-#   FORGE_BENCH_CODER_URL      OpenAI-compatible base incl. /v1 suffix
-#                              (default: http://localhost:8501/v1)
-#   FORGE_BENCH_MAX_MODEL_LEN  context ceiling for budget math
-#                              (default: 65536)
+# Environment overrides (set together when reproducing an older run):
+#   FORGE_BENCH_CODER_URL         OpenAI-compatible base incl. /v1 suffix
+#                                 (default: http://localhost:8501/v1)
+#   FORGE_BENCH_MAX_MODEL_LEN     context ceiling for budget math
+#                                 (default: 65536)
+#   FORGE_BENCH_C01_SERVED_NAME   wire-level served-model-name published by
+#                                 vLLM for cell c01 (default: qwen3.6-27b-int4-autoround —
+#                                 matches ops/vllm_launch_coder.sh FORGE_VLLM_CODER_NAME)
+#   FORGE_BENCH_C11_SERVED_NAME   (default: c11_coder_vllm_devstral24b_awq —
+#                                 unverified for the c11 launcher; override
+#                                 to the real served-model-name if launching c11)
+#   FORGE_BENCH_C03B_SERVED_NAME  (default: c03b_coder_vllm_qwen3coder_awq —
+#                                 unverified for the c03b launcher; override
+#                                 to the real served-model-name if launching c03b)
 #
-# Example — reproduce pre-Slice-8.0 baseline against a :8000-bound vLLM at 32k:
+# `model_id` below is a bench-internal cell tag used in manifests / per-task
+# records. `served_model_name` is the wire-level string sent as the OpenAI
+# `model` field — it MUST match what vLLM publishes via /v1/models.
+#
+# Example — reproduce pre-Slice-8.0 baseline against a :8000-bound vLLM at 32k
+# whose launcher used the bench cell tag as served-model-name:
 #   FORGE_BENCH_CODER_URL=http://localhost:8000/v1 \
 #   FORGE_BENCH_MAX_MODEL_LEN=32768 \
+#   FORGE_BENCH_C01_SERVED_NAME=c01_coder_vllm_qwen36_27b_int4 \
 #     python -m bench.pathF_swebench.bench_pathF_swebench --smoke --model c01
 _CODER_URL = os.getenv("FORGE_BENCH_CODER_URL", "http://localhost:8501/v1")
 
@@ -87,6 +102,9 @@ CELLS: dict[str, dict] = {
     "c01": {
         "endpoint": _CODER_URL,
         "model_id": "c01_coder_vllm_qwen36_27b_int4",
+        "served_model_name": os.getenv(
+            "FORGE_BENCH_C01_SERVED_NAME", "qwen3.6-27b-int4-autoround"
+        ),
         "sampling": {
             "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0,
             "presence_penalty": 1.0, "repetition_penalty": 1.05,
@@ -96,6 +114,9 @@ CELLS: dict[str, dict] = {
     "c11": {
         "endpoint": _CODER_URL,
         "model_id": "c11_coder_vllm_devstral24b_awq",
+        "served_model_name": os.getenv(
+            "FORGE_BENCH_C11_SERVED_NAME", "c11_coder_vllm_devstral24b_awq"
+        ),
         "sampling": {
             "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0,
             "presence_penalty": 1.0, "repetition_penalty": 1.05,
@@ -105,6 +126,9 @@ CELLS: dict[str, dict] = {
     "c03b": {
         "endpoint": _CODER_URL,
         "model_id": "c03b_coder_vllm_qwen3coder_awq",
+        "served_model_name": os.getenv(
+            "FORGE_BENCH_C03B_SERVED_NAME", "c03b_coder_vllm_qwen3coder_awq"
+        ),
         "sampling": {
             "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0,
             "presence_penalty": 1.0, "repetition_penalty": 1.05,
@@ -239,8 +263,9 @@ def _count_prompt_tokens(cell: dict, prompt: str) -> int | None:
     if base.endswith("/v1"):
         base = base[:-3]
     url = f"{base}/tokenize"
+    # Wire-level served-model-name (matches vLLM's /v1/models), NOT the bench cell tag.
     payload = {
-        "model": cell["model_id"],
+        "model": cell["served_model_name"],
         "messages": [{"role": "user", "content": prompt}],
         "add_generation_prompt": True,
     }
@@ -290,8 +315,9 @@ def call_model(cell: dict, prompt: str, prompt_tokens: int | None = None) -> dic
         max_tokens = MAX_TOKENS_CEILING
         budget_note = "tokenize-unavailable-using-ceiling"
         print(f"  [warn] /tokenize probe returned no count; using ceiling {MAX_TOKENS_CEILING}", flush=True)
+    # Wire-level served-model-name (matches vLLM's /v1/models), NOT the bench cell tag.
     payload = {
-        "model": cell["model_id"],
+        "model": cell["served_model_name"],
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "max_tokens": max_tokens,
@@ -637,11 +663,15 @@ def main(argv: list[str]) -> int:
         "ts_local": ts,
         "cell": args.model,
         "model_id": CELLS[args.model]["model_id"],
+        "served_model_name": CELLS[args.model]["served_model_name"],
         "endpoint": CELLS[args.model]["endpoint"],
         "max_model_len": MAX_MODEL_LEN,
         "env_overrides": {
             "FORGE_BENCH_CODER_URL": os.environ.get("FORGE_BENCH_CODER_URL"),
             "FORGE_BENCH_MAX_MODEL_LEN": os.environ.get("FORGE_BENCH_MAX_MODEL_LEN"),
+            "FORGE_BENCH_C01_SERVED_NAME": os.environ.get("FORGE_BENCH_C01_SERVED_NAME"),
+            "FORGE_BENCH_C11_SERVED_NAME": os.environ.get("FORGE_BENCH_C11_SERVED_NAME"),
+            "FORGE_BENCH_C03B_SERVED_NAME": os.environ.get("FORGE_BENCH_C03B_SERVED_NAME"),
         },
         "mode": "oracle-retrieval",
         "task_count": len(tasks),

@@ -7229,3 +7229,13 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
     1. Matched-context (32k) vs 33.3% baseline — proves flag bundle doesn't regress.
     2. New-context (65k) — exercises DoD item 3 (4 previously-skipped tasks load).
 - **Related DEBUG_LOG:** 2026-08-06 15:41 EDT + 15:45 EDT.
+
+## 2026-08-06 15:52 EDT — Slice 8.0 bench alignment (served-model-name)
+
+- **Stage / plugin / port:** Stage 8 · Slice 8.0 · bench_pathF_swebench harness
+- **What changed:** Bench sent the internal cell tag as OpenAI `model` field → vLLM 404. Fixed by adding a separate `served_model_name` per cell (c01 default `qwen3.6-27b-int4-autoround` matches canonical launcher; c11/c03b default to their cell tag pending verification). Manifest now records `served_model_name`.
+- **Files touched:** `bench/pathF_swebench/bench_pathF_swebench.py`.
+- **Ports / adapters affected:** none.
+- **PORTING_LEDGER / ADR updated:** none.
+- **Stop-condition status:** in-progress. Both smoke steps still pending real attestation runs.
+- **Related DEBUG_LOG:** 2026-08-06 15:52 EDT.
