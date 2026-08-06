@@ -7,7 +7,31 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/agent-presets", tags=["agent-presets"])
 
-ModelId = Literal["gpt-4o", "claude-opus-4", "gemini-2.5-pro", "local-llama"]
+# Stage 2.1.7 (amended plan): ``model`` is a free-form identifier the
+# selected backend understands (e.g. ``qwen3-coder:32k`` for Ollama,
+# ``qwen3.6-27b-int4-autoround`` for the coder vLLM). The old cloud
+# ``Literal["gpt-4o", ...]`` was inaccurate on Colossus (no cloud
+# routing exists in this codebase) and blocked local presets from
+# being seeded. See KNOWN_ISSUES 2026-08-05.
+ModelId = str
+
+# Canonical backend ids — kept in sync with
+# ``bff/services/inference_backends/registry.py``. Duplicated as a
+# Literal here (not imported) so this router has no dependency on
+# the backend registry module at import time; the registry is a
+# runtime concern.
+BackendId = Literal[
+    "ollama",
+    "vllm-coder",
+    "vllm-planner",
+    "vllm-legacy",
+    "llamacpp",
+    "sglang",
+]
+
+# Role hint for a preset. ``None`` = let ``route_by_role``'s
+# taskComplexity mapping decide (backwards-compatible default).
+RoleHint = Literal["coder", "planner"]
 
 
 class LoopGuardConfig(BaseModel):
@@ -21,7 +45,13 @@ class AgentPreset(BaseModel):
     name: str
     description: str | None = None
     systemPrompt: str = ""
-    model: ModelId = "gpt-4o"
+    model: ModelId = ""
+    # Stage 2.1.7: optional backend pin. When set, the run-creation
+    # path forwards this to ``route_by_role(backend_id=...)``.
+    backendId: BackendId | None = None
+    # Stage 2.1.7: optional explicit role. When set, wins over
+    # taskComplexity mapping.
+    role: RoleHint | None = None
     maxSteps: int = 100
     maxCost: float = 5.0
     temperature: float = 0.2
@@ -37,7 +67,9 @@ class CreateRequest(BaseModel):
     name: str
     description: str | None = None
     systemPrompt: str = ""
-    model: ModelId = "gpt-4o"
+    model: ModelId = ""
+    backendId: BackendId | None = None
+    role: RoleHint | None = None
     maxSteps: int = 100
     maxCost: float = 5.0
     temperature: float = 0.2
@@ -53,6 +85,8 @@ class UpdateRequest(BaseModel):
     description: str | None = None
     systemPrompt: str | None = None
     model: ModelId | None = None
+    backendId: BackendId | None = None
+    role: RoleHint | None = None
     maxSteps: int | None = None
     maxCost: float | None = None
     temperature: float | None = None
@@ -65,15 +99,24 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# Stage 2.1.7 (amended plan): seed with Colossus-local presets keyed
+# to the canonical vLLM coder/planner topology (ADR-009 §3a) plus an
+# Ollama fallback. Cloud presets are gone — this codebase never
+# routed to them and having them as defaults blocked local runs.
 _PRESETS: dict[str, AgentPreset] = {
     "ap-1": AgentPreset(
         id="ap-1",
-        name="General Dev",
-        description="Balanced preset for software development tasks.",
+        name="Coder — vLLM (c01 canonical)",
+        description=(
+            "Colossus coder role: Qwen3.6-27B INT4-AutoRound via vLLM at :8501. "
+            "F.3 SWE-bench Verified: 26.6% raw pass@1. Default preset."
+        ),
         systemPrompt="You are an expert software engineer. Think step by step.",
-        model="gpt-4o",
+        model="qwen3.6-27b-int4-autoround",
+        backendId="vllm-coder",
+        role="coder",
         maxSteps=150,
-        maxCost=8.0,
+        maxCost=0.0,
         isDefault=True,
         toolAllowlist=["filesystem", "bash", "browser"],
         loopGuard=LoopGuardConfig(enabled=True, windowSize=20, threshold=3),
@@ -82,14 +125,37 @@ _PRESETS: dict[str, AgentPreset] = {
     ),
     "ap-2": AgentPreset(
         id="ap-2",
-        name="Research Agent",
-        description="Optimised for web research and document synthesis.",
-        systemPrompt="You are a research assistant. Cite sources.",
-        model="claude-opus-4",
+        name="Planner — vLLM (DSR1-Distill-32B AWQ)",
+        description=(
+            "Colossus planner role: DeepSeek-R1-Distill-32B AWQ via vLLM at :8511. "
+            "Reasoning-heavy tasks and multi-step planning."
+        ),
+        systemPrompt="You are a planning assistant. Reason step by step before acting.",
+        model="deepseek-r1-distill-32b-awq",
+        backendId="vllm-planner",
+        role="planner",
         maxSteps=80,
-        maxCost=12.0,
-        toolAllowlist=["browser", "search"],
+        maxCost=0.0,
+        toolAllowlist=["filesystem", "bash", "browser", "search"],
         loopGuard=LoopGuardConfig(enabled=True, windowSize=15, threshold=2),
+        createdAt=_now(),
+        updatedAt=_now(),
+    ),
+    "ap-3": AgentPreset(
+        id="ap-3",
+        name="Coder — Ollama fallback",
+        description=(
+            "Coder role pinned to the Ollama runtime (qwen3-coder:32k). "
+            "Use when the coder vLLM is offline or under supervision."
+        ),
+        systemPrompt="You are an expert software engineer. Think step by step.",
+        model="qwen3-coder:32k",
+        backendId="ollama",
+        role="coder",
+        maxSteps=150,
+        maxCost=0.0,
+        toolAllowlist=["filesystem", "bash", "browser"],
+        loopGuard=LoopGuardConfig(enabled=True, windowSize=20, threshold=3),
         createdAt=_now(),
         updatedAt=_now(),
     ),

@@ -350,7 +350,11 @@ def _planner_config() -> tuple[str, str, int, str]:
     )
 
 
-async def route_by_role(role: str, context_length: int = 0) -> RoleRoute:
+async def route_by_role(
+    role: str,
+    context_length: int = 0,
+    backend_id: str | None = None,
+) -> RoleRoute:
     """Resolve a role to a concrete backend + model + budget.
 
     ADR-009 §3a topology: only one of coder/planner vLLM is resident at a
@@ -367,6 +371,28 @@ async def route_by_role(role: str, context_length: int = 0) -> RoleRoute:
     ``context_length`` is accepted for API symmetry with ``route_request``
     and future gating, but F.19.2a does not use it for role routing.
     Callers pick the role explicitly.
+
+    ``backend_id`` (Stage 2.1, additive): optional pin to a specific
+    backend from ``bff/services/inference_backends``. When ``None``
+    (default), behavior is byte-for-byte identical to the pre-Stage-2
+    router. When set:
+
+    - ``"ollama"`` — skip the vLLM fast path and swap-on-demand step;
+      go directly to the Ollama fallback path (still gated on the
+      Ollama health probe). Requires an Ollama fallback for the role.
+    - ``"vllm-coder"`` / ``"vllm-planner"`` — must match ``role``.
+      Behaves like the default path (vLLM fast-path + supervisor swap)
+      but does NOT fall back to Ollama on failure; raises
+      ``ModelUnavailableError`` instead. The UI uses this to pin a
+      specific vLLM role for evaluation or debugging.
+    - Any other value — raises ``ValueError``. llama.cpp and SGLang
+      pins are not accepted here because the router does not know
+      what model to serve on those backends; that decision belongs
+      in an AgentPreset (Stage 2.1.7) once the runtime is actually
+      deployed on Colossus (out of Stage 2 scope per amended plan).
+
+    See ``docs/reconciliation-plan-stage-2.md`` § 2.1.6 for the full
+    contract.
     """
     if role == "coder":
         role_url, role_model, max_tokens, ollama_fallback = _coder_config()
@@ -375,8 +401,36 @@ async def route_by_role(role: str, context_length: int = 0) -> RoleRoute:
     else:
         raise ValueError(f"unknown role {role!r}; expected 'coder' or 'planner'")
 
-    # 1) Fast path — role already live.
-    if await _vllm_role_health(role_url):
+    # Stage 2.1 additive pin. Validated early so a bad pin never falls
+    # through to the default (which would hide the caller's intent).
+    force_ollama = False
+    force_vllm = False
+    if backend_id is not None:
+        if backend_id == "ollama":
+            force_ollama = True
+        elif backend_id == "vllm-coder":
+            if role != "coder":
+                raise ValueError(
+                    f"backend_id='vllm-coder' incompatible with role={role!r}"
+                )
+            force_vllm = True
+        elif backend_id == "vllm-planner":
+            if role != "planner":
+                raise ValueError(
+                    f"backend_id='vllm-planner' incompatible with role={role!r}"
+                )
+            force_vllm = True
+        elif backend_id in {"vllm-legacy", "llamacpp", "sglang"}:
+            raise ValueError(
+                f"backend_id={backend_id!r} is inventory-only in Stage 2 "
+                "(no model routing yet — see amended plan § 2.1.6). Use "
+                "'ollama', 'vllm-coder', or 'vllm-planner'."
+            )
+        else:
+            raise ValueError(f"unknown backend_id {backend_id!r}")
+
+    # 1) Fast path — role already live (skipped when forced to Ollama).
+    if not force_ollama and await _vllm_role_health(role_url):
         return RoleRoute(
             role=role,
             backend="vllm",
@@ -385,8 +439,8 @@ async def route_by_role(role: str, context_length: int = 0) -> RoleRoute:
             max_tokens=max_tokens,
         )
 
-    # 2) Cache-miss — try to swap.
-    if await _supervisor_ensure(role):
+    # 2) Cache-miss — try to swap (skipped when forced to Ollama).
+    if not force_ollama and await _supervisor_ensure(role):
         if await _vllm_role_health(role_url):
             return RoleRoute(
                 role=role,
@@ -395,6 +449,13 @@ async def route_by_role(role: str, context_length: int = 0) -> RoleRoute:
                 base_url=f"{role_url}/v1",
                 max_tokens=max_tokens,
             )
+
+    if force_vllm:
+        # Pinned to vLLM — no Ollama fallback.
+        raise ModelUnavailableError(
+            f"role={role!r} pinned to backend_id={backend_id!r} unavailable: "
+            f"vLLM at {role_url} down and supervisor could not recover."
+        )
 
     # 3) Ollama fallback (coder only by default).
     if ollama_fallback and await ollama_health_check(ollama_fallback):

@@ -388,3 +388,103 @@ def test_coder_ollama_fallback_env_override_wins(monkeypatch):
 
     importlib.reload(mr)
     assert mr.LLM_CODER_OLLAMA_FALLBACK == "qwen3-coder:custom"
+
+
+# ---------------------------------------------------------------------------
+# Stage 2.1 — Optional ``backend_id`` pin on route_by_role.
+# The default (backend_id=None) MUST preserve pre-Stage-2 behavior; the
+# tests above already cover that. These add the new pin-specific paths.
+# ---------------------------------------------------------------------------
+
+
+def test_backend_id_ollama_forces_ollama_path_and_skips_vllm(monkeypatch):
+    """backend_id='ollama' bypasses the vLLM fast path and supervisor,
+    going straight to the Ollama fallback branch (still health-gated).
+    """
+    mr = _reload_router_for_roles(monkeypatch)
+
+    async def probe(url):  # noqa: ARG001
+        raise AssertionError("vLLM probe must be skipped when pinned to ollama")
+
+    async def ensure(role):  # noqa: ARG001
+        raise AssertionError("supervisor must be skipped when pinned to ollama")
+
+    async def ollama_ok(model):  # noqa: ARG001
+        return True
+
+    monkeypatch.setattr(mr, "_vllm_role_health", probe)
+    monkeypatch.setattr(mr, "_supervisor_ensure", ensure)
+    monkeypatch.setattr(mr, "ollama_health_check", ollama_ok)
+
+    route = _run(mr.route_by_role("coder", backend_id="ollama"))
+    assert route.backend == "ollama"
+    assert route.model == mr.LLM_CODER_OLLAMA_FALLBACK
+
+
+def test_backend_id_vllm_coder_pin_never_falls_back_to_ollama(monkeypatch):
+    """backend_id='vllm-coder' raises ModelUnavailableError when vLLM is
+    down instead of silently succeeding via Ollama fallback.
+    """
+    mr = _reload_router_for_roles(monkeypatch)
+
+    async def probe(url):  # noqa: ARG001
+        return False
+
+    async def ensure(role):  # noqa: ARG001
+        return False
+
+    async def ollama_ok(model):  # noqa: ARG001
+        raise AssertionError("Ollama fallback must NOT run for a vLLM pin")
+
+    monkeypatch.setattr(mr, "_vllm_role_health", probe)
+    monkeypatch.setattr(mr, "_supervisor_ensure", ensure)
+    monkeypatch.setattr(mr, "ollama_health_check", ollama_ok)
+
+    with pytest.raises(mr.ModelUnavailableError):
+        _run(mr.route_by_role("coder", backend_id="vllm-coder"))
+
+
+def test_backend_id_vllm_coder_rejected_for_planner_role(monkeypatch):
+    mr = _reload_router_for_roles(monkeypatch)
+    with pytest.raises(ValueError):
+        _run(mr.route_by_role("planner", backend_id="vllm-coder"))
+
+
+def test_backend_id_vllm_planner_rejected_for_coder_role(monkeypatch):
+    mr = _reload_router_for_roles(monkeypatch)
+    with pytest.raises(ValueError):
+        _run(mr.route_by_role("coder", backend_id="vllm-planner"))
+
+
+def test_backend_id_inventory_only_ids_are_rejected(monkeypatch):
+    """llamacpp / sglang / vllm-legacy are inventory-only in Stage 2;
+    passing them to route_by_role is an error \u2014 not a silent fallback.
+    """
+    mr = _reload_router_for_roles(monkeypatch)
+    for bid in ("vllm-legacy", "llamacpp", "sglang"):
+        with pytest.raises(ValueError):
+            _run(mr.route_by_role("coder", backend_id=bid))
+
+
+def test_backend_id_unknown_string_is_rejected(monkeypatch):
+    mr = _reload_router_for_roles(monkeypatch)
+    with pytest.raises(ValueError):
+        _run(mr.route_by_role("coder", backend_id="not-a-backend"))
+
+
+def test_backend_id_none_preserves_pre_stage2_behavior(monkeypatch):
+    """Regression guard: with backend_id=None (default) the route MUST
+    be identical to the pre-Stage-2 path \u2014 vLLM if healthy, else the
+    Ollama fallback. Duplicates the fast-path test but with the explicit
+    keyword to lock the contract.
+    """
+    mr = _reload_router_for_roles(monkeypatch)
+
+    async def probe(url):
+        return url == mr.LLM_CODER_URL
+
+    monkeypatch.setattr(mr, "_vllm_role_health", probe)
+
+    route = _run(mr.route_by_role("coder", backend_id=None))
+    assert route.backend == "vllm"
+    assert route.model == mr.LLM_CODER_MODEL

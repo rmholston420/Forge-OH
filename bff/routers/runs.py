@@ -80,6 +80,10 @@ class CreateRunRequest(BaseModel):
     # mapping. Accepted values: "coder" | "planner".
     role: str | None = None
     contextLength: int | None = None
+    # Stage 2.1.7 (amended plan): optional backend pin. When set, wins
+    # over the AgentPreset's ``backendId`` (which itself is optional).
+    # Forwarded to ``route_by_role(backend_id=...)``.
+    backendId: str | None = None
     # Stage 1E: when true, agent will pause before every tool call for HITL
     # approve/reject. Backed by APPROVAL_GATE feature flag in the frontend.
     requireApproval: bool | None = False
@@ -254,15 +258,35 @@ async def create_run(body: CreateRunRequest) -> dict:
     )
     role = _resolve_role(body.role, task_complexity)
 
-    # 1) Route by role (F.19.2b).
+    # Stage 2.1.7 (amended plan): resolve backend pin from request or
+    # preset. Request wins over preset. When both are None the router
+    # follows the pre-Stage-2 default (behavior byte-for-byte preserved).
+    backend_id = body.backendId
+    if backend_id is None:
+        from bff.routers.agent_presets import _PRESETS  # local import: avoid cycle
+        preset = _PRESETS.get(body.agentPresetId)
+        if preset is not None and preset.backendId is not None:
+            backend_id = preset.backendId
+            # Preset can also pin the role; only apply when the request
+            # didn't send an explicit role AND taskComplexity mapping
+            # didn't already yield a stronger signal.
+            if body.role is None and preset.role is not None:
+                role = preset.role
+
+    # 1) Route by role (F.19.2b + Stage 2.1.7 optional backend pin).
     try:
-        route: RoleRoute = await route_by_role(role, context_length=context_length)
-    except ModelUnavailableError as exc:
+        route: RoleRoute = await route_by_role(
+            role,
+            context_length=context_length,
+            backend_id=backend_id,
+        )
+    except (ModelUnavailableError, ValueError) as exc:
         return {
             "data": {
                 "id": "",
                 "title": body.title,
                 "status": "blocked",
+                "agentPresetId": body.agentPresetId,
                 "agentPresetName": body.agentPresetId,
                 "workspaceId": body.workspaceId,
                 "workspaceType": "local",
@@ -271,6 +295,7 @@ async def create_run(body: CreateRunRequest) -> dict:
                     "taskComplexity": task_complexity,
                     "role": role,
                     "contextLength": context_length,
+                    "backendId": backend_id,
                     "selected": None,
                     "error": str(exc),
                 },
@@ -404,10 +429,15 @@ async def create_run(body: CreateRunRequest) -> dict:
     # instead. Preserve the caller's UUID in the response.
     if body.workspaceId:
         summary["workspaceId"] = body.workspaceId
+    # Stage 2.1.8 (amended plan): surface agentPresetId on the run
+    # record so ``GET /api/runs/{id}`` no longer returns null for the
+    # preset FK. See KNOWN_ISSUES 2026-08-05 "agentPresetId null".
+    summary["agentPresetId"] = body.agentPresetId
     summary["routing"] = {
         "taskComplexity": task_complexity,
         "role": role,
         "contextLength": context_length,
+        "backendId": backend_id,
         "selected": route.tagged,
         "backend": route.backend,
         "model": route.model,

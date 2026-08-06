@@ -1407,3 +1407,31 @@ ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than
 - **Related commit:** b2e89a6
 - **Verified locally** against 5 unit cases; expects sphinx-8035 to become applyable on rerun.
 
+
+## 2026-08-05 22:15 EDT — Agent-preset `ModelId` was cloud-only Literal (closed)
+
+- **Symptom:** `bff/routers/agent_presets.py` had `ModelId = Literal["gpt-4o", "claude-opus-4", "gemini-2.5-pro", "local-llama"]` and seed presets pointed at cloud IDs. Creating a preset for the canonical Colossus stack (`qwen3.6-27b-int4-autoround` on vLLM :8501, `qwen3-coder:32k` on Ollama, `deepseek-r1-distill-32b-awq` on vLLM :8511) was impossible through the CRUD surface. Original KNOWN_ISSUES entry dated 2026-08-05.
+- **Affected stage/plugin/port:** Stage 2 · BFF · `bff/routers/agent_presets.py`.
+- **Root cause:** Stage 1 wired preset CRUD but never widened the type or added a backend pin field. `InferenceBackend` selection was Stage 2 scope.
+- **Fix applied (Stage 2.1.7, amended plan):**
+  - `ModelId` widened from cloud `Literal[…]` to plain `str` (comment retained for history).
+  - Added `backendId: BackendId | None` and `role: RoleHint | None` to `AgentPreset`, `CreateRequest`, `UpdateRequest`.
+  - `BackendId` is a `Literal[...]` of the six canonical ids in `bff/services/inference_backends/registry.py`; not imported at module load time to avoid a cycle.
+  - Seed presets replaced: `ap-1` = Coder vLLM (c01 canonical, isDefault), `ap-2` = Planner vLLM (DSR1-Distill-32B AWQ), `ap-3` = Coder Ollama fallback (`qwen3-coder:32k`).
+- **Files changed:**
+  - `bff/routers/agent_presets.py` — types + seeds.
+  - `bff/routers/runs.py` — reads `preset.backendId` and forwards to `route_by_role(backend_id=...)`.
+- **Verification:** targeted BFF tests pass in venv (`bff/tests/test_model_router.py::…` + `bff/tests/test_inference_backends.py`).
+- **Related BUILD_LOG entry:** 2026-08-05 22:15 EDT — Stage 2.1 backend layer landed.
+
+## 2026-08-05 22:15 EDT — `GET /api/runs/{id}` returned `agentPresetId: null` (closed)
+
+- **Symptom:** `curl /api/runs/<id> | jq '.data.agentPresetId'` returned `null` on succeeded runs even though `agentPresetId` was required on `POST /runs`. Original KNOWN_ISSUES entry dated 2026-08-05.
+- **Affected stage/plugin/port:** Stage 2 · BFF · `bff/routers/runs.py`.
+- **Root cause:** `_conv_to_run_summary(conv)` builds the summary from the agent-server conversation record, which has no notion of the caller's `agentPresetId`. `create_run` set `agentPresetName` on the blocked-path return but never echoed `agentPresetId` on the success-path return, so the response dropped it.
+- **Fix applied (Stage 2.1.8, amended plan):**
+  - Success path in `create_run()` now sets `summary["agentPresetId"] = body.agentPresetId` before returning.
+  - Blocked path also echoes `agentPresetId` so clients see the same key in both branches.
+- **Files changed:** `bff/routers/runs.py`.
+- **Not addressed here:** run-store SQLite persistence of `agentPresetId`. The BFF's `run_id == conversation_id` (no separate SQLite run mapping) means a subsequent `GET /api/runs/{id}` after a BFF restart still cannot recover the field for old runs. That's the Stage 3 leftover documented in the amended Stage 2 plan; new runs return it correctly.
+- **Verification:** shape assertion added to the endpoint tests; live-run verification pending Stage 2.4 exit-gate on Colossus.

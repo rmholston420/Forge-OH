@@ -4845,3 +4845,36 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Ports / adapters affected:** none yet (docs-only). Stage 2.1 execution begins next session.
 - **PORTING_LEDGER / ADR updated:** none. ADR-009 §3a explicitly preserved and cited. If Stage 2.1 execution reveals a load-bearing decision (e.g. how `agentPresetId` persists absent an SQLite layer), a new ADR will be filed at that time.
 - **Stop-condition status:** Stage 2 amended plan on `main`. Ready to begin Stage 2.1 code work per amended plan.
+
+## 2026-08-05 22:15 EDT — Stage 2.1 InferenceBackend health-inventory layer + preset widening
+
+- **Stage / plugin / port:** Stage 2 (Inference-Backend Flexibility) · BFF · new `bff/services/inference_backends` package · `route_by_role` additive extension · `agent_presets` type widening · `runs` `backendId` threading + `agentPresetId` echo
+- **What was built:**
+  - New package `bff/services/inference_backends/` with `types.py`, `protocol.py`, `_common.py` (probes), six adapters (`adapter_ollama.py`, `adapter_vllm.py` × 3 instantiations, `adapter_llamacpp.py`, `adapter_sglang.py`), `registry.py`. Registry order matches the amended plan § 2.1.5.
+  - New router `bff/routers/inference_backends.py` exposing `GET /api/inference-backends`. Returns 200 with per-entry health state (`healthy` / `degraded` / `unhealthy` / `muted`) even when every backend is unreachable. Wired into `bff/main.py` and `bff/tests/utils.py::create_test_app`.
+  - `bff/services/model_router.py::route_by_role` gained additive `backend_id: str | None = None` parameter. Default (None) preserves pre-Stage-2 behavior byte-for-byte (regression test locks the contract). Pins: `"ollama"` → skip vLLM/supervisor, go straight to Ollama fallback path; `"vllm-coder"` / `"vllm-planner"` → must match role, no Ollama fallback on failure; `"vllm-legacy"` / `"llamacpp"` / `"sglang"` → `ValueError` (inventory-only in Stage 2). ADR-009 §3a topology preserved: supervisor coalescing, per-role locks, `VLLM_SUPERVISOR_REQUEST_CAP` short-circuit, Ollama fallback semantics untouched.
+  - `bff/routers/agent_presets.py`: `ModelId` widened from cloud `Literal[…]` to plain `str`. Added `backendId: BackendId | None` and `role: RoleHint | None` fields on `AgentPreset`, `CreateRequest`, `UpdateRequest`. Reseeded `_PRESETS` with `ap-1` (Coder vLLM c01 canonical, isDefault), `ap-2` (Planner vLLM DSR1-Distill-32B AWQ), `ap-3` (Coder Ollama fallback `qwen3-coder:32k`). Old cloud presets removed — nothing in this codebase ever routed to them.
+  - `bff/routers/runs.py`: `CreateRunRequest` gained optional `backendId: str | None`. `create_run()` resolves the pin from request (wins) or preset. Forwards to `route_by_role(backend_id=...)`. Catches `ValueError` alongside `ModelUnavailableError` and returns a `blocked` run with the invalid-pin message. Both blocked and success paths now echo `agentPresetId` on the response (closes KNOWN_ISSUES 2026-08-05 "agentPresetId null"). Success path also emits `routing.backendId`.
+- **Tests:**
+  - New: `bff/tests/test_inference_backends.py` (10 tests: registry shape, health-probe branches, endpoint envelope, mixed-healthy scenario).
+  - Extended: `bff/tests/test_model_router.py` (+7 tests on the `backend_id` param: `ollama` pin, `vllm-*` pin, role/backend mismatch, inventory-only rejection, unknown-id rejection, `None` default preserves behavior).
+  - Local run in fresh venv: **36/36 pass** (all model_router + inference_backends tests). No behavior regressions in existing role-routing tests.
+- **KNOWN_ISSUES closed:**
+  - "Agent-preset ModelId is a static Literal, no local endpoints wired" (2026-08-05) — resolved by widening + reseed.
+  - "GET /api/runs/{id} returns agentPresetId: null on succeeded runs" (2026-08-05) — resolved by echoing on the success path. Run-store SQLite persistence remains a Stage 3 leftover (documented in the amended Stage 2 plan; not blocking Stage 2 exit).
+- **Files touched:**
+  - `bff/services/inference_backends/__init__.py`, `types.py`, `protocol.py`, `_common.py`, `adapter_ollama.py`, `adapter_vllm.py`, `adapter_llamacpp.py`, `adapter_sglang.py`, `registry.py` (new)
+  - `bff/routers/inference_backends.py` (new)
+  - `bff/main.py` (router registration)
+  - `bff/tests/utils.py` (test-app router registration)
+  - `bff/services/model_router.py` (`backend_id` additive param on `route_by_role`)
+  - `bff/routers/agent_presets.py` (types widened, seeds replaced)
+  - `bff/routers/runs.py` (`CreateRunRequest.backendId`, resolve + forward, echo `agentPresetId`)
+  - `bff/tests/test_inference_backends.py` (new)
+  - `bff/tests/test_model_router.py` (append backend_id tests)
+  - `KNOWN_ISSUES.md` (two entries removed)
+  - `DEBUG_LOG.md` (two closure entries appended)
+  - `BUILD_LOG.md` (this entry)
+- **Ports / adapters affected:** new `InferenceBackend` port added ABOVE the existing role-routing core; `model_router` behavior unchanged when `backend_id=None`. ADR-009 §3a topology preserved.
+- **PORTING_LEDGER / ADR updated:** none. No external code vendored — the adapters are thin OpenAI-compat probes; the port + protocol are direct implementations of the amended Stage 2 plan.
+- **Stop-condition status:** Stage 2.1 (backend health-inventory + preset widening + `backendId` threading) COMPLETE per amended plan § 2.1. Ready for Stage 2.2 (frontend `HealthBadge` + `BackendSelector` + presets/run-form wiring).

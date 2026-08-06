@@ -1,36 +1,48 @@
-# Forge-OH Session Handoff — 2026-08-05 21:58 EDT
+# Forge-OH Session Handoff — 2026-08-05 22:15 EDT
 
 ## Current build-sequencing position
 
-- **Stage / phase:** Stage 2 (Inference-Backend Flexibility) — plan amended, code not yet started.
-- **Plugin / kernel component:** kernel · BFF · `model_router` + new `bff/services/inference_backends/` package.
-- **Port(s) in progress:** `InferenceBackend` protocol (Stage 2.1). Additive to existing role-routing core; supervisor + `RoleRoute` semantics preserved.
+- **Stage / phase:** Stage 2 (Inference-Backend Flexibility) — backend layer COMPLETE, frontend layer next.
+- **Plugin / kernel component:** kernel · BFF · `bff/services/inference_backends` (new package) · `bff/services/model_router.py` (additive extension only) · `bff/routers/inference_backends.py` (new) · `bff/routers/agent_presets.py` (widened) · `bff/routers/runs.py` (threading + echo).
+- **Port(s) in progress:** `InferenceBackend` protocol landed as a health-inventory + selection layer ABOVE `route_by_role()`. Additive; default behavior byte-for-byte preserved.
 
 ## Completed this session
 
-- **Reality check + plan amendment:** discovered the v1 first-draft Stage 2 was authored against an older `model_router.py` snapshot (single vLLM, Ollama-only, `route_by_role(role, model, backend_id)` rewrite). The live router (post-F.3, `main`) implements ADR-009 §3a dual-role topology with `ops/vllm_supervisor.sh` swap-on-demand, `RoleRoute` dataclass, per-role locks, VLLM_SUPERVISOR_REQUEST_CAP (G.1 fix), and Ollama-fallback semantics. Executing v1 verbatim would have deleted all of that.
-- **Amended plan committed:** `docs/reconciliation-plan-stage-2.md` (canonical, 957 lines) + `docs/reconciliation-plan-v1.md` Stage 2 section rewritten as a short summary + pointer. Full reality-delta table at the bottom of the stage-2 doc.
-- **Core invariant recorded:** `InferenceBackend` is a health-inventory + selection layer ABOVE `route_by_role()`, not a replacement. `route_by_role()` gains only an optional `backend_id: str | None = None` parameter; default (None) preserves existing behavior byte-for-byte.
-- **Adapter set finalized as six** (not the v1 first draft's four): `ollama`, `vllm-coder` (:8501), `vllm-planner` (:8511), `vllm-legacy` (:8500, probe-only), `llamacpp` (health visibility only until Colossus deploys it), `sglang` (same).
-- **KNOWN_ISSUES folded in:** the two Stage-2-adjacent items (AgentPreset `Literal` cloud-only; `agentPresetId: null` on runs) become 2.1.7 and 2.1.8 in the amended plan.
-- **BUILD_LOG.md appended** with a plan-amendment entry documenting the reality delta and rationale.
+- **C then A executed in order.**
+  - **C (plan reconciliation, prior commit `cb23905`):** amended Stage 2 plan (`docs/reconciliation-plan-stage-2.md`, canonical) to match the live `model_router.py` (dual vLLM roles per ADR-009 §3a, `RoleRoute`, supervisor coalescing, request-cap short-circuit). Rewrote Stage 2 section of `docs/reconciliation-plan-v1.md` as a summary + pointer.
+  - **A (Stage 2.1 backend layer, this commit):** new `bff/services/inference_backends/` package (six adapters + registry + protocol + shared probes), new `GET /api/inference-backends` router, additive `backend_id: str | None = None` on `route_by_role`, widened `AgentPreset` types + reseeded with three local presets (ap-1 coder vLLM canonical, ap-2 planner vLLM, ap-3 Ollama fallback), `CreateRunRequest.backendId` threading, and `agentPresetId` echo on run responses.
+- **Two KNOWN_ISSUES entries closed** and moved to `DEBUG_LOG.md` with fix details:
+  - "Agent-preset `ModelId` is a static Literal, no local endpoints wired" (2026-08-05).
+  - "`GET /api/runs/{id}` returns `agentPresetId: null` on succeeded runs" (2026-08-05).
+- **36/36 targeted BFF tests pass** in the sandbox venv (`bff/tests/test_model_router.py` + `bff/tests/test_inference_backends.py`). The `backend_id=None` regression test locks the invariant that the default path is unchanged.
 
 ## Remaining before current Definition of Done
 
-Amended Stage 2 Definition of Done, ordered:
+Amended Stage 2 DoD, remaining items:
 
-1. **Stage 2.1 (backend health-inventory layer + `route_by_role` additive extension + AgentPreset widening + `agentPresetId` end-to-end):** `bff/services/inference_backends/` package with six adapters, registry, protocol, types; `GET /api/inference-backends`; `POST /runs` accepts optional `backendId`; `AgentPreset.model` widened from cloud `Literal` to free-form string with new `backendId` + `role` fields; three seeded presets (ap-1 coder canonical, ap-2 planner, ap-3 Ollama fallback); `agentPresetId` surfaced on `GET /runs/{id}`.
-2. **Stage 2.2 (frontend selector + live health):** `HealthBadge` reusing existing `badge badge--*` CSS classes (NOT Tailwind bg-*); `BackendSelector` radio group; wired into Agent Presets editor + run-creation form.
-3. **Stage 2.3 (docs-only):** `docs/colossus-inference-setup.md` with SM_120 flag matrix. No new builds on Colossus.
-4. **Stage 2.4 (VRAM-aware quant + concurrency):** `hardware.py`, `quant_selector.py`, `concurrency.py`, `GET /api/inference-backends/concurrency-limit`, `ConcurrencyLimitDisplay` on Settings.
-5. **Exit gate:** full manual checklist in `docs/reconciliation-plan-stage-2.md` § "Stage 2 exit gate", including an F.3 SWE-bench 5-task smoke re-run to confirm additive `backendId` did not regress role-based routing (must land inside the smoke-30 v2 regression band: 22–38% raw).
+1. **Stage 2.2 (frontend `HealthBadge` + `BackendSelector` + wiring):**
+   - `HealthBadge` reusing existing `badge badge--success/warning/muted/error` CSS classes (verified in `src/features/mcp/McpServerCard.tsx`; do NOT introduce new Tailwind bg-* classes).
+   - `BackendSelector` as a radio group (not `<select>`) with per-item badge + latency + error tooltip. Renders in the order of `BACKEND_REGISTRY.keys()`.
+   - Wired into Agent Presets editor (existing pages: `src/features/agent-presets/AgentPresetsPage.tsx`, `AgentPresetCard.tsx`) and the run-creation form.
+   - React Query hook `useInferenceBackends()` following the same pattern as `src/features/agent-presets/hooks.ts` (queryKey + fetch + auto-refresh cadence to be decided in 2.2).
+   - `AgentPreset` schema on the frontend needs to grow `backendId?: BackendId | null` and `role?: RoleHint | null` (see `src/features/agent-presets/schemas.ts`).
+2. **Stage 2.3 (docs-only):** `docs/colossus-inference-setup.md` with SM_120 flag matrix for llama.cpp / vLLM / SGLang. No new builds on Colossus.
+3. **Stage 2.4 (VRAM-aware quant + concurrency):** `bff/services/hardware.py`, `bff/services/quant_selector.py`, `bff/services/concurrency.py`, `GET /api/inference-backends/concurrency-limit`, `ConcurrencyLimitDisplay` on the Settings page (`src/app/(dashboard)/settings/page.tsx`).
+4. **Exit gate:** full manual checklist in `docs/reconciliation-plan-stage-2.md` § "Stage 2 exit gate", including an F.3 SWE-bench 5-task smoke re-run to confirm additive `backendId` did not regress role-based routing (must land inside the smoke-30 v2 regression band: 22–38% raw pass@1).
 
 ## Open questions / awaiting user answer
 
-- **AgentPreset SQLite persistence** (Stage 1.5 leftover): keeping `_PRESETS` in-memory for Stage 2 exit; deferred to a Stage 3 leftover slot. Not blocking Stage 2 exit gate. If a preset created via the UI must survive a BFF restart before Stage 3 lands, flag it and it becomes an in-Stage-2 addition.
+- **AgentPreset SQLite persistence** (Stage 1.5 leftover): still in-memory. Deferred to Stage 3. Not blocking Stage 2 exit. If a preset created via the UI must survive a BFF restart before Stage 3 lands, flag it and we roll it into Stage 2.
+- **Playwright coverage timing for Stage 2.2:** amended plan has a `BackendSelector` visual check in the exit gate. Confirm whether to author the spec inside Stage 2.2 or as a separate F.16-style visual slice.
 
 ## Exact next action
 
-Execute **Stage 2.1** per `docs/reconciliation-plan-stage-2.md` § 2.1, starting at 2.0 baseline inspection on Colossus. Do NOT touch `bff/services/model_router.py` beyond appending the optional `backend_id` parameter to `route_by_role`. Do NOT delete or simplify the supervisor path, `_supervisor_ensure` locks, `_vllm_role_health`, or the Ollama fallback logic. Every code path listed under "Do NOT delete or simplify" in § 2.0 is protected by tests and ADR-009 §3a.
+Execute **Stage 2.2** per `docs/reconciliation-plan-stage-2.md` § 2.2, starting with:
 
-Colossus is on `main` at the plan-amendment commit; working tree clean.
+1. On Colossus, verify the new backend package loads cleanly under the live BFF venv and the `GET /api/inference-backends` endpoint returns 200 (Ollama should probe healthy since it's currently holding the GPU per the 22:07 EDT `nvidia-smi` snapshot; every vLLM role should be `unhealthy` since `live_role: none`).
+2. Sync the frontend `AgentPreset` schema in `src/features/agent-presets/schemas.ts` with the widened backend contract (`backendId`, `role`, free-form `model`).
+3. Author `src/features/inference-backends/` (feature folder): `api.ts` + `hooks.ts` + `HealthBadge.tsx` + `BackendSelector.tsx` + `schemas.ts` mirroring the agent-presets feature layout.
+4. Wire `BackendSelector` into `AgentPresetCard.tsx` (edit surface) and the run-creation form.
+5. Playwright spec: assert `/agent-presets` renders the three seed presets (ap-1 default, ap-2 planner, ap-3 Ollama) with the correct backend badges.
+
+Colossus is on `main` at the Stage 2.1 landing commit; working tree expected clean after next `git pull`. Do NOT touch `bff/services/model_router.py` beyond the additive `backend_id` param already landed. Do NOT delete or simplify the supervisor path, `_supervisor_ensure` locks, `_vllm_role_health`, or the Ollama fallback logic. Every code path listed under "Do NOT delete or simplify" in the amended plan § 2.0 is protected by tests and ADR-009 §3a.

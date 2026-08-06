@@ -29,6 +29,7 @@ from bff.routers import (
     bash,
     git,
     gpu,
+    inference_backends,
     mcp,
     metrics,
     notifications,
@@ -118,6 +119,7 @@ app.include_router(runs.router, prefix="/api")
 app.include_router(bash.router, prefix="/api")
 app.include_router(git.router, prefix="/api")
 app.include_router(gpu.router)  # already prefixed /api/gpu inside the router
+app.include_router(inference_backends.router, prefix="/api")
 app.include_router(repograph.router, prefix="/api")
 app.include_router(selfeval.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
