@@ -1,85 +1,88 @@
-# Forge-OH — SESSION_HANDOFF
+# SESSION HANDOFF — 2026-08-06 10:15 EDT
 
-**Overwrite each session end.** Reflects CURRENT state only. Not append-only.
+## Current build-sequencing stage / plugin / port
 
-Last updated: **2026-08-06 09:40 EDT**
+**Stage 6.5 · Runtime model switching**
 
----
+- §6.5.1 CLOSED (verdict PRESENT-as-REST, ADR-027 Ratified)
+- §6.5.2 CLOSED (BFF endpoint `POST /runs/{run_id}/model` shipped, 32/32 tests green on Colossus at `f58f66c`)
+- **§6.5.3 NEXT** — Frontend model-switch control in run-detail header
 
-## Current stage/plugin/port
+## What was completed this session
 
-- **Stage 6.4c — CLOSED.** P1 Restart-from-here shipped end-to-end.
-  - ADR-026 **Ratified** with amendment block (2026-08-06 09:29 EDT `toDisplayEvent` projection fix).
-  - Backend + frontend + Playwright e2e + `stage-6.4c-verify.sh` all green on Colossus @ `0c01b6e`.
-- **Repo hygiene** — 15 stale branches pruned on origin (see below).
-- **Next stage per `docs/reconciliation-plan-stage-6.md`**: **Stage 6.5 Runtime model switching** — SDK gap check 6.5.1 first (may defer entire stage if agent-server REST surface is absent).
+1. §6.5.1 output classified — three agent-server `switch_*` variants disambiguated; `switch_llm` picked as the only sound target.
+2. ADR-027 Proposed → Ratified (rejects `switch_profile` + `switch_acp_model`, mandates preset-only wire contract).
+3. Discovered ADR-012 §3 `MODEL_ROUTER_CATALOG` referenced but never landed → stopped and asked → landed as micro-slice `0242347` (18 tests, catalog + `is_model_compatible_with_role` oracle).
+4. Shipped §6.5.2: `POST /runs/{run_id}/model` in `bff/routers/runs.py`, 14 pytest cases in `bff/tests/test_runs_model_switch.py`, all 32 tests green on Colossus at `f58f66c`.
+5. BUILD_LOG appended for each landing.
 
-## What was completed this session (2026-08-06)
+## Commit stack on origin/main
 
-### Stage 6.4c closure (single-slice per ADR-026 lock-in)
+- `f58f66c` **Stage 6.5.2: POST /runs/{run_id}/model (ADR-027) with 14 pytest cases**
+- `0242347` ADR-012 §3 micro-slice: MODEL_ROUTER_CATALOG + compatibility oracle
+- `936b5e7` ADR-027 Ratified: switch_llm-only BFF forwarding contract
+- `0b0742b` Stage 6.5 §6.5.1 CLOSED: ADR-027 Proposed
+- `85c08e3` SESSION_HANDOFF: Stage 6.4c CLOSED
 
-- Committed as `9eb10ce` → amended to `0c01b6e` after Playwright caught a `toDisplayEvent` projection drop.
-- `RestartFromHereButton.tsx` — rules-of-hooks fix, sha-presence gate, ADR-026 §Frontend contract copy verbatim.
-- `page.tsx::toDisplayEvent` — `commit_sha_at_time_of_event` added to `DisplayEvent` type and passed through via conditional spread; call site simplified to `commitShaAtTimeOfEvent={displayEv.commit_sha_at_time_of_event ?? null}`.
-- `bff/routers/debug.py` — E2E affordance: `raw.pop("commit_sha_at_time_of_event")` builds stub `sha_lookup` so synthetic events can be sha-eligible without ledger touch.
-- `src/tests/e2e/run-restart-from-here.spec.ts` — new spec: positive user+sha, negative agent, negative user-no-sha, wire-body assertion, dialog-copy screenshot.
-- `docs/adr/026-restart-from-here.md` — Proposed → Ratified with amendment block.
+## §6.5.3 scope for the next session
 
-### Colossus verify results
+**⚠ SPEC SUPERSESSION — read before coding.**
 
-- **pytest**: 56/56 green (`test_debug_inject_endpoint.py` 11/11 · `test_runs_restart.py` 27/27 · `test_runs_sha_capture.py` 18/18).
-- **vitest**: 14/14 green (`domain-RestartFromHereButton.test.tsx`).
-- **Playwright**: 1/1 green (`run-restart-from-here.spec.ts` 1.9s).
-- **`stage-6.4c-verify.sh`**: PASSED — anchor sha `0c01b6e...`, worktree HEAD match, neg A 404, neg C 404.
+`docs/reconciliation-plan-stage-6.md` §6.5.3 shows a browser body of:
+```json
+{"model": "...", "backendId": "..."}
+```
+That snippet is **stale**. ADR-027 (ratified 2026-08-06 09:52 EDT) supersedes it — the wire contract is:
+```json
+{"agentPresetId": "ap-1"}
+```
+No raw `model`, no `backendId`. Reason: credentials/model-source must never come from the browser; the BFF hydrates from the preset registry + secrets store. This is enforced at the Pydantic layer in `bff/routers/runs.py::SwitchModelRequest` and verified by `test_raw_model_field_is_ignored_at_pydantic_layer`.
 
-### Repo hygiene (commit `603b894`, pushed)
+**§6.5.3 Definition of Done**
+- `src/features/run-detail/ModelSwitchControl.tsx` renders a preset picker (uses `useAgentPresets()` hook from Stage 2.2 — NOT `useInferenceBackends()` as the stale spec suggests).
+- Selection triggers `POST /api/runs/{runId}/model` with `{ agentPresetId }`.
+- On 200 → refresh run-detail header to reflect the new model badge.
+- On 422 with `preset_model_incompatible_for_role` → user-visible error toast citing the preset and role.
+- On 503 (`ModelUnavailableError`) → user-visible toast "model temporarily unavailable, try again shortly".
+- On 404 → toast "run no longer exists".
+- Vitest coverage for the component's happy path + 422 + 503 + 404.
+- Playwright e2e:
+  1. Start a run on `ap-1` (coder, vLLM).
+  2. Switch to `ap-3` (coder, Ollama fallback) mid-run.
+  3. Assert run-detail header updates.
+  4. Assert next model-metadata event reflects the new backend.
 
-- **Rescued 598 lines of unmerged design work** from `audit/frontend-backend-parity` onto main:
-  - `docs/adr/010-frontend-parity-scope.md` (Proposed) — F.20–F.31 scope decisions Q1/Q2/Q3.
-  - `docs/decisions/2026-08-03-frontend-parity-plan.md` — 12-slice execution plan.
-  - `docs/frontend-backend-gap.md` — parity audit (12 gaps identified).
-  - `docs/kosmos-plugin-analysis.md` — Kosmos plugin conversion analysis (verdict: NOT NOW; revisit at Phase 5).
-  - `docs/adr/README.md` — ADR-010 added as Proposed; stale "historical skip" note removed.
-- **Archive tags pushed** (defense-in-depth before delete):
-  - `archive/slice-stage1-reconciliation-v1-20260806` → `5b76c98`
-  - `archive/slice-dual-mode-routing-adr-20260806` → `8c47975`
-  - `archive/audit-frontend-backend-parity-20260806` → `9058ff6`
-  - `archive/slice-coder-planner-rebench-20260806` → `d36ed4c`
-- **Branches deleted on origin (15 total)**:
-  - `slice/stage1-reconciliation-v1` (squashed as #5 · StatusBadge-only unique adds)
-  - `slice/dual-mode-routing-adr` (squashed as #6 · StatusBadge-only unique adds)
-  - `audit/frontend-backend-parity` (unique docs rescued · remaining files are deprecated stubs)
-  - `slice/coder-planner-rebench` (52 commits · all outputs already on main: ADR-013 amendments, ADR-015/016/017, `bench/pathF_swebench/`, F.3 full-500 26.6%/28.6%)
-  - 11 `agent/screenshots-*` autobranches (Playwright artifacts; screenshots on main via `git add -f`)
+**Stop condition**: DoD above met; header re-renders; vitest + Playwright green.
 
-### Origin state after cleanup
+## Open questions / ambiguities awaiting user answer
 
-- **Branches**: `main` only.
-- **HEAD**: `603b894` (`docs: rescue ADR-010 + parity audit + Kosmos plugin analysis`).
-- **Prior**: `0c01b6e` (Stage 6.4c CLOSED · closure amend).
-- **Archive tags**: 4 tags recoverable via `git checkout archive/<name>` or `git branch resurrect-me archive/<name>`.
+None. Spec supersession is resolved (ADR-027 wins per `docs/reconciliation-plan-v1.md` newer-wins rule). §6.5.3 can proceed without further clarification once next session starts.
 
-## What remains before DoD is met
+## Exact next action
 
-Stage 6.4c DoD is **CLOSED**. No remaining work on this stage.
-
-## Open questions / ambiguity
-
-**None.**
-
-## Next exact action
-
-**Start Stage 6.5 — SDK gap check first (§6.5.1).** Per reconciliation-plan-stage-6.md, this stage may be deferred entirely if agent-server does not expose runtime model switching over REST. Do NOT fabricate a frontend control against a nonexistent endpoint.
+Next session opens with:
 
 ```bash
-# 6.5.1 gap check — inspect pinned OpenHands SDK for a runtime-model-switch REST route
-# (Read only; no code changes.  Outcome dictates whether 6.5.2-6.5.5 proceed.)
+cd ~/dev/forge-oh
+git fetch origin && git reset --hard origin/main
+cat SESSION_HANDOFF.md
+cat src/features/settings/ModelSection.tsx      # existing picker pattern to mirror
+cat src/features/agent-presets/hooks.ts          # confirm useAgentPresets shape
+ls src/features/run-detail/                      # find the right header location
 ```
 
-If the SDK exposes the route → proceed with 6.5.2 backend forwarding endpoint. If absent → log deferral to BUILD_LOG.md and skip Stage 6.5, move to Stage 6.6 (Skills/Microagents management page).
+Then load skills: `forge-oh-slice-driver`, `forge-oh-colossus-ops`, `forge-oh-playwright-visual`, `forge-oh-debug-driver`.
 
-## Follow-up (out of scope for this slice, deferred)
+Restate §6.5.3 scope from this file (spec supersession is critical — do NOT copy the stale `{model, backendId}` snippet from `docs/reconciliation-plan-stage-6.md`). Then implement `ModelSwitchControl.tsx`, wire it into the run-detail header, add vitest + Playwright, commit + push as `Perplexity Computer <computer@perplexity.ai>`, verify on Colossus with `bash scripts/forge-restart.sh` + Playwright spec (production build only, port 3100).
 
-- `ForkFromHereButton.tsx` shares the same rules-of-hooks bug pattern (`useCallback` after early return). Fix in a separate slice.
-- F.20 dead-stub cleanup (delete `bff/routers/agents.py` and `src/app/(dashboard)/settings/secrets/page.tsx`) — scheduled in the rescued `docs/decisions/2026-08-03-frontend-parity-plan.md` under F.20.
-- ADR-010 is Proposed — must ratify before any F.20-series slice executes.
+## Colossus quick reference
+
+- Repo: `~/dev/forge-oh` on host "Collosus" (yes, that spelling)
+- Venv: `~/dev/forge-oh/.oh-venv/`
+- Dev-stack scripts: `bash scripts/forge-{up,down,restart,status,doctor}.sh`
+- Playwright verify port: 3100 (production build; never `next dev`)
+- BFF: `bff.main:app_with_sio` on 127.0.0.1:8081
+
+## Signature
+
+Commits signed as `Perplexity Computer <computer@perplexity.ai>`. Push via `bash` with `api_credentials=["github"]`.
