@@ -1451,3 +1451,17 @@ ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than
 - **Chosen default (Stage 3.1):** `PatternSecurityAnalyzer` — deterministic, no LLM cost, no external network dependency, no API key. Ships risk values on real patterns immediately; swap-out to `EnsembleSecurityAnalyzer` or `ToolShieldLLMSecurityAnalyzer` is a one-line change once we add preset-level analyzer selection in a later slice.
 - **Files touched:** none — this entry captures baseline SDK knowledge so no future session re-diagnoses.
 - **Related BUILD_LOG entry:** 2026-08-05 23:15 EDT — Stage 3.1 Security Analyzer risk indicators.
+
+## 2026-08-05 23:25 EDT — Playwright route-mock envelope mismatch broke Stage 3.1 spec
+
+- **Symptom:** `tests/e2e/risk-badge.spec.ts` — both tests timed out at `await expect(page.getByText('terminal: rm -rf /tmp/*')).toBeVisible({ timeout: 15_000 })`. Timeline never rendered any event card. Backend tests (10/10), vitest (8/8), typecheck, restart, prod build, `/runs` 200 all green immediately prior.
+- **Affected stage/plugin/port:** Stage 3.1 · frontend test harness · `src/tests/e2e/risk-badge.spec.ts` · `src/features/run-detail/api.ts` envelope contract.
+- **Root cause:** The route-mock returned `{events: [...], total, latestEventId}` for `GET /api/runs/{id}/events`, but `fetchRunEvents()` at `src/features/run-detail/api.ts:14-18` extracts `json.data`. With no `.data` key, `bootstrapEvents = []` fell through the `useRunEvents` default, so the timeline had zero events to render. `useRunDetail` was also underspecified — the run object was missing `agentPresetName`, `workspaceType`, `activeTool`, `elapsedMs`, `estimatedCostUsd` (all in `RunSummarySchema`), which would have caused header-render side effects even if events had shown up.
+- **Fix applied:**
+  1. Renamed `FAKE_EVENTS.events` → `FAKE_EVENTS.data` (matches `fetchRunEvents` unwrap contract).
+  2. Filled in all `RunSummarySchema` fields on `FAKE_RUN.data`.
+  3. Added a `**/socket.io/**` route-mock returning 200 so `useRunStream` doesn't 404 into the console.
+  4. Added `page.on('console'/'pageerror')` capture in the first test for future debug visibility.
+  5. Re-ordered route-mocks so the more-specific `/events` glob is registered before the parent `/api/runs/{id}` glob (Playwright evaluates in registration order).
+- **Files changed:** `src/tests/e2e/risk-badge.spec.ts`.
+- **Search keys:** `page.route`, `route.fulfill`, `getByText timeout`, `fetchRunEvents`, `json.data`, `envelope`, `RunSummarySchema`, `useRunEvents empty`.

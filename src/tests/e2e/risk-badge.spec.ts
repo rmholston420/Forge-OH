@@ -19,20 +19,28 @@ const BFF_URL = process.env.PLAYWRIGHT_BFF_URL || 'http://127.0.0.1:8081';
 
 const FAKE_RUN_ID = 'stage3-risk-badge-fixture';
 
+// Envelope MUST match `fetchRun`: `json.data` is unwrapped and used
+// directly. Fields mirror RunSummarySchema (src/lib/schemas/run.ts).
 const FAKE_RUN = {
   data: {
     id: FAKE_RUN_ID,
     title: 'Stage 3.1 risk-badge fixture',
     status: 'succeeded',
+    agentPresetName: 'default',
+    workspaceId: 'ws-fixture',
+    workspaceType: 'local',
+    activeTool: null,
     createdAt: '2026-08-05T22:00:00Z',
     updatedAt: '2026-08-05T22:05:00Z',
-    workspaceId: 'ws-fixture',
-    agentPresetId: 'ap-1',
+    elapsedMs: 42_000,
+    estimatedCostUsd: 0,
   },
 };
 
+// Envelope MUST match `fetchRunEvents`: `json.data` is unwrapped and
+// returned as a `ToolEvent[]`. Do NOT use `{events: [...]}` here.
 const FAKE_EVENTS = {
-  events: [
+  data: [
     {
       id: 'evt-msg-1',
       type: 'message',
@@ -80,8 +88,6 @@ const FAKE_EVENTS = {
       summary: 'terminal: pwd',
     },
   ],
-  total: 6,
-  latestEventId: 6,
 };
 
 async function bffReachable(): Promise<boolean> {
@@ -106,15 +112,29 @@ test.describe('Stage 3.1 RiskBadge + auto-collapse', () => {
 
   test.beforeEach(async ({ page }) => {
     // Intercept the run-detail + events fetches for the fixture run id.
+    // Order matters: more specific first.
+    await page.route(`**/api/runs/${FAKE_RUN_ID}/events**`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_EVENTS) }),
+    );
     await page.route(`**/api/runs/${FAKE_RUN_ID}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_RUN) }),
     );
-    await page.route(`**/api/runs/${FAKE_RUN_ID}/events**`, (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_EVENTS) }),
+    // Stub the Socket.IO polling handshake so useRunStream can't 404 loudly.
+    // The tests do not exercise streaming — route-mocked bootstrap is enough.
+    await page.route('**/socket.io/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/plain', body: '' }),
     );
   });
 
   test('renders LOW/MEDIUM/HIGH badges and hides UNKNOWN/absent', async ({ page }) => {
+    // Capture console + page errors for post-mortem when timeline never renders.
+    page.on('console', (msg) => {
+      if (msg.type() === 'error' || msg.type() === 'warning') {
+        console.log(`[browser ${msg.type()}]`, msg.text());
+      }
+    });
+    page.on('pageerror', (err) => console.log('[pageerror]', err.message));
+
     await page.goto(`${FRONTEND_URL}/runs/${FAKE_RUN_ID}`);
 
     // Wait for timeline to render at least one event card.
