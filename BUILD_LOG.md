@@ -5084,3 +5084,16 @@ Five commits (`5d6f779`..`be6f006`), 79 vitest, 30 pytest (Stage 3 tests), 5 Pla
 - **PORTING_LEDGER:** unchanged. No external code vendored.
 - **KNOWN_ISSUES:** resolves 2026-08-05 23:34 EDT (status enum drift). Opens follow-up: two dead-code `StatusBadge` component files could be deleted.
 - **Stop-condition status:** hygiene slice DoD met — one canonical form used everywhere; `.parse()` guards future drift. Pending Colossus verification.
+
+## 2026-08-05 23:52 EDT — Hygiene (status enum drift) DoD verified green on Colossus
+
+- **What:** Ran the hygiene verification paste block on Colossus. All checks green on first iteration.
+- **Results:**
+  - `.oh-venv/bin/pytest bff/tests/{test_run_compare_contract,test_confirmation_policy}.py -q`: 10/10 pass in 0.20s.
+  - `pnpm typecheck` (`tsc --noEmit`): clean.
+  - `pnpm vitest run` on 7 targeted files: 156/156 pass in 648ms (6 status-utils + 71 api-endpoints + 8 runs-crud integration + 17 run-schemas + 8 RiskBadge + 34 domain-schemas + 12 domain-RunDetailHeader).
+  - `bash scripts/forge-restart.sh` + `forge-status.sh`: all three healthy (agent-server :8090, BFF :8081, Next.js :3000).
+  - `npm run build` + `npx next start -p 3100`: `/runs` 200.
+  - `npx playwright test tests/e2e/{risk-badge,hitl-approval}.spec.ts`: 5/5 pass in 1.5s.
+- **Iteration:** zero. The `RunSummarySchema.parse(json.data)` tripwire in `fetchRun` was silent on the live BFF payload — schema and wire format are aligned.
+- **Stop-condition status:** hygiene slice COMPLETE. Status enum drift resolved everywhere; boundary tripwire live.

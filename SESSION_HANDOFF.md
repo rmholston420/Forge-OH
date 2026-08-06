@@ -6,17 +6,17 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
-## Last updated: 2026-08-05 23:49 EDT
+## Last updated: 2026-08-05 23:52 EDT
 
 ## Current build-sequencing stage / plugin / port in progress
 
 - **Stage 3 · Security & Safety — CLOSED.** All sub-slices verified green on Colossus. § 3.3 DependencyGuard descoped.
-- **Post-Stage-3 hygiene slice just committed (pending push):** Status enum drift unification. `awaiting_approval` (underscore) chosen as the canonical form; schema + 11 other files flipped; `_normalizeRunStatus` retired; `RunSummarySchema.parse` now guards the `fetchRun` boundary.
-- **Next up:** verify hygiene slice on Colossus. Then Stage 4 (`reconciliation-plan-v1` § 4) — scope not yet restated.
+- **Post-Stage-3 hygiene slice #1 (status enum drift) — CLOSED.** Canonical `awaiting_approval` (underscore) everywhere; `RunSummarySchema.parse` boundary tripwire live in `fetchRun`.
+- **Next up:** Stage 4 (`reconciliation-plan-v1` § 4). Scope has NOT been restated yet — do this before writing any code.
 
 ## What was completed this session
 
-**Six commits on `origin/main`:**
+**Eight commits on `origin/main`:**
 
 1. `5d6f779` feat(stage-3.1): risk indicators
 2. `9266aa7` fix(stage-3.1): route-mock envelope
@@ -25,24 +25,56 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 5. `5e4cd63` fix(stage-3.2): scope Playwright banner locator
 6. `be6f006` feat(stage-3.4-3.5): compare-endpoint query-key contract
 7. `00a5f94` docs(stage-3): DoD verified green — Stage 3 CLOSED
+8. `b7d6317` hygiene: unify status enum on awaiting_approval + Zod boundary tripwire
 
-**Pending push:** `hygiene: status enum drift unification` (12 files).
+Test coverage on Colossus after final hygiene verification: **10 pytest · 156 vitest (7 files) · typecheck clean · 5 Playwright · prod build /runs=200**.
 
 ## What remains before the current Definition of Done is met
 
-**Hygiene slice (pending push + Colossus verification):**
+Both Stage 3 and the enum-drift hygiene slice are DoD-met. No outstanding work in flight.
 
-Once pushed, run this paste block on Colossus:
+**Stage 4 kickoff (next session):**
+
+1. Read this SESSION_HANDOFF first.
+2. Load `docs/reconciliation-plan-v1.md` — restate Stage 4 scope: which plugins/kernel components, which ports touched, DoD or "minimal working system" boundary, exact stop condition.
+3. Load stage-4 companion (`docs/reconciliation-plan-v1-stage-4.md`) if it exists. If missing, ask the user before proceeding.
+4. Flag any ambiguity for the user's review before starting.
+5. Vendor-first check per project instructions before writing any new code.
+
+## Open questions / ambiguity awaiting the user's answer
+
+**Two decisions for the next resume:**
+
+1. **Proceed to Stage 4** per `reconciliation-plan-v1.md` § 4, or pick up another hygiene item first?
+2. **Remaining hygiene candidates** (all logged in KNOWN_ISSUES):
+   - Delete the two dead-code `StatusBadge` component files (`src/components/core/StatusBadge.tsx` + `src/components/core/StatusBadge/StatusBadge.tsx`) — the runtime `StatusBadge` lives in `Badge.tsx`. ~10-min slice. Follow-up called out in BUILD_LOG 2026-08-05 23:49 EDT and KNOWN_ISSUES 23:34 RESOLVED note.
+   - `event_relay.py` stream events not passed through `normalize_event`. KNOWN_ISSUES 2026-08-05 23:15 EDT.
+   - `PatternSecurityAnalyzer` coverage audit to safely flip `confirm_unknown=False`.
+
+**Recommendation:** proceed to Stage 4. Remaining hygiene items aren't blocking. Ask for confirmation before restating scope.
+
+## Exact next action to take
+
+**When the user resumes:**
+
+1. Read this file.
+2. Ask: "Proceed with Stage 4 per `reconciliation-plan-v1.md` § 4, or pick up one of the remaining hygiene items first (dead-code StatusBadge files / event_relay normalizer / PatternSecurityAnalyzer coverage)?"
+3. If Stage 4: read `reconciliation-plan-v1.md` § 4 (+ stage-4 companion if it exists), restate scope with build sequencing / ports touched / DoD / stop condition, flag any ambiguity, wait for confirmation.
+4. If hygiene: state which one, size estimate, and DoD; wait for confirmation.
+
+## Reference — last commit landed
+
+- `b7d6317` hygiene: unify status enum on awaiting_approval + Zod boundary tripwire
+
+## Reference — hygiene slice verification commands (for reproducibility)
 
 ```bash
 cd ~/dev/forge-oh && git pull
 
-# Backend — no BFF changes in this slice, but verify contract tests still pass
 .oh-venv/bin/pytest \
   bff/tests/test_run_compare_contract.py \
   bff/tests/test_confirmation_policy.py -q
 
-# Frontend
 pnpm typecheck
 pnpm vitest run \
   src/tests/unit/domain-RunDetailHeader.test.tsx \
@@ -50,13 +82,9 @@ pnpm vitest run \
   src/tests/unit/domain-schemas.test.ts \
   src/tests/unit/run-schemas.test.ts \
   src/tests/unit/RiskBadge.test.tsx \
-  src/tests/unit/api-endpoints.test.ts
+  src/tests/unit/api-endpoints.test.ts \
+  src/tests/integration/runs-crud.test.ts
 
-# If the touched files also affect integration tests, run:
-pnpm vitest run src/tests/integration/runs-crud.test.ts
-
-# Full stack + Playwright regression (Stage 3.1 + 3.2 specs must still pass
-# with the schema tripwire in place)
 bash scripts/forge-restart.sh && sleep 2 && bash scripts/forge-status.sh
 
 fuser -k 3100/tcp 2>/dev/null; sleep 2
@@ -73,31 +101,4 @@ PLAYWRIGHT_GPU_STRIP_PUSH=1 \
   npx playwright test tests/e2e/risk-badge.spec.ts tests/e2e/hitl-approval.spec.ts --reporter=list
 ```
 
-Expected: all green. **Risk area:** the new `RunSummarySchema.parse(json.data)` in `fetchRun` is a hard tripwire. If any real BFF response (or Playwright fixture) is missing a required field, `.parse()` will throw and the run detail page will error. If verification fails, first check `~/.forge-oh/next-prod.log` for a Zod validation error message — it will name the exact missing/misshapen field.
-
-## Open questions / ambiguity awaiting the user's answer
-
-**Two decisions after hygiene verification passes:**
-
-1. **Proceed to Stage 4** per `reconciliation-plan-v1.md` § 4, or pick up the next hygiene item first?
-2. **Remaining hygiene candidates** (all logged in KNOWN_ISSUES):
-   - Delete the two dead-code `StatusBadge` component files (`src/components/core/StatusBadge.tsx` + `src/components/core/StatusBadge/StatusBadge.tsx`) — the real one lives in `Badge.tsx`. ~10-min slice.
-   - `event_relay.py` stream events not passed through `normalize_event`. KNOWN_ISSUES 2026-08-05 23:15 EDT.
-   - `PatternSecurityAnalyzer` coverage audit to flip `confirm_unknown=False` safely.
-
-**Recommendation:** proceed to Stage 4 after verification. Remaining hygiene items aren't blocking.
-
-## Exact next action to take
-
-**When the user resumes:**
-
-1. Read this file.
-2. Wait for the Colossus paste-block output above.
-3. If green: ask about Stage 4 vs remaining hygiene (recommend Stage 4). Restate Stage 4 scope from `reconciliation-plan-v1.md` § 4 when confirmed.
-4. If red: read the exact Zod error from `~/.forge-oh/next-prod.log` (or the failing test output). The most likely failure mode is a required RunSummary field emitted by the BFF as `null` when the schema expects a string. Diagnose via the fetchRun call site, fix the schema (make the field nullable) or the BFF, log in DEBUG_LOG, and re-verify.
-
-## Reference — last commit landed
-
-- `00a5f94` docs(stage-3): DoD verified green on Colossus — Stage 3 CLOSED
-
-**Pending commit:** `hygiene: status enum drift unification — canonicalize on awaiting_approval, add RunSummarySchema.parse boundary tripwire`.
+Verified 2026-08-05 23:52 EDT: 10 pytest · 156 vitest · typecheck clean · stack healthy · prod=200 · 5 Playwright.
