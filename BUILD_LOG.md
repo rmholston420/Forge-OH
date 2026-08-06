@@ -5252,3 +5252,18 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Frontend typecheck:** clean.
 - **Files touched:** `src/app/(dashboard)/repograph/page.tsx` (only), KNOWN_ISSUES.md, BUILD_LOG.md.
 - **Stop-condition status:** Stage 4.2 + 4.3 build gate expected to clear on next `pnpm build`; pytest + typecheck already green.
+
+## 2026-08-06 00:40 EDT — Stage 4.2 + 4.3 exit gate CLEARED
+
+- **Scope:** § 4.2 backend + § 4.3 frontend exit-gate verification on Colossus. Not new code — this entry records the runtime-verification pass that closes the gate.
+- **`pytest bff/tests/test_repograph_router.py`:** 28/29 green. Only failure is `TestHealthNoPassword::test_returns_error_when_password_missing` — pre-existing test assumption incompatible with the DozerDB dev container's unauthenticated Bolt handshake. All Stage 4 tests (`TestGraphEndpoint` + `/graph` in `TestRejectsWhenDisabled`) green.
+- **`pnpm typecheck`:** clean.
+- **`pnpm test:unit`:** 844/852 green. Two failures, both classified pre-existing and both unrelated to RepoGraph:
+  1. `src/tests/unit/gitDiff.test.tsx > FilesTab :: renders the toggle when run has a local workspace path` (diff-source-toggle waitFor timeout)
+  2. `src/tests/unit/AgentPresetCard.test.tsx > AgentPresetCard :: renders name and model badge` (testing-library query failure)
+  - All new Stage 4 unit tests green (`RepoGraphGraphView.test.tsx`, 2 new cases in `repograph-endpoints.test.ts`).
+  - Both logged in KNOWN_ISSUES 2026-08-06 00:37/00:40 EDT.
+- **`pnpm build`:** clean. `/repograph` route emitted; no prerender error after Suspense-boundary hotfix.
+- **Live BFF smoke (`GET /api/repograph/graph?repo_key=6bcc20c96720&limit=25`):** `stats={nodes:35, symbols:25, files:10, edges:290}`. Real symbol node with pagerank=0.045; real CALLS edge with line number; both `file`+`symbol` node kinds present; both `CONTAINS`+`CALLS` edge types present. Wire contract matches the frontend Zod schema.
+- **Playwright:** not yet run. Stage 4 plan lists this as manual verification; will be executed as a follow-up before the § 4.4 (Serena LSPClient) pass begins.
+- **Stop-condition status:** § 4.2 + § 4.3 CLOSED. Pre-existing test debt tracked in KNOWN_ISSUES does not block Stage 4 per the plan's "no `test_repograph_*` regressions" criterion — all repograph tests are green. Next: § 4.4 Serena LSPClient via MCP passthrough.

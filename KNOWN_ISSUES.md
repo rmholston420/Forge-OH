@@ -111,8 +111,16 @@ Two unit-test failures observed on Colossus while running `pytest bff/tests/test
 
 ### 2. `gitDiff.test.tsx` — `diff-source-toggle` waitFor timeout
 
-- **Symptom:** `pnpm test:unit` reports the `waitFor(() => expect(screen.getByTestId('diff-source-toggle')).toBeInTheDocument())` step in `src/tests/unit/gitDiff.test.tsx` around line 127 times out.
+- **Symptom:** `pnpm test:unit` reports the `waitFor(() => expect(screen.getByTestId('diff-source-toggle')).toBeInTheDocument())` step in `src/tests/unit/gitDiff.test.tsx:127` times out. Full failure name: `FilesTab — Real git diff toggle > renders the toggle when run has a local workspace path`.
 - **Root cause:** Unknown as of 2026-08-06 00:37 EDT — first surfaced during Stage 4.2/4.3 verification. Predates Stage 4 (component is unrelated to RepoGraph).
 - **Impact:** Blocks a fully green `pnpm test:unit`. Does not affect runtime behavior of the diff viewer or any Stage 4 code path.
 - **Fix path (out of Stage 4 scope):** Bisect against `main` to isolate the commit that broke the test, then either fix the test-side wait/render flow or the underlying component regression. Look at recent changes to `DiffViewer` component and its "source view" toggle.
+- **Do NOT block Stage 4.2/4.3 on this.**
+
+### 3. `AgentPresetCard.test.tsx` — `renders name and model badge` query failure
+
+- **Symptom:** `pnpm test:unit` reports the query at `src/tests/unit/AgentPresetCard.test.tsx:29` fails in the test `AgentPresetCard > renders name and model badge` — the expected element (name and/or model badge) is not found by testing-library.
+- **Root cause:** Unknown as of 2026-08-06 00:40 EDT. Component `AgentPresetCard` is unrelated to RepoGraph and predates Stage 4.
+- **Impact:** Second of two failures blocking a fully green `pnpm test:unit`. Does not affect runtime behavior of any Stage 4 code path.
+- **Fix path (out of Stage 4 scope):** Inspect `AgentPresetCard` component + fixture used by the test around line 29. Likely a rename, a prop-shape drift, or a testid/aria change that the test wasn't updated for. Bisect against `main` if the trigger commit isn't obvious.
 - **Do NOT block Stage 4.2/4.3 on this.**
