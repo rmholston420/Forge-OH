@@ -65,10 +65,33 @@ export async function rejectRun(runId: string, reason?: string): Promise<Lifecyc
   return unwrap(result);
 }
 
-export type ForkAck = { ok: boolean; run_id: string; forked_id: string };
+export type ForkAck = {
+  ok: boolean;
+  run_id: string;
+  forked_id: string;
+  from_event_id: string | null;
+};
 
-export async function forkRun(runId: string): Promise<ForkAck> {
-  const result = await bffPost<ForkAck>(ENDPOINTS.RUNS.fork(runId), {});
+/**
+ * Stage 6.4 — conversation-state revert via SDK-native fork.
+ *
+ * ``from_event_id`` scopes the fork to the branch up to and including that
+ * event.  Omit for a full fork of the source run.
+ *
+ * NOTE: the wire key MUST be exactly ``from_event_id``.  Agent-server
+ * (openhands-agent-server 1.40.0) silently ignores unknown keys and
+ * full-forks instead — a live probe on 2026-08-06 confirmed this trap
+ * with ``at_event_id`` / ``from_event`` / ``event_id`` / ``leaf_event_id``.
+ */
+export async function forkRun(
+  runId: string,
+  opts?: { fromEventId?: string },
+): Promise<ForkAck> {
+  const body: Record<string, unknown> = {};
+  if (opts?.fromEventId) {
+    body.from_event_id = opts.fromEventId;
+  }
+  const result = await bffPost<ForkAck>(ENDPOINTS.RUNS.fork(runId), body);
   return unwrap(result);
 }
 

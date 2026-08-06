@@ -888,20 +888,53 @@ async def reject_run(run_id: str, body: RejectRunRequest | None = None) -> dict:
     }
 
 
+class ForkRunRequest(BaseModel):
+    """Optional body for POST /runs/{run_id}/fork.
+
+    ``from_event_id`` scopes the fork to the branch up to and including that
+    event — the SDK's native "revert to here" primitive.  Omit to full-fork.
+
+    The upstream agent-server contract (openhands-agent-server 1.40.0,
+    ``ForkConversationRequest``) requires the exact key ``from_event_id``.
+    Any other key silently full-forks (verified 2026-08-06 05:53 EDT live
+    probe — HTTP 201 with ``forked_from_event_id: null`` for ``at_event_id``,
+    ``from_event``, ``event_id``, ``leaf_event_id``).  Do not rename.
+    """
+
+    from_event_id: str | None = None
+
+
 @router.post("/runs/{run_id}/fork")
-async def fork_run(run_id: str) -> dict:
+async def fork_run(run_id: str, body: ForkRunRequest | None = None) -> dict:
     """Fork a conversation via agent-server.
 
     Upstream: POST /api/conversations/{conversation_id}/fork
-    Response shape (frontend contract): {ok, run_id, forked_id}.
+    Optional body: {from_event_id?} — forwarded verbatim (see ForkRunRequest).
+    Response shape (frontend contract): {ok, run_id, forked_id, from_event_id}.
     """
+    from_event_id = body.from_event_id if body is not None else None
+    upstream_payload: dict[str, Any] = {}
+    if from_event_id is not None:
+        # Wire key must be exactly ``from_event_id`` — see ForkRunRequest
+        # docstring for the silent-full-fork trap.
+        upstream_payload["from_event_id"] = from_event_id
+
     client = get_client()
     try:
-        resp = await client.post(f"/api/conversations/{run_id}/fork")
+        resp = await client.post(
+            f"/api/conversations/{run_id}/fork", json=upstream_payload
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="run not found")
+    if resp.status_code == 400 and from_event_id and "from_event_id" in resp.text:
+        # Upstream rejects unknown event ids explicitly — surface as 400
+        # so the client can retell the user "that event doesn't exist".
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown from_event_id: {from_event_id}",
+        )
     if resp.status_code >= 400:
         raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
     payload = resp.json() or {}
@@ -913,4 +946,9 @@ async def fork_run(run_id: str) -> dict:
             status_code=502,
             detail=f"agent-server fork response missing id: {str(payload)[:200]}",
         )
-    return {"ok": True, "run_id": run_id, "forked_id": forked_id}
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "forked_id": forked_id,
+        "from_event_id": from_event_id,
+    }

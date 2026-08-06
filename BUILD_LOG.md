@@ -6139,3 +6139,41 @@ Expected: ~37 tests pass; crash-and-resume script exits 0 with "PASS".
 - Crash-and-resume proof end-to-end.
 
 **Next up:** Stage 6.4 — checkpoint-to-disk revert (`docs/reconciliation-plan-stage-6.md` §6.4).
+
+
+## 2026-08-06 06:07 EDT — Stage 6.4: conversation-state revert (fork-from-here) shipped
+
+**Stage / plugin / port:** `docs/reconciliation-plan-stage-6.md` §6.4 — checkpoint-to-disk revert. Scope pared down from spec to what agent-server 1.40.0 actually supports (see D1–D4 below).
+
+**What was built:**
+- BFF: `POST /runs/{run_id}/fork` now accepts an optional body `{"from_event_id"}` and forwards it verbatim to `POST /api/conversations/{cid}/fork` using the EXACT wire key `from_event_id`.
+- Frontend: `forkRun(runId, {fromEventId?})` widened, `useForkRun` mutation now takes `{runId, fromEventId?}` (bare string still works for back-compat with `ForkRunModal`).
+- New `ForkFromHereButton` component rendered inside the event-inspector aside on the run-detail page, visible ONLY when `displayEv.type === 'message' && displayEv.source === 'user'` (spec D2).
+- On success, navigates to `/runs/${forked_id}`.
+- 9 new BFF pytest cases + 9 new Vitest cases lock the contract (see verification block).
+
+**Locked decisions (per user "make optimal choices"):**
+- D1: sibling-fork model, not in-place rewind. SDK creates a NEW conversation id; source run stays intact. Rewriting the persisted event log in place is unsupported and would corrupt agent-server state.
+- D2: checkpoint = user-message events only (`kind=="message" && source=="user"`). Cheap to relax.
+- D3: file-tree revert DEFERRED. Agent-server exposes NO write git routes; workspace `working_dir=/home/rmholston/dev/forge-oh` is the live host repo, so `git reset --hard` would destroy the user's uncommitted work. Requires per-run isolated worktrees or Docker sandbox — separate future stage.
+- D4: surface = event-inspector aside on run-detail page (confirmed `EventCard.tsx` is per-event; `ReplayTimeline` is only a scrubber).
+
+**Files touched:**
+- `bff/routers/runs.py` — added `ForkRunRequest` pydantic model; `fork_run` now takes optional body, forwards `from_event_id` to upstream with exact key, extended response to include `from_event_id`, 400-on-unknown-event pass-through.
+- `bff/tests/test_runs_fork.py` — NEW. 9 tests including the critical wire-key regression against silent-full-fork.
+- `src/features/runs/api.ts` — widened `forkRun` signature and `ForkAck` type.
+- `src/features/runs/hooks.ts` — widened `useForkRun` with `ForkRunVars = {runId, fromEventId?} | string` (back-compat coercion).
+- `src/components/domain/ForkFromHereButton.tsx` — NEW. Lightweight Modal-based confirm dialog wired to `useForkRun`.
+- `src/tests/unit/domain-ForkFromHereButton.test.tsx` — NEW. 9 tests: variables shape, navigation, cancel, error banner, pending state.
+- `src/app/(dashboard)/runs/[runId]/page.tsx` — imported `ForkFromHereButton`; renders inside event inspector only for user-message events.
+
+**Ports / adapters affected:** None (no new ports). Uses the existing BFF↔agent-server httpx client.
+
+**ADR / ledger updated:** None. This slice sits entirely on top of the SDK-native fork route — no new port contract, no vendored code.
+
+**Wire-level trap this slice defends against:**
+Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and returns HTTP 201 with `forked_from_event_id: null` (verified 2026-08-06 05:53 EDT live probe: `at_event_id`, `from_event`, `event_id`, `leaf_event_id` all silent-full-forked). The test suite pins the exact wire key at both the BFF and the frontend hook layer so a future refactor cannot regress.
+
+**Stop-condition status:** ✅ Code paths shipped end-to-end. BFF tests: 9/9 PASS locally in the sandbox interpreter. Frontend tests: written, unverified in sandbox (no Node runtime available here). AWAITING Colossus verification block: `pytest bff/tests/test_runs_fork.py` + `pnpm vitest run src/tests/unit/domain-ForkFromHereButton.test.tsx` + manual UI click-through.
+
+**Next up (after DoD verified on Colossus):** Stage 6.5 — runtime model switching. Note: probe showed `supports_runtime_model_switch: false` on the current conversation — expect another spec-vs-reality divergence to investigate.

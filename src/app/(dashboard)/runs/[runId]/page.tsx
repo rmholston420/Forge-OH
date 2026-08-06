@@ -16,6 +16,7 @@ import type { StreamEvent } from '@/lib/streaming/useRunStream';
 import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
 import { RunSecretsModal } from '@/components/domain/RunSecretsModal';
 import { EventCard } from '@/components/domain/EventCard';
+import { ForkFromHereButton } from '@/components/domain/ForkFromHereButton';
 import { StreamBanner } from '@/components/domain/StreamBanner';
 import { Banner } from '@/components/core/Banner';
 import { ApprovalBanner } from '@/components/domain/ApprovalBanner';
@@ -361,6 +362,17 @@ export default function RunDetailPage({
                       <dt>Timestamp</dt><dd>{new Date(String(displayEv.timestamp)).toLocaleString()}</dd>
                       <dt>Summary</dt><dd>{String(displayEv.summary ?? '')}</dd>
                     </dl>
+                    {/* Stage 6.4 — conversation-state revert.  Only user
+                        messages qualify as checkpoints (spec D2). */}
+                    {displayEv.type === 'message' && displayEv.source === 'user' && (
+                      <div style={{ paddingTop: 'var(--space-3)' }}>
+                        <ForkFromHereButton
+                          runId={runId}
+                          eventId={String(displayEv.id)}
+                          eventLabel={displayEv.summary ? String(displayEv.summary).slice(0, 60) : undefined}
+                        />
+                      </div>
+                    )}
                     {Boolean(displayEv.raw) && (
                       <pre className={styles.inspectorRaw}>
                         {typeof displayEv.raw === 'string' ? displayEv.raw : JSON.stringify(displayEv.raw ?? {}, null, 2)}

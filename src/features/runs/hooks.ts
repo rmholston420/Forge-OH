@@ -96,11 +96,31 @@ export function useRejectRun() {
   });
 }
 
+/**
+ * Stage 6.4 — forkRun mutation.
+ *
+ * Variables shape:
+ *   { runId: string, fromEventId?: string }
+ *
+ * Backward-compatibility: a bare ``string`` variable still works and
+ * behaves as a full-fork (see the coercion in ``mutationFn``).  This keeps
+ * older call sites like ``ForkRunModal`` compiling without change.
+ */
+export type ForkRunVars = { runId: string; fromEventId?: string } | string;
+
+function _normalizeForkVars(vars: ForkRunVars): { runId: string; fromEventId?: string } {
+  return typeof vars === 'string' ? { runId: vars } : vars;
+}
+
 export function useForkRun() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (runId: string) => forkRun(runId),
-    onSuccess: (data, runId) => {
+    mutationFn: (vars: ForkRunVars) => {
+      const v = _normalizeForkVars(vars);
+      return forkRun(v.runId, v.fromEventId ? { fromEventId: v.fromEventId } : undefined);
+    },
+    onSuccess: (data, vars) => {
+      const { runId } = _normalizeForkVars(vars);
       invalidateRun(qc, runId);
       // The forked run is a fresh row in the list; ensure it is fetched.
       qc.invalidateQueries({ queryKey: QUERY_KEYS.runs.list() });
