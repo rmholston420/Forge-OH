@@ -5183,3 +5183,13 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 ### Stop-condition status
 
 - Hygiene Slice C COMPLETE. Audit done, flip rejected, follow-up path documented.
+
+## 2026-08-06 00:07 EDT — Hygiene batch CLOSED (Slices A + B + C verified)
+
+- **What:** Final verification pass. `bff/tests/test_event_relay_normalize.py::test_relay_emits_normalized_wire_shape PASSED` in 0.56s. Tripwire is live and asserting the projected ToolEvent wire shape.
+- **Batch rollup:**
+  - Slice A (delete dead StatusBadge) — verified green earlier in session (5 vitest files · 56 tests · typecheck · Playwright · prod build).
+  - Slice B (event_relay normalize wire routing) — verified green now (1 pytest test passes; runtime behavior unchanged for consumers; wire shape byte-identical to HTTP bootstrap).
+  - Slice C (analyzer coverage audit) — audit-only; flip rejected; precondition documented in KNOWN_ISSUES 2026-08-06 00:05 EDT.
+- **Discovered pre-existing debt (not caused by this batch):** `test_event_relay_yield.py::test_direct_sync_call_would_block_confirms_the_hazard` is structurally unable to fail — the timing measurement is captured in the caller frame. Logged as KNOWN_ISSUES 2026-08-06 00:02 EDT and DEBUG_LOG 2026-08-06 00:02 EDT. Real G.1 runtime protection (`asyncio.to_thread` + `asyncio.sleep(0)` in `_run_loop`) is verified intact via source inspection.
+- **Stop-condition status:** post-Stage-3 hygiene batch COMPLETE. Ready for Stage 4.

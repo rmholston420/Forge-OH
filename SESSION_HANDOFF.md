@@ -6,19 +6,21 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
-## Last updated: 2026-08-06 00:05 EDT
+## Last updated: 2026-08-06 00:07 EDT
 
 ## Current build-sequencing stage / plugin / port in progress
 
 - **Stage 3 · Security & Safety — CLOSED.** All sub-slices verified green on Colossus. § 3.3 DependencyGuard descoped.
-- **Post-Stage-3 hygiene batch — CLOSED (pending one small verify).**
-  - **Slice A (delete dead StatusBadge files) — DONE + verified green on Colossus.**
-  - **Slice B (event_relay normalize_event routing) — CODE DONE + tripwire test fix pushed. Awaiting user paste of `pytest bff/tests/test_event_relay_normalize.py` output.**
-  - **Slice C (PatternSecurityAnalyzer coverage audit) — DONE. Audit-only slice. `confirm_unknown=True` flip REJECTED. Precondition documented as KNOWN_ISSUES follow-up.**
+- **Post-Stage-3 hygiene batch — CLOSED.** Four slices landed:
+  - Enum drift unification (canonical `awaiting_approval` + Zod boundary tripwire)
+  - Slice A: delete dead StatusBadge files
+  - Slice B: route `event_relay` stream events through `normalize_event` + tripwire test
+  - Slice C: `PatternSecurityAnalyzer` coverage audit (flip rejected)
+- **Next up:** Stage 4 (`reconciliation-plan-v1.md` § 4). Scope has NOT been restated yet — do this before writing any code.
 
 ## What was completed this session
 
-**Twelve commits on `origin/main`:**
+**Thirteen commits on `origin/main`:**
 
 1. `5d6f779` feat(stage-3.1): risk indicators
 2. `9266aa7` fix(stage-3.1): route-mock envelope
@@ -31,62 +33,51 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 9. `dbd643f` docs(hygiene): status enum drift verified green on Colossus
 10. `e83d5f0` hygiene(A+B): delete dead StatusBadge files + normalize wire events
 11. `fa014a9` fix(hygiene-B): tripwire double-emit — return empty page on 2nd fetch
-12. **Pending push (Slice C docs):** BUILD_LOG + KNOWN_ISSUES + this SESSION_HANDOFF.
+12. `33bdc83` docs(hygiene-C): PatternSecurityAnalyzer coverage audit — flip rejected
+13. **Pending push (hygiene close docs):** BUILD_LOG close entry + this SESSION_HANDOFF.
 
 **Verification results this session:**
 
 - Stage 3.4/3.5 close: 30 pytest · 79 vitest · typecheck clean · stack healthy · prod=200 · 5 Playwright — all green first pass.
 - Enum-drift hygiene close: 10 pytest · 156 vitest (7 files) · typecheck clean · stack healthy · prod=200 · 5 Playwright — all green first pass.
-- Slice A+B first verify: **1 real test failure fixed** (`fa014a9`), typecheck clean, 56 vitest green, prod=200, 5 Playwright green. Additionally exposed a **pre-existing** measurement bug in `test_direct_sync_call_would_block_confirms_the_hazard` — logged as KNOWN_ISSUES + DEBUG_LOG, no code change.
+- Slice A+B first verify: 1 real test bug fixed (`fa014a9`), 56 vitest green, typecheck clean, prod=200, 5 Playwright green.
+- Slice B tripwire final verify: `test_relay_emits_normalized_wire_shape` PASSED in 0.56s.
 
 ## What remains before the current Definition of Done is met
 
-**Immediate (this session):**
+Nothing outstanding for the hygiene batch. Both Stage 3 and hygiene batch are DoD-met.
 
-1. Push the Slice C docs commit.
-2. User pastes `pytest bff/tests/test_event_relay_normalize.py -v` output — if green, Slice B verified.
-3. Done — hygiene batch closed.
+**Stage 4 kickoff (next session):**
 
-**If tripwire test still fails:**
-- Read the AssertionError message from the paste, diagnose against the fixed `fake_fetch_page`.
+1. Read this SESSION_HANDOFF first.
+2. Load `docs/reconciliation-plan-v1.md` — restate Stage 4 scope: which plugins/kernel components, which ports touched, DoD or "minimal working system" boundary, exact stop condition.
+3. Load stage-4 companion (`docs/reconciliation-plan-v1-stage-4.md`) if it exists. If missing, ask the user before proceeding.
+4. Flag any ambiguity for the user's review before starting.
+5. Vendor-first check per project instructions before writing any new code.
 
 ## Open questions / ambiguity awaiting the user's answer
 
-None. The batch is complete on paper; verification is a formality.
+None. Batch is closed. Ready to proceed to Stage 4.
 
-**Next session:** proceed to Stage 4 per `reconciliation-plan-v1.md` § 4. Restate scope from stage-4 companion (`docs/reconciliation-plan-v1-stage-4.md`) if it exists, otherwise ask before writing any code.
+## Tracked follow-up items (in KNOWN_ISSUES)
+
+- **2026-08-06 00:05 EDT** — `confirm_unknown=True` is required until analyzer attach is hard-required. Precondition for a future flip documented. Post-Stage-4 candidate.
+- **2026-08-06 00:02 EDT** — `test_event_relay_yield` hazard-demonstration test cannot fail. Measurement bug; runtime protection intact. Rewrite needed to actually guard the G.1 fix.
+- **2026-08-05** — pnpm workspace CI check red on every PR (Node 20 + pnpm v11 interaction). Non-blocking.
 
 ## Exact next action to take
 
 **When the user resumes:**
 
 1. Read this file.
-2. Paste the Slice B verification block below.
-3. If green: hand off to Stage 4 scope restate.
-4. If red: paste the failing output; diagnose against the DEBUG_LOG entry `2026-08-06 00:02 EDT — test_event_relay_normalize double-emit`.
+2. Ask: "Proceed with Stage 4 per `reconciliation-plan-v1.md` § 4?"
+3. If yes: read `reconciliation-plan-v1.md` § 4 (+ stage-4 companion if it exists), restate scope with build sequencing / ports touched / DoD / stop condition, flag any ambiguity, wait for confirmation before writing any code.
 
-## Slice B tripwire verification paste block
-
-```bash
-cd ~/dev/forge-oh && git pull
-.oh-venv/bin/pytest bff/tests/test_event_relay_normalize.py -v
-```
-
-Expected: `test_relay_emits_normalized_wire_shape` passes. It asserts every 'event' emission has projected ToolEvent keys (id, eventId, type, timestamp, summary, raw) and NOT the raw agent-server 'kind' at the top level. Also asserts Stage 3.1's `securityRisk` projection survives the wire.
-
-## Slice C audit summary (for the record)
-
-`PatternSecurityAnalyzer` (openhands-sdk 1.40.0) NEVER returns UNKNOWN — every code path returns `LOW | MEDIUM | HIGH`. UNKNOWN in the runtime comes from:
-
-- **Attach-failure mode A:** `bff/routers/runs.py:431-447` swallows analyzer-attach exceptions with `log.warning`. Runs proceed without analyzer; ActionEvents have no `security_risk` field.
-- **Attach-failure mode B:** `bff/services/event_normalize.py::_extract_security_risk` returns `None` for enum values outside `_VALID_SECURITY_RISK` (currently: LOW/MEDIUM/HIGH).
-
-`confirm_unknown=True` (current) is fail-closed and correct. Flipping to `False` while attach is best-effort would fail-open on mode A. KNOWN_ISSUES 2026-08-06 00:05 EDT documents the precondition for the flip: make analyzer attach hard-required at run creation.
-
-## Reference — hygiene batch commits
+## Reference — hygiene batch closing commits
 
 - `b7d6317` — status enum drift unification + Zod boundary tripwire
 - `dbd643f` — status enum drift verification docs
 - `e83d5f0` — delete dead StatusBadge files + normalize wire events
 - `fa014a9` — tripwire test fix (double-emit)
-- (Pending) — Slice C audit docs
+- `33bdc83` — Slice C audit docs (flip rejected)
+- (pending push) — hygiene batch CLOSED entry
