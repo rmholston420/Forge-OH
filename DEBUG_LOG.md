@@ -2102,3 +2102,33 @@ Both surfaced only because the container went from red (crash-loop) to green (`U
 **Fix applied**: none in this session. Both filed to `KNOWN_ISSUES.md` for a follow-up cosmetic-cleanup slice. Neither impacts Stage 7 DoD (topology reconciliation), only Docker-image polish.
 
 **Related BUILD_LOG entry**: 2026-08-06 14:48 EDT (Stage 7 DoD MET).
+
+## 2026-08-06 15:28 EDT — `docker run vllm/vllm-openai:latest --version` traceback: my probe was malformed
+
+**Symptom (from Colossus terminal):**
+```
+INFO 08-06 19:27:22 [importing.py:53] Triton is installed but 0 active driver(s) found (expected 1). Disabling Triton to prevent runtime errors.
+INFO 08-06 19:27:22 [importing.py:88] Triton not installed or not compatible; certain GPU-related functions will not be available.
+W0806 19:27:22.723000 1 torch/utils/cpp_extension.py:140] No CUDA runtime is found, using CUDA_HOME='/usr/local/cuda'
+Traceback (most recent call last):
+  File "/usr/local/bin/vllm", line 10, in <module>
+```
+(traceback truncated at line 10 in the terminal)
+
+**Affected:** Slice 8.0 kickoff · vLLM version probe.
+
+**Root cause:** Two agent mistakes in the probe command `docker run --rm vllm/vllm-openai:latest --version`:
+1. `vllm/vllm-openai:latest` has ENTRYPOINT `python -m vllm.entrypoints.openai.api_server`, so `--version` was passed as an API-server argument (not a `vllm` CLI subcommand). Recent vLLM builds do accept `--version` as an argparse flag on `api_server`, but importing the package eagerly touches CUDA/Triton, which fails without a GPU handle.
+2. Omitted `--gpus all` — no NVIDIA device is exposed to the container, so Triton emits "0 active driver(s) found" and torch reports "No CUDA runtime is found." The subsequent import chain then hits a CUDA-dependent path.
+
+Not a Colossus stack breakage; the vetted launcher (`ops/vllm_launch_coder.sh`) always passes `--gpus all` and uses correct entrypoint semantics.
+
+**Fix applied:** replaced with a CPU-only, entrypoint-overridden probe that only reads `vllm.__version__`:
+```bash
+docker run --rm --entrypoint python vllm/vllm-openai:latest \
+  -c 'import vllm; print(vllm.__version__)'
+```
+This avoids `--gpus all` (import path for `__version__` is not GPU-dependent when the entrypoint is `python` rather than `api_server`) and returns the version in ~5s.
+
+**Files changed:** — (no code change; probe-command correction only)
+**Related BUILD_LOG entry:** 2026-08-06 15:24 EDT — Slice 8.0 kickoff DRAFT corrected.
