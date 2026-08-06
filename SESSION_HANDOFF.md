@@ -1,18 +1,18 @@
 # Forge-OH — Session Handoff
 
 ## Current stage/plugin/port
-**Stage 6.4c step 1e follow-up** — Restart 502 fix (agent-server limit≤100).
+**Stage 6.4c step 1e follow-up 2** — extractor + ordering fixes on top of pagination fix.
 
 ## Completed this session
-1. Step 1e scan fix in `bff/routers/runs.py` §3b — sha capture now works against real agent-server 1.40.  Verified on Colossus (`anchor_sha=cda0098...` matches HEAD).
-2. Follow-up: diagnosed happy-path restart 502 → agent-server AssertionError (`limit <= 100`) triggered by `_fetch_event`'s `page_limit=500`.
-3. Rewrote `_fetch_event` to page via `next_page_id`, clamped page size at 100.
-4. Added 2 regression tests (`TestFetchEventPagination`) covering the clamp + pagination.
-5. All 18 sha-capture tests green on Colossus.
+1. Step 1e — scan for user MessageEvent at any index (§3b create_run + send_run_message).
+2. Follow-up 1 — page `_fetch_event` at limit≤100 (agent-server enforces `assert limit <= 100`).
+3. Follow-up 2 — `_extract_message_text` reads `llm_message.content[*].text` (real agent-server storage form).
+4. Follow-up 2 — reorder `restart_from_here` steps: fetch event (404) BEFORE ledger lookup (409), so typos give 404 not 409.
+5. 5 new regression tests: 2 pagination, 2 llm_message extraction, 1 ordering.
 
 ## Remaining before DoD
-- Run `.oh-venv/bin/pytest bff/tests/test_runs_restart.py -x -q` on Colossus (expect existing tests + 2 new pagination tests green).
-- Rerun `bash scripts/stage-6.4c-verify.sh` on Colossus.  Expected: PASSED — happy-path restart 200, negative case A 404 (unknown from_event_id).
+- Rerun `.oh-venv/bin/pytest bff/tests/test_runs_restart.py bff/tests/test_runs_sha_capture.py -x -q` on Colossus.
+- Rerun `bash scripts/stage-6.4c-verify.sh` on Colossus.  Expected: PASSED — happy-path 200 + `restarted_run_id` + `worktree_path`; neg A 404; neg C 409.
 
 ## Open questions
 None.
@@ -21,7 +21,7 @@ None.
 On Colossus:
 ```bash
 cd ~/dev/forge-oh && git pull --ff-only
-.oh-venv/bin/pytest bff/tests/test_runs_restart.py -x -q 2>&1 | tail -20
+.oh-venv/bin/pytest bff/tests/test_runs_restart.py bff/tests/test_runs_sha_capture.py -x -q 2>&1 | tail -25
 bash scripts/forge-restart.sh --bff-only
 sleep 3
 bash scripts/stage-6.4c-verify.sh

@@ -6557,3 +6557,20 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Files touched**:
   - `bff/services/restart.py`
   - `bff/tests/test_runs_restart.py`
+
+## 2026-08-06 09:10 EDT — Stage 6.4c step 1e follow-up 2: extractor + ordering fixes
+
+- **Stage/plugin/port**: Stage 6.4c · P1 Restart-from-here · `bff/services/restart.py`
+- **Triggers**: verify script surfaced (a) happy-path 409 from `_extract_message_text` looking at wrong path; (b) neg-A 409 vs expected 404 from ledger-before-fetch ordering.  See DEBUG_LOG entries 09:10 EDT.
+- **Fixes**:
+  - `_extract_message_text` walks `event.llm_message.content[*].text` first (agent-server 1.40 storage form), keeps `event.content[*].text` + scalar fallbacks.
+  - `restart_from_here` swaps steps 2↔3: fetch event → check kind/source/text → then ledger sha lookup.  Unknown ids now cleanly return 404 anchor_not_found.
+- **Regression tests** (`bff/tests/test_runs_restart.py`):
+  - `test_llm_message_content_extracted` — real-event shape verified live on Colossus.
+  - `test_llm_message_takes_precedence_over_top_content` — precedence rule.
+  - `test_unknown_event_id_returns_anchor_not_found_not_no_sha` — enforces new ordering; asserts ledger is not consulted for unknown ids.
+- **Contract preserved**: all existing service-layer failure codes unchanged; HTTP mappings in `_RESTART_CODE_TO_STATUS` untouched.
+- **DoD status**: awaiting Colossus rerun of stage-6.4c-verify.sh — expect PASSED.
+- **Files touched**:
+  - `bff/services/restart.py`
+  - `bff/tests/test_runs_restart.py`

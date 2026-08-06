@@ -1856,3 +1856,24 @@ Two independent problems this caused:
   - `bff/services/restart.py` — new pagination loop in `_fetch_event`
   - `bff/tests/test_runs_restart.py` — added `TestFetchEventPagination` with `test_never_requests_limit_over_100` + `test_follows_next_page_id`
 - **Reference**: no prior DEBUG_LOG entry mentioned this limit; agent-server's 100-cap was undocumented on our side.
+
+## 2026-08-06 09:10 EDT — restart 409 "carries no user-message text"
+
+- **Symptom**: After step 1e follow-up (limit≤100), verify happy-path restart returned HTTP 409 `event '...' carries no user-message text to seed with`.  Sha capture and anchor lookup both worked; failure was in `_extract_message_text`.
+- **Affected**: Stage 6.4c step 1e follow-up · `bff/services/restart.py::_extract_message_text`.
+- **Root cause**: Real agent-server 1.40 stores user MessageEvent text under **`event.llm_message.content[*].text`**, not `event.content[*].text`.  Live-probe payload:
+  ```json
+  {"kind":"MessageEvent","source":"user",
+   "llm_message":{"role":"user","content":[{"type":"text","text":"probe user text"}]}}
+  ```
+  Previous extractor only walked `event.content[*]` (matched the BFF outbound-POST shape, not the read-back shape).
+- **Fix**: `_extract_message_text` now checks `llm_message.content` first, then falls back to `content`, then scalar `message`/`text`.
+- **Files changed**: `bff/services/restart.py`.
+
+## 2026-08-06 09:10 EDT — restart 409 vs 404 ordering (verify negative case A)
+
+- **Symptom**: Negative case A (unknown from_event_id) returned 409 `no commit sha captured for event 'ev-does-not-exist-000000'` instead of the expected 404.
+- **Affected**: Stage 6.4c step 1e follow-up · `bff/services/restart.py::restart_from_here` composition order.
+- **Root cause**: `restart_from_here` ran ledger `bulk_get_shas` (step 2) BEFORE `_fetch_event` (step 3).  Ledger has no row for unknown ids → 409 `no_sha_anchor`.  Users can't tell "you typo'd the id" from "you targeted a real but pre-capture event".
+- **Fix**: Swap the order — `_fetch_event` first (404 anchor_not_found on missing ids), then ledger lookup (409 no_sha_anchor on known-but-uncaptured).
+- **Files changed**: `bff/services/restart.py`, `bff/tests/test_runs_restart.py` (new `test_unknown_event_id_returns_anchor_not_found_not_no_sha`).

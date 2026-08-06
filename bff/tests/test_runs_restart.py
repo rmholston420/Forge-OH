@@ -158,6 +158,35 @@ class TestExtractMessageText:
     def test_missing_shape_returns_empty(self) -> None:
         assert _extract_message_text({"kind": "MessageEvent"}) == ""
 
+    def test_llm_message_content_extracted(self) -> None:
+        """Real agent-server 1.40 stores user text under
+        ``llm_message.content[*].text`` (verified live on Colossus
+        2026-08-06).  Step 1e follow-up must find it there."""
+        ev = {
+            "id": "ev-1",
+            "kind": "MessageEvent",
+            "source": "user",
+            "llm_message": {
+                "role": "user",
+                "content": [
+                    {"cache_prompt": False, "type": "text", "text": "probe user text"}
+                ],
+                "thinking_blocks": [],
+            },
+            "activated_skills": [],
+            "extended_content": [],
+        }
+        assert _extract_message_text(ev) == "probe user text"
+
+    def test_llm_message_takes_precedence_over_top_content(self) -> None:
+        """If both llm_message.content and top-level content are present,
+        prefer the agent-server storage form."""
+        ev = {
+            "llm_message": {"content": [{"type": "text", "text": "real"}]},
+            "content": [{"type": "text", "text": "stale"}],
+        }
+        assert _extract_message_text(ev) == "real"
+
 
 # =========================================================================
 # TestRestartFromHereService — direct calls to the service (bypass HTTP)
@@ -284,6 +313,37 @@ class TestRestartFromHereService:
                     anchor_event_id="ev-user-1",
                 )
         assert exc_info.value.code == "anchor_not_found"
+
+    @pytest.mark.asyncio
+    async def test_unknown_event_id_returns_anchor_not_found_not_no_sha(
+        self,
+    ) -> None:
+        """Step 1e follow-up: unknown event id must yield 404
+        (anchor_not_found) even though the ledger also has no row for it.
+        Previous ordering did ledger-check first and returned 409
+        no_sha_anchor for genuine typos — misleading and hard to debug."""
+        upstream = _FakeUpstream()
+        # Source exists, events page is empty.
+        _wire_source(upstream, events_items=[])
+        app = _build_app()
+        # Ledger also has no row (typical for a completely unknown id).
+        bulk = AsyncMock(return_value={})
+        with (
+            patch("bff.services.restart.get_client", return_value=upstream),
+            patch(
+                "bff.services.restart.event_commit_ledger.bulk_get_shas",
+                bulk,
+            ),
+        ):
+            with pytest.raises(RestartError) as exc_info:
+                await restart_from_here(
+                    app,
+                    source_run_id="run-source-1",
+                    anchor_event_id="ev-does-not-exist",
+                )
+        assert exc_info.value.code == "anchor_not_found"
+        # Ledger should not have been consulted — event check happens first.
+        bulk.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_anchor_is_assistant_message_raises(self) -> None:

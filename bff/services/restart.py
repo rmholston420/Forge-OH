@@ -105,21 +105,49 @@ class RestartResult:
 def _extract_message_text(ev: dict[str, Any]) -> str:
     """Best-effort user-message-text extraction (agent-server 1.40.0 shape).
 
-    Preferred: ``event.content[0].text`` (matches how ``create_run`` and
-    ``send_run_message`` build their outbound payloads).  Falls back to
-    ``event.message`` or ``event.text`` if the primary path is empty.
+    Real-event shape verified live on Colossus 2026-08-06:
+
+        {
+          "id": "...",
+          "kind": "MessageEvent",
+          "source": "user",
+          "llm_message": {
+            "role": "user",
+            "content": [{"type": "text", "text": "probe user text"}]
+          }
+        }
+
+    Preference order:
+      1. ``event.llm_message.content[*].text`` — agent-server storage form.
+      2. ``event.content[*].text`` — how the BFF's outbound POST /events
+         payload is shaped (kept for the write-side mock in unit tests).
+      3. ``event.message`` / ``event.text`` — last-resort scalars.
 
     Returns "" when nothing usable is found — the router surfaces this
     as ``not_user_message`` because a user message without text is
     indistinguishable from an assistant message here.
     """
-    content = ev.get("content")
-    if isinstance(content, list) and content:
-        first = content[0]
-        if isinstance(first, dict):
-            txt = first.get("text")
+    def _first_text(content: Any) -> str:
+        if not isinstance(content, list):
+            return ""
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            txt = item.get("text")
             if isinstance(txt, str) and txt.strip():
                 return txt
+        return ""
+
+    llm_msg = ev.get("llm_message")
+    if isinstance(llm_msg, dict):
+        got = _first_text(llm_msg.get("content"))
+        if got:
+            return got
+
+    got = _first_text(ev.get("content"))
+    if got:
+        return got
+
     for k in ("message", "text"):
         v = ev.get(k)
         if isinstance(v, str) and v.strip():
@@ -170,27 +198,12 @@ async def restart_from_here(
             f"source run {source_run_id!r} has no working_dir; cannot restart",
         )
 
-    # 2) Ledger must have a sha for (source_run_id, anchor_event_id).
-    #    Passing app positionally per event_commit_ledger contract.
-    sha_map: dict[str, str] = {}
-    try:
-        sha_map = await event_commit_ledger.bulk_get_shas(app, [anchor_event_id])
-    except Exception as exc:
-        raise RestartError(
-            "upstream_error", f"ledger lookup failed: {exc}"
-        ) from exc
-    anchor_sha = sha_map.get(anchor_event_id) or ""
-    if not anchor_sha:
-        raise RestartError(
-            "no_sha_anchor",
-            f"no commit sha captured for event {anchor_event_id!r}; "
-            "restart requires a user message authored while in a git worktree",
-        )
-
-    # 3) Anchor event must exist AND be a user MessageEvent.  Agent-server's
-    #    /events/search endpoint doesn't take an id filter directly, but its
-    #    ``event_id`` param does exact-match filtering when supported.  Fall
-    #    back to fetching a bounded page and looking for the id there.
+    # 2) Anchor event must exist AND be a user MessageEvent.  Ordering:
+    #    check existence FIRST so unknown event ids surface as 404
+    #    (anchor_not_found) instead of leaking as 409 no_sha_anchor —
+    #    the ledger has no row for ids that were never captured, but
+    #    "unknown" is a stronger, more actionable failure than "known
+    #    but no sha".
     ev = await _fetch_event(client, source_run_id, anchor_event_id)
     if ev is None:
         raise RestartError(
@@ -213,6 +226,23 @@ async def restart_from_here(
         raise RestartError(
             "not_user_message",
             f"event {anchor_event_id!r} carries no user-message text to seed with",
+        )
+
+    # 3) Ledger must have a sha for (source_run_id, anchor_event_id).
+    #    Passing app positionally per event_commit_ledger contract.
+    sha_map: dict[str, str] = {}
+    try:
+        sha_map = await event_commit_ledger.bulk_get_shas(app, [anchor_event_id])
+    except Exception as exc:
+        raise RestartError(
+            "upstream_error", f"ledger lookup failed: {exc}"
+        ) from exc
+    anchor_sha = sha_map.get(anchor_event_id) or ""
+    if not anchor_sha:
+        raise RestartError(
+            "no_sha_anchor",
+            f"no commit sha captured for event {anchor_event_id!r}; "
+            "restart requires a user message authored while in a git worktree",
         )
 
     # 4) Resolve the source repo the worktree lives off.
