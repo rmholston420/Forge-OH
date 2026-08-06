@@ -23,7 +23,22 @@ _KIND_TO_TYPE: dict[str, str] = {
     "AgentErrorEvent": "error",
     "ConversationErrorEvent": "error",
     "ConversationStateUpdateEvent": "status",
-    "CondensationSummaryEvent": "status",
+    # Stage 6.2 — condensation-family events. SDK v1.40.0 ships THREE
+    # distinct classes at ``openhands.sdk.event.condenser``:
+    #   * ``Condensation`` — fires when auto-compaction runs. Carries
+    #     ``forgotten_event_ids`` (set), ``summary`` (str|None),
+    #     ``summary_offset`` (int|None), ``llm_response_id`` (str).
+    #   * ``CondensationRequest`` — no informative payload; marker only.
+    #   * ``CondensationSummaryEvent`` — inserted into the LLM view.
+    #     Only carries ``summary`` (str).
+    # The three types share one visual family (🗜️) but stay distinct
+    # normalized types so BUILD_LOG/tests can address them independently.
+    # NB: reconciliation-plan §6.2 was written against an earlier SDK
+    # that named a ``CondensationEvent`` and included ``turns_summarized``
+    # / ``artifact_manifest`` fields — neither exists in v1.40.0.
+    "Condensation": "condensation",
+    "CondensationRequest": "condensation_request",
+    "CondensationSummaryEvent": "condensation_summary",
     "LLMCompletionLogEvent": "status",
     "PauseEvent": "run_paused",
     "SystemPromptEvent": "status",
@@ -251,6 +266,55 @@ def _memory_consultation_summary(ev: dict[str, Any]) -> str:
     return f"Memory consulted ({tier}): {query_str} — {count_str}"
 
 
+def _condensation_summary_line(ev: dict[str, Any]) -> str:
+    """Summary line for a raw ``Condensation`` event (Stage 6.2).
+
+    Uses ``len(forgotten_event_ids)`` as the authoritative "N turns
+    forgotten" count (SDK v1.40.0 field name — differs from the
+    reconciliation-plan spec which wrote ``turns_summarized``).
+    """
+    forgotten = ev.get("forgotten_event_ids")
+    n: int
+    if isinstance(forgotten, (list, tuple, set)):
+        n = len(forgotten)
+    else:
+        n = 0
+    base = f"Context compressed — {n} turn{'s' if n != 1 else ''} forgotten"
+    summ = ev.get("summary")
+    if isinstance(summ, str):
+        summ_clean = summ.strip()
+        if summ_clean:
+            head = summ_clean[:120] + ("…" if len(summ_clean) > 120 else "")
+            return f"{base}: {head}"
+    return base
+
+
+def _condensation_request_summary(ev: dict[str, Any]) -> str:
+    """Summary line for a raw ``CondensationRequest`` event (Stage 6.2).
+
+    The SDK class carries no informative payload beyond the base Event
+    fields; render a plain marker so the timeline still reads clearly.
+    """
+    _ = ev  # unused — placeholder in case future SDKs add fields
+    return "Condensation requested"
+
+
+def _condensation_summary_event_summary(ev: dict[str, Any]) -> str:
+    """Summary line for a raw ``CondensationSummaryEvent`` (Stage 6.2).
+
+    Only informative field is ``summary`` (str). Elide anything past 120
+    chars so the timeline row stays a single line; the full text is
+    reachable via EventCard's raw-expand toggle.
+    """
+    summ = ev.get("summary")
+    if isinstance(summ, str):
+        summ_clean = summ.strip()
+        if summ_clean:
+            head = summ_clean[:120] + ("…" if len(summ_clean) > 120 else "")
+            return f"Compression summary — {head}"
+    return "Compression summary"
+
+
 def _web_search_summary(ev: dict[str, Any]) -> str:
     """Stage 6.1 — render a WebSearchEvent as one line.
 
@@ -313,6 +377,12 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
         summary = _memory_consultation_summary(raw)
     elif kind == "WebSearchEvent":
         summary = _web_search_summary(raw)
+    elif kind == "Condensation":
+        summary = _condensation_summary_line(raw)
+    elif kind == "CondensationRequest":
+        summary = _condensation_request_summary(raw)
+    elif kind == "CondensationSummaryEvent":
+        summary = _condensation_summary_event_summary(raw)
     elif kind == "ActionEvent":
         summary = _action_summary(raw)
         # Stage 4.4: if this ActionEvent invoked a Serena tool, promote the

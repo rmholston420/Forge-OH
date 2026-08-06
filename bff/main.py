@@ -28,6 +28,7 @@ from bff.openhands_client import startup as oh_startup
 from bff.routers import (
     agent_presets,
     bash,
+    debug,
     git,
     gpu,
     inference_backends,
@@ -142,6 +143,7 @@ app.include_router(observability.router, prefix="/api")
 app.include_router(plugins.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
+app.include_router(debug.router, prefix="/api")
 app.include_router(bash.router, prefix="/api")
 app.include_router(git.router, prefix="/api")
 app.include_router(gpu.router)  # already prefixed /api/gpu inside the router

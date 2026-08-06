@@ -2,34 +2,58 @@
 
 ## Current stage
 
-**Stage 6.1 COMPLETE (DoD met on Colossus 2026-08-06 05:00 EDT). Ready to open Stage 6.2 — Condensation visibility.**
+**Stage 6.2 IN PROGRESS — code written + pushed, awaiting DoD verification on Colossus.**
+
+Locked decisions (2026-08-06):
+- SDK probe done: only three condensation classes exist in v1.40.0 (`Condensation`, `CondensationRequest`, `CondensationSummaryEvent`) — spec's `CondensationEvent` + `turns_summarized` + `artifact_manifest` do not exist.
+- One visual icon (🗜️) shared across all three normalized types.
+- Reuse existing EventCard + raw-expand pattern (no dedicated `<details>` variant).
+- Generic dev-only injection endpoint at `POST /api/_debug/inject-event`, gated behind `FORGE_TIMELINE_DEBUG_INJECT=1`. Returns 404 when disabled.
 
 ## What was completed this session
 
-**Stage 6.1 — SearXNG web-research tool + timeline marker**
+**Stage 6.1 (DoD met, closed):** SearXNG SearchPort + SearxngAdapter vendored, `search_web` OpenHands tool, BFF bridge endpoint, EventCard 🔍 icon, backend + FE tests, E2E screenshot committed (commit `0c60df0`). See prior BUILD_LOG entries.
 
-- Vendored Kosmos `SearchPort` + `SearxngAdapter` @ SHA `c455165` verbatim into `openhands_tools_ext/search/` with SHA-256 equality proof in `PORTING_LEDGER.md`.
-- Hand-authored `search_web` OpenHands tool (registered at import time via `scripts/forge-up.sh --import-modules`).
-- BFF bridge: `POST /api/search/emit` in `bff/routers/search.py`; producer in `bff/services/search_events.py`; `event_normalize.py` extended with `WebSearchEvent → web_search` mapping.
-- Docker Compose: `ops/compose/searxng.yml` pinned to `searxng/searxng:2026.8.4-c63835bd2@sha256:dc5c10fd…` on `127.0.0.1:18888`.
-- Full test coverage: 26 backend tests passing (`openhands_tools_ext/tests/search/` + `bff/tests/test_search_emit_endpoint.py`), 3 frontend unit tests passing, E2E DoD screenshot committed at `screenshots/search-timeline-marker.png` (commit `0c60df0`).
-- Two E2E-spec bugs found + fixed live (see DEBUG_LOG 2026-08-06 05:00 EDT):
-  - `REPO_ROOT = resolve(cwd, '..')` was wrong → fixed to use `__dirname` (commit `3fdfafb`).
-  - `import.meta` unusable in CJS package → fixed by dropping `fileURLToPath` (commit `2175c51`).
+**Stage 6.2 (code complete, DoD pending):**
+- `bff/services/event_normalize.py` — three new normalized types + summary helpers + dispatch branches.
+- `bff/routers/debug.py` — generic dev-only injection endpoint.
+- `bff/main.py` — router mounted.
+- `bff/tests/test_event_normalize_condensation.py` (17 tests) + `bff/tests/test_debug_inject_endpoint.py` (8 tests).
+- `src/components/domain/EventCard.tsx` — 🗜️ icons for all three condensation types.
+- `src/tests/unit/EventCard-condensation.test.tsx` (4 tests).
+- `src/tests/e2e/condensation-timeline-marker.spec.ts` — Playwright DoD spec.
 
-## What remains before Stage 6.1 Definition of Done
+## What remains before Stage 6.2 Definition of Done
 
-**None.** All DoD criteria met per BUILD_LOG entry 2026-08-06 05:00 EDT.
+User verification on Colossus:
+
+```bash
+cd ~/dev/forge-oh && git pull origin main
+source .oh-venv/bin/activate
+
+pytest bff/tests/test_event_normalize_condensation.py bff/tests/test_debug_inject_endpoint.py -q
+pnpm test:unit src/tests/unit/EventCard-condensation.test.tsx
+
+export FORGE_TIMELINE_DEBUG_INJECT=1
+export FORGE_SEARXNG_BASE_URL=http://127.0.0.1:18888
+./scripts/forge-restart.sh
+
+PLAYWRIGHT_START_PROD=1 PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+  pnpm test:e2e src/tests/e2e/condensation-timeline-marker.spec.ts
+```
+
+Expected: 25 backend tests pass, 4 FE unit tests pass, E2E test injects a Condensation, 🗜️ card appears on run-detail, screenshot auto-committed and pushed.
+
+If any test fails, report the output and the agent will fix immediately in the next turn (do NOT hand back a script).
 
 ## Open questions / ambiguities awaiting an answer
 
-**Blocking:** None for Stage 6.1.
+**Blocking:** None for Stage 6.2 code (all four ambiguities resolved 2026-08-06).
 
-**Non-blocking follow-ups noted:**
-- Memory E2E spec (`src/tests/e2e/memory-timeline-marker.spec.ts`) has the same latent REPO_ROOT + `import.meta` bugs — fix opportunistically when re-run.
-- Orphan Kosmos compose containers (`kosmos-qdrant`, `kosmos-dozerdb`) flagged by `docker compose` — cosmetic only.
-- Ideally the E2E spec should reuse an existing prod FE on :3100 without bailing when `next start` hits `EADDRINUSE`; today the spec detected the running FE via HTTP 200 anyway, so this is a UX polish, not a correctness bug.
+**Non-blocking follow-ups:**
+- The memory E2E spec (`src/tests/e2e/memory-timeline-marker.spec.ts`) still has the latent REPO_ROOT + `import.meta` bugs fixed in the search spec at commit `2175c51`. Fix opportunistically if re-run.
+- `forge-restart.sh` needs `FORGE_TIMELINE_DEBUG_INJECT=1` and `FORGE_SEARXNG_BASE_URL` to propagate to the BFF process. Confirmed to work by exporting before restart; if the script strips env, we'll need to source `.env.forge` or similar.
 
 ## Exact next action
 
-**Open Stage 6.2 — Condensation visibility.** Load `docs/reconciliation-plan-stage-6.md` §6.2 in the next session and restate scope per slice-driver protocol before touching any file. Confirm the Definition of Done, files/ports touched, and any open decisions before writing code.
+**User:** run the verification block above on Colossus and report results. Then next stage is **6.3 — Idempotency ledger** (per `docs/reconciliation-plan-stage-6.md` §6.3).

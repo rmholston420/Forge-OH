@@ -33,6 +33,12 @@ const EVENT_ICONS: Record<string, string> = {
   lsp_safe_delete_symbol: '🗑️',
   // Stage 5.6a / ADR-024 — MemoryPort tier consultation.
   memory_consultation: '🧠',
+  // Stage 6.2 — Condensation-family (SDK openhands.sdk.event.condenser).
+  // Three SDK classes share one visual icon so the family reads as one
+  // in the timeline; distinct types keep tests + logs unambiguous.
+  condensation: '🗜️',
+  condensation_request: '🗜️',
+  condensation_summary: '🗜️',
 };
 
 /** Stage 4.4 — render an "LSP" family badge for symbol-precise ops. */

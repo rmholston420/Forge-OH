@@ -5962,3 +5962,69 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - Two orphan Kosmos compose containers (`kosmos-qdrant`, `kosmos-dozerdb`) flagged by `docker compose` in the Forge-OH project — cosmetic only.
 
 **Next up:** Stage 6.2 — Condensation visibility (per `docs/reconciliation-plan-stage-6.md` §6.2).
+
+
+## 2026-08-06 05:11 EDT — Stage 6.2 opened: Condensation visibility
+
+**Scope:** Stage 6.2 per `docs/reconciliation-plan-stage-6.md` §6.2 — surface SDK condensation events as first-class timeline markers instead of folding them into generic `"status"` noise.
+
+**Ground-truth divergence from spec (verified live on Colossus 2026-08-06 05:08 EDT via `python3 -c 'from openhands.sdk.event import ...'`):**
+- Spec references `CondensationEvent` with fields `turns_summarized` and `artifact_manifest`. **Neither the class nor those fields exist in SDK v1.40.0.**
+- What exists at `openhands.sdk.event.condenser` (three-event family):
+  1. **`Condensation`** — auto-compaction fired. Fields: `forgotten_event_ids: set[EventID]`, `summary: str | None`, `summary_offset: int | None`, `llm_response_id: EventID`.
+  2. **`CondensationRequest`** — request for compaction. No informative payload.
+  3. **`CondensationSummaryEvent`** — summary text inserted into the LLM view. Only informative field: `summary: str`.
+
+**Design choices (locked with user 2026-08-06):**
+- 1a: probe SDK live before writing normalizer. ✅ done — see divergence block above.
+- 2b: reuse existing EventCard + expand-hint pattern (no new `<details>` variant); one visual icon family for all three types (🗜️).
+- 3: icon `🗜️` (compression).
+- 4: mocked E2E via a new generic dev-only injection endpoint (chosen over per-event emit endpoints to prevent proliferation across 6.2/6.3/6.5/6.6).
+
+**Files added:**
+- `bff/routers/debug.py` — `POST /api/_debug/inject-event`, gated behind `FORGE_TIMELINE_DEBUG_INJECT=1`. Returns 404 when disabled (existence non-observable in prod).
+- `bff/tests/test_event_normalize_condensation.py` — 17 tests covering all three normalized types + regression against existing status kinds.
+- `bff/tests/test_debug_inject_endpoint.py` — 8 tests: 404 gate, 200 wire shape for each of the 3 kinds, 422 validation, extra-field override, Socket.IO emit resilience.
+- `src/tests/unit/EventCard-condensation.test.tsx` — 4 FE unit tests.
+- `src/tests/e2e/condensation-timeline-marker.spec.ts` — Playwright DoD spec: inject `Condensation` via `POST /api/_debug/inject-event`, assert 🗜️ card + summary, screenshot + auto-push to `screenshots/condensation-timeline-marker.png`.
+
+**Files modified:**
+- `bff/services/event_normalize.py`:
+  - `_KIND_TO_TYPE`: removed stale `CondensationSummaryEvent → "status"`; added three new mappings (`Condensation → "condensation"`, `CondensationRequest → "condensation_request"`, `CondensationSummaryEvent → "condensation_summary"`) with an inline block-comment noting the SDK-version divergence.
+  - Added three summary helpers: `_condensation_summary_line`, `_condensation_request_summary`, `_condensation_summary_event_summary`. All elide summaries past 120 chars with `…`; the `Condensation` variant reports `len(forgotten_event_ids)` (grammatical singular for N=1).
+  - Extended `normalize_event` dispatch with three new `elif` branches.
+- `bff/main.py`: imported and mounted `debug.router` at `/api`.
+- `src/components/domain/EventCard.tsx`: added three `condensation*: '🗜️'` entries to `EVENT_ICONS`.
+
+**Ports/adapters affected:** none (pure event-projection + FE + dev endpoint slice).
+
+**PORTING_LEDGER:** no entry (hand-authored; no upstream donor).
+
+**Stop-condition status:**
+- Backend: normalizer covers three SDK kinds; ✅ code + unit tests written.
+- Backend: `/api/_debug/inject-event` router + tests; ✅.
+- Frontend: 🗜️ icons + unit tests; ✅.
+- E2E DoD screenshot: ⏳ pending user pull + BFF restart with `FORGE_TIMELINE_DEBUG_INJECT=1` + spec run.
+
+**Verification steps for user on Colossus:**
+```bash
+cd ~/dev/forge-oh && git pull origin main
+source .oh-venv/bin/activate
+
+# Backend unit tests (no restart needed)
+pytest bff/tests/test_event_normalize_condensation.py bff/tests/test_debug_inject_endpoint.py -q
+
+# Frontend unit
+pnpm test:unit src/tests/unit/EventCard-condensation.test.tsx
+
+# Restart BFF with the debug flag so the E2E spec can inject
+export FORGE_TIMELINE_DEBUG_INJECT=1
+export FORGE_SEARXNG_BASE_URL=http://127.0.0.1:18888   # still needed for 6.1 gate
+./scripts/forge-restart.sh
+
+# DoD screenshot
+PLAYWRIGHT_START_PROD=1 PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+  pnpm test:e2e src/tests/e2e/condensation-timeline-marker.spec.ts
+```
+
+**Next up (after DoD verified):** Stage 6.3 — Idempotency ledger.
