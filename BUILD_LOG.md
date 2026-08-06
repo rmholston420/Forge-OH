@@ -6118,3 +6118,24 @@ Expected: ~37 tests pass; crash-and-resume script exits 0 with "PASS".
 - `scripts/test-crash-resume.sh` — added phase-4 success echo for observability. Crash-resume itself PASSED on Colossus (exit 0); the silent phase 4 was just cosmetic.
 
 **Stop-condition status:** Colossus verified crash-and-resume PASSED (see /tmp/forge-ledger-lRBvQ0/ transcript). Awaiting rerun of pytest with hotfix — expected 35/35 + 1 new = 36/36 tests pass.
+
+
+## 2026-08-06 05:48 EDT — Stage 6.3 CLOSED (DoD met on Colossus)
+
+**Verification transcript:**
+- `pytest bff/tests/test_idempotency_ledger.py bff/tests/test_idempotency_endpoints.py openhands_tools_ext/tests/write/test_write_note_idempotent.py -q` → **36 passed in 2.39s**.
+- `./scripts/test-crash-resume.sh` → **PASS**, all four phases visible in transcript.
+  - Pre-crash mark recorded=true.
+  - Pre-crash check completed=true with cached payload.
+  - SIGKILL'd BFF; DB survived at `/tmp/forge-ledger-kpOKPp/data/idempotency_ledger.db`.
+  - Post-crash check on fresh process still completed=true with identical cached payload + completed_at (proves durability, not re-timestamping).
+  - Post-crash replay mark recorded=false (INSERT OR IGNORE fired).
+
+**Stop-condition status:** ✅ MET. All DoD checkboxes from `docs/reconciliation-plan-stage-6.md` §6.3.4 satisfied:
+- Durable ledger persists across BFF restarts + crashes.
+- Reusable mixin — any future state-changing tool inherits it.
+- Deterministic key derivation using SDK-native `leaf_event_id`.
+- Fail-open on BFF outage.
+- Crash-and-resume proof end-to-end.
+
+**Next up:** Stage 6.4 — checkpoint-to-disk revert (`docs/reconciliation-plan-stage-6.md` §6.4).

@@ -2,67 +2,40 @@
 
 ## Current stage
 
-**Stage 6.3 IN PROGRESS — code written + pushed, awaiting Colossus DoD verification.**
+**Stage 6.3 — CLOSED.** DoD met on Colossus 2026-08-06 05:48 EDT.
+
+**Next stage: 6.4 — checkpoint-to-disk revert.** Not yet started.
 
 ## What was completed this session
 
-**Stage 6.2** — closed (previous session; head `c6661d8`).
-
 **Stage 6.3 — Idempotency ledger:**
-- SDK probed live (2026-08-06 05:32 EDT): `ToolExecutor.__call__(action, conversation=None)` only. `ConversationState.leaf_event_id` exists. No native `task_id` or `step_index`.
-- Design divergence from spec §6.3 documented in BUILD_LOG entry 2026-08-06 05:35 EDT.
-- Ledger at `bff/services/idempotency_ledger.py` (aiosqlite, follows `episodic_memory.py`); endpoint router at `bff/routers/idempotency.py` (production surface, not gated).
-- Reusable `IdempotentToolExecutor` mixin at `openhands_tools_ext/common/idempotent_executor.py` — talks to BFF over HTTP, fails open on network failure.
-- Synthetic `write_note` tool at `openhands_tools_ext/write/tools/write_note.py` — atomic tempfile+replace write; deterministic filename via `sha256(title)[:16]`.
-- Test suites: ledger unit (~20), endpoint (~10), mixin+tool integration with stubbed httpx (~7).
-- Crash-and-resume harness `scripts/test-crash-resume.sh` — minimal uvicorn app, SIGKILL, resume with fresh process on same on-disk DB.
-- `bff/main.py` lifespan wired for `init_db` + `close_db`; `scripts/forge-up.sh` imports the new tool.
+- Ledger service at `bff/services/idempotency_ledger.py` (aiosqlite, `completed_side_effects` table, INSERT OR IGNORE semantics, sort_keys canonical JSON hashing).
+- Endpoints at `bff/routers/idempotency.py` — `POST /api/idempotency/check` + `POST /api/idempotency/mark`.
+- Reusable mixin at `openhands_tools_ext/common/idempotent_executor.py` — talks to BFF over HTTP, fails open on network failure, bypasses ledger when `conversation=None`. Strips SDK `kind` discriminator from action dumps so arg-hash survives SDK upgrades.
+- Synthetic `write_note` tool at `openhands_tools_ext/write/tools/write_note.py` — atomic tempfile+replace, deterministic filename via sha256(title)[:16].
+- Test suites: 20 ledger unit + 10 endpoint (TestClient) + 6 mixin+tool with stubbed httpx = **36/36 passing** on Colossus.
+- Crash-resume harness `scripts/test-crash-resume.sh` — real SIGKILL of a minimal uvicorn app; fresh process on the same on-disk DB sees the row + serves the cached payload; replay-mark returns recorded=false. **PASSED** end-to-end.
+- `bff/main.py` lifespan wired for `init_db` + `close_db`; `scripts/forge-up.sh` preloads `write_note` in agent-server.
 
-## Colossus verification result (2026-08-06 05:42 EDT run)
+**Bug caught + fixed in the same session:** SDK v1.40.0 emits `kind` discriminator on `Action.model_dump()`. Pre-hotfix, this leaked into ledger arguments + arg-hash (would break upgrades). Fixed via `_EXCLUDED_ACTION_META_FIELDS` frozenset. Regression test locks it in. See DEBUG_LOG 2026-08-06 05:45 EDT.
 
-- Backend + endpoint tests: **34/35 PASS**, 1 FAIL.
-  - Failure: `test_first_call_writes_file_and_marks_ledger` — SDK emits `kind` discriminator in `Action.model_dump()`, my assertion + the ledger arg-hash didn't account for it.
-  - Fixed in commit **TBD** (2026-08-06 05:45 EDT): strip `kind` in `_action_to_arguments` + regression test. See DEBUG_LOG entry.
-- Crash-and-resume: **PASSED** (`/tmp/forge-ledger-lRBvQ0/`). Phase 4 was silent; added a success echo (cosmetic).
-- Restart: BFF + agent-server + Next.js all came up clean.
+## What remains before the next Definition of Done
 
-## What remains before Stage 6.3 DoD
-
-Rerun on Colossus after pulling the hotfix:
-
-```bash
-cd ~/dev/forge-oh && git pull origin main
-source .oh-venv/bin/activate
-
-# Backend unit tests
-pytest bff/tests/test_idempotency_ledger.py \
-       bff/tests/test_idempotency_endpoints.py \
-       openhands_tools_ext/tests/write/test_write_note_idempotent.py -q
-
-# Restart Forge-OH so BFF picks up the new lifespan init + endpoints,
-# and agent-server picks up the new tool registration.
-export FORGE_TIMELINE_DEBUG_INJECT=1
-export FORGE_SEARXNG_BASE_URL=http://127.0.0.1:18888
-./scripts/forge-restart.sh
-
-# End-to-end crash-and-resume proof
-./scripts/test-crash-resume.sh
-```
-
-Expected: 36/36 backend tests pass (35 previous + 1 new regression test); crash-resume script exits 0 with visible phase-4 line and "PASS".
-
-Report failures — I'll fix immediately.
+Stage 6.3 is fully closed. Stage 6.4 has not been scoped yet.
 
 ## Open questions / ambiguities awaiting an answer
 
-**Blocking:** None. All D-questions resolved 2026-08-06.
+None blocking.
 
-**Non-blocking follow-ups:**
-- The memory E2E spec still carries the pre-6.1 REPO_ROOT + `import.meta` bugs; fix opportunistically.
-- `write_note` is a synthetic tool for exercising the ledger. It should stay registered so future stages (6.4 checkpoint revert, 6.7 code-exec MCP) can reuse it as a durable side-effect exemplar.
+Non-blocking follow-ups from Stage 6.3:
+- Memory E2E spec still carries pre-6.1 REPO_ROOT + `import.meta` bugs. Fix opportunistically.
+- `write_note` stays registered — future stages (6.4 checkpoint revert, 6.7 code-exec MCP) can reuse it as a durable side-effect exemplar.
 
 ## Exact next action
 
-**User:** run the verification block above and paste results.
-
-**After DoD:** open **Stage 6.4 — checkpoint-to-disk revert** per `docs/reconciliation-plan-stage-6.md` §6.4. Same discipline: restate scope, probe SDK for the actual event/state surface, flag any spec divergence, ask on ambiguity.
+Open **Stage 6.4 — checkpoint-to-disk revert** per `docs/reconciliation-plan-stage-6.md` §6.4:
+1. Load `forge-oh-slice-driver` (already auto-loaded in Forge-OH sessions).
+2. Restate §6.4 scope: stage boundary, plugin/port surface, DoD, stop condition.
+3. Probe SDK for the actual checkpoint/revert primitives (do NOT assume the spec matches reality — Stage 6.3 taught us to always verify).
+4. Flag any spec-vs-reality divergences.
+5. Wait for user confirmation before writing code.
