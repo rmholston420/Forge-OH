@@ -5193,3 +5193,17 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   - Slice C (analyzer coverage audit) — audit-only; flip rejected; precondition documented in KNOWN_ISSUES 2026-08-06 00:05 EDT.
 - **Discovered pre-existing debt (not caused by this batch):** `test_event_relay_yield.py::test_direct_sync_call_would_block_confirms_the_hazard` is structurally unable to fail — the timing measurement is captured in the caller frame. Logged as KNOWN_ISSUES 2026-08-06 00:02 EDT and DEBUG_LOG 2026-08-06 00:02 EDT. Real G.1 runtime protection (`asyncio.to_thread` + `asyncio.sleep(0)` in `_run_loop`) is verified intact via source inspection.
 - **Stop-condition status:** post-Stage-3 hygiene batch COMPLETE. Ready for Stage 4.
+
+## 2026-08-06 00:22 EDT — Stage 4.1: RepoGraph enabled end-to-end on DozerDB
+
+- **Scope:** reconciliation-plan-v1.md § 4.1 (also stage-4 companion § 4.1). Enable RepoGraph subsystem, confirm end-to-end data flow from BFF -> DozerDB.
+- **No code changes.** `.env` already had `REPOGRAPH_ENABLED=true`, `.env.neo4j` already populated with real creds (password redacted, database `forgeoh`), Pydantic Settings picked both up at BFF startup. Flag flip was pre-completed as of `2026-08-03 07:11 EDT` when `.env.neo4j` was written.
+- **DozerDB state:** container `kosmos-dozerdb` running `graphstack/dozerdb:5.26.27` (enterprise edition), healthy for 4 days, ports 7474/7687 exposed on all interfaces.
+- **Verification (Colossus, 2026-08-06 00:22 EDT):**
+  - `GET /api/repograph/health` -> `enabled:true, reachable:true, neo4j_version:"5.26.27", neo4j_edition:"enterprise", database:"forgeoh"`.
+  - `POST /api/repograph/index {workspace_path: ~/dev/forge-oh}` -> `repo_key=6bcc20c96720, files=547, symbols=2150, calls=9936, unresolved_calls=12617, method_edges=709`.
+  - Direct cypher-shell against `forgeoh` DB confirms 547 File + 2150 Symbol nodes.
+  - Top-pagerank symbols look correct (hub `get` methods across services + tests).
+- **Files touched:** none (verification-only slice).
+- **Ports / adapters affected:** RepoGraph subsystem transitioned from disabled -> live. No new port, no new adapter.
+- **Stop-condition status:** § 4.1 COMPLETE. Ready for § 4.2 + § 4.3 (backend graph endpoint + frontend force-graph view, single pass).
