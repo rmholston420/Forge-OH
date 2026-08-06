@@ -1798,3 +1798,50 @@ Two independent problems this caused:
     (path glob didn't match with the git-shell glob; use vitest's
     module resolution to find the exact file — `import` statements
     inside gitDiff.test.tsx are the ground truth).
+
+## 2026-08-06 06:53 EDT — RESOLVED: gitDiff.test.tsx regression (see 06:48 EDT entry)
+
+- **Referenced entry:** 2026-08-06 06:48 EDT — "Pre-existing gitDiff.test.tsx failure (NOT Stage 6.4)"
+- **Actual root cause (differs from the 3 guesses in the 06:48 entry — the real one was #2 in a different form):**
+  `RunSummarySchema` in `src/lib/schemas/run.ts:32-49` requires four
+  non-optional fields (`agentPresetName`, `activeTool`, `elapsedMs`,
+  `estimatedCostUsd`) that the r1/r2 msw fixtures in
+  `src/tests/unit/gitDiff.test.tsx` never provided.
+  `fetchRun`'s `RunSummarySchema.parse` boundary tripwire (at
+  `src/features/run-detail/api.ts:18`) threw → `useRunDetail` errored →
+  `run` was undefined → `workspacePath` computed to `null` → the
+  `data-testid="diff-source-toggle"` element in `FilesTab.tsx:65`
+  (gated by `workspacePath` truthy on line 60) never rendered → the
+  `waitFor` at `gitDiff.test.tsx:127` timed out.
+- **Introduced by:** the Stage-3 hygiene schema tightening (post-2026-08-05).
+  The `17dcb1b` slice C.2 authored the fixtures against the older,
+  looser schema; the tightening happened AFTER slice C.2 landed but
+  the fixtures were never revisited.
+- **Fix:** commit `4dc03ce` — added the four missing fields to both
+  fixtures with schema-valid defaults. No component change needed;
+  the tripwire itself is correct and useful.
+- **General lesson worth remembering:** when a `.parse` boundary
+  tightens, `grep` every fixture that constructs a payload of that
+  schema (`RunSummarySchema` → `id: '...' title: '...' status: '...'`
+  patterns in `src/tests/**`), not just the ones the change touched.
+  The tripwire is only visible at the boundary — downstream components
+  fail silently as "hook returned undefined" and look like feature-flag
+  or wiring bugs.
+
+## 2026-08-06 06:53 EDT — RESOLVED: AgentPresetCard.test.tsx model badge assertion
+
+- **Symptom:** `pnpm test:unit` reports 1 failed at
+  `src/tests/unit/AgentPresetCard.test.tsx > AgentPresetCard > renders
+  name and model badge`. Test asserted
+  `screen.getByText('GPT-4o')` but the fixture is `model: 'gpt-4o'`.
+- **Affected:** Frontend · agent-presets · pre-existing (independent
+  of Stage 6.4 and slice C.2, surfaced during Stage 7-C.2-hotfix full-
+  suite verification).
+- **Root cause:** stale test expectation. `AgentPresetCard.classifyModel`
+  (`src/features/agent-presets/AgentPresetCard.tsx:20-30`) returns
+  `{ label: model, ... }` where `model` is the raw preset string. No
+  case-folding is applied and none was ever intended per the Stage 2.1
+  badge design (comment on line 6). Component is authoritative.
+- **Fix:** commit `ce15d6b` — assert on `'gpt-4o'` (matches fixture and
+  component behaviour). Other four tests in the file already pass.
+- **Files:** `src/tests/unit/AgentPresetCard.test.tsx`

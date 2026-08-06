@@ -6259,3 +6259,25 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
     touched by any commit in this session (verified via
     `git log --oneline -- src/tests/unit/gitDiff.test.tsx`).
 - **Stage 6.4 close-out: FULLY VERIFIED.**
+
+## 2026-08-06 06:53 EDT — Stage 7-C.2-hotfix · CLOSED
+
+- **Slice:** Stage 7-C.2-hotfix — repair the two pre-existing Vitest failures found during Stage 6.4 close-out.
+- **What was fixed (two commits):**
+  1. `4dc03ce` — `src/tests/unit/gitDiff.test.tsx` fixture drift.
+     - Root cause: `RunSummarySchema` (`src/lib/schemas/run.ts:32-49`) requires `agentPresetName`, `activeTool`, `elapsedMs`, `estimatedCostUsd` — the `r1`/`r2` msw fixtures never got updated after the Stage-3 hygiene schema tightening (post-2026-08-05).
+     - Effect: `fetchRun`'s `RunSummarySchema.parse` tripwire threw → `useRunDetail` errored → `run` undefined → `workspacePath = null` → `diff-source-toggle` never rendered → `waitFor` timed out.
+     - Fix: added the four missing fields with schema-valid defaults to both fixtures. No component code changed.
+  2. `ce15d6b` — `src/tests/unit/AgentPresetCard.test.tsx` stale expectation.
+     - Root cause: test asserted `'GPT-4o'` (title-cased) but `AgentPresetCard.classifyModel` returns the model string verbatim (`{ label: model, ... }`). No case-folding is applied anywhere. Component is authoritative.
+     - Fix: assertion now matches the fixture literal `'gpt-4o'`.
+- **Files touched:**
+  - `src/tests/unit/gitDiff.test.tsx`
+  - `src/tests/unit/AgentPresetCard.test.tsx`
+- **Ports/adapters affected:** none (test-only slice).
+- **ADR/ledger:** no new ADR, no vendored code — inspect-and-fix on drifted fixtures.
+- **Stop-condition status:** MET.
+  - `pnpm exec vitest run src/tests/unit/gitDiff.test.tsx` → **5/5** in 170 ms.
+  - `pnpm exec vitest run src/tests/unit/AgentPresetCard.test.tsx` → **5/5** in 55 ms.
+  - `pnpm test:unit` (full suite) → **874 passed, 6 skipped, 0 failed** in 4.21 s. No other test file regresses.
+- **Verified by:** reading `src/lib/schemas/run.ts:32-49`, `src/features/run-detail/api.ts:12-19`, and `src/features/agent-presets/AgentPresetCard.tsx:20-57` BEFORE editing either test.
