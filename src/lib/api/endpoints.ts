@@ -26,6 +26,12 @@ export const ENDPOINTS = {
     resume: (runId: string) => `${BASE}/runs/${runId}/resume`,
     stop: (runId: string) => `${BASE}/runs/${runId}/stop`,
     fork: (runId: string) => `${BASE}/runs/${runId}/fork`,
+    // Stage 6.4c — restart-from-here (ADR-026): full re-create of a run
+    // whose worktree is provisioned at the anchor event's captured sha and
+    // whose first user message replays the anchor's text.  Distinct from
+    // fork (conversation-only branch) because it also resets the working
+    // tree; distinct from create (needs source-run continuity).
+    restart: (runId: string) => `${BASE}/runs/${runId}/restart`,
     approve: (runId: string) => `${BASE}/runs/${runId}/approve`,
     reject: (runId: string) => `${BASE}/runs/${runId}/reject`,
     message: (runId: string) => `${BASE}/runs/${runId}/message`,

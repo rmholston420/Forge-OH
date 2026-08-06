@@ -10,6 +10,7 @@ import {
   approveRun,
   rejectRun,
   forkRun,
+  restartRun,
   sendRunMessage,
 } from './api';
 import type { CreateRunRequest } from './schemas';
@@ -126,6 +127,36 @@ export function useForkRun() {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.runs.list() });
       if (data?.forked_id) {
         qc.invalidateQueries({ queryKey: QUERY_KEYS.runs.detail(data.forked_id) });
+      }
+    },
+  });
+}
+
+/**
+ * Stage 6.4c — restartRun mutation (ADR-026).
+ *
+ * Variables shape:
+ *   { runId: string, fromEventId: string }   — fromEventId is REQUIRED
+ *   (restart has no full-run analogue — the anchor must always be a
+ *   user MessageEvent with a captured commit sha).
+ *
+ * On success invalidates the source run row + list AND the fresh detail
+ * row for the new run so a subsequent navigation renders live data.
+ */
+export type RestartRunVars = { runId: string; fromEventId: string };
+
+export function useRestartRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: RestartRunVars) =>
+      restartRun(vars.runId, { fromEventId: vars.fromEventId }),
+    onSuccess: (data, vars) => {
+      invalidateRun(qc, vars.runId);
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.runs.list() });
+      if (data?.restarted_run_id) {
+        qc.invalidateQueries({
+          queryKey: QUERY_KEYS.runs.detail(data.restarted_run_id),
+        });
       }
     },
   });

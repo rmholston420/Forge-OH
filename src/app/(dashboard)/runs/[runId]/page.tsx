@@ -17,6 +17,7 @@ import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
 import { RunSecretsModal } from '@/components/domain/RunSecretsModal';
 import { EventCard } from '@/components/domain/EventCard';
 import { ForkFromHereButton } from '@/components/domain/ForkFromHereButton';
+import { RestartFromHereButton } from '@/components/domain/RestartFromHereButton';
 import { StreamBanner } from '@/components/domain/StreamBanner';
 import { Banner } from '@/components/core/Banner';
 import { ApprovalBanner } from '@/components/domain/ApprovalBanner';
@@ -363,10 +364,25 @@ export default function RunDetailPage({
                       <dt>Summary</dt><dd>{String(displayEv.summary ?? '')}</dd>
                     </dl>
                     {/* Stage 6.4 — conversation-state revert.  Only user
-                        messages qualify as checkpoints (spec D2). */}
+                        messages qualify as checkpoints (spec D2).
+                        Stage 6.4c — restart-from-here (ADR-026) shares
+                        the same anchor semantics but ALSO resets the
+                        worktree.  Both surfaces gate under the same flag. */}
                     {displayEv.type === 'message' && displayEv.source === 'user' && (
-                      <div style={{ paddingTop: 'var(--space-3)' }}>
+                      <div
+                        style={{
+                          paddingTop: 'var(--space-3)',
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: 'var(--space-2)',
+                        }}
+                      >
                         <ForkFromHereButton
+                          runId={runId}
+                          eventId={String(displayEv.id)}
+                          eventLabel={displayEv.summary ? String(displayEv.summary).slice(0, 60) : undefined}
+                        />
+                        <RestartFromHereButton
                           runId={runId}
                           eventId={String(displayEv.id)}
                           eventLabel={displayEv.summary ? String(displayEv.summary).slice(0, 60) : undefined}

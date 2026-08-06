@@ -96,6 +96,36 @@ export async function forkRun(
 }
 
 // ---------------------------------------------------------------------------
+// Stage 6.4c — restart-from-here (ADR-026, Decision item 1).
+// POST /api/runs/{run_id}/restart with { from_event_id } → BFF composes
+// worktree provision + agent-server conversation create + event seed and
+// returns the shape below.
+//
+// NOTE: the wire key MUST be exactly ``from_event_id``.  Symmetric to
+// forkRun above.  This is the SAME anchor semantics as fork-from-here
+// (only user MessageEvents with a ledger-captured sha), but the endpoint
+// ALSO resets the working tree.
+// ---------------------------------------------------------------------------
+
+export type RestartAck = {
+  ok: boolean;
+  restarted_run_id: string;
+  source_run_id: string;
+  from_event_id: string;
+  reset_to_sha: string;
+  worktree_path: string;
+};
+
+export async function restartRun(
+  runId: string,
+  opts: { fromEventId: string },
+): Promise<RestartAck> {
+  const body = { from_event_id: opts.fromEventId };
+  const result = await bffPost<RestartAck>(ENDPOINTS.RUNS.restart(runId), body);
+  return unwrap(result);
+}
+
+// ---------------------------------------------------------------------------
 // Stage 1.6 (reconciliation-plan-v1) — send-message-while-running.
 // POST /api/runs/{run_id}/message → agent-server
 //   POST /api/conversations/{cid}/events with role='user'.
