@@ -248,6 +248,28 @@ export const ENDPOINTS = {
   },
 
   // ------------------------------------------------------------------
+  // Skills (bff/routers/skills.py) — Stage 6.6. Backed by an in-process
+  // call to the OpenHands SDK loader (see router docstring for why we
+  // don't proxy the upstream /api/skills endpoint at this SDK version).
+  // Public + org marketplaces are not wired up on Colossus yet, so the
+  // supported scopes are `user` and `project`.
+  // ------------------------------------------------------------------
+  SKILLS: {
+    list: (params?: {
+      includeUser?: boolean;
+      includeProject?: boolean;
+    }) => {
+      const qs: string[] = [];
+      if (params?.includeUser !== undefined) qs.push(`include_user=${params.includeUser}`);
+      if (params?.includeProject !== undefined) qs.push(`include_project=${params.includeProject}`);
+      const q = qs.length ? `?${qs.join('&')}` : '';
+      return `${BASE}/skills${q}`;
+    },
+    installed: () => `${BASE}/skills/installed`,
+    marketplace: () => `${BASE}/skills/marketplace`,
+  },
+
+  // ------------------------------------------------------------------
   // Trajectory memory (bff/routers/trajectories.py) — Slice F
   // ------------------------------------------------------------------
   TRAJECTORIES: {

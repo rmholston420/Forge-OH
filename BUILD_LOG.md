@@ -6819,3 +6819,28 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 **Commits**: `e856b46` (initial 22), `ee6bbaa` (fix bare-int triggers in http-api-authoring)
 **Verified**: `load_user_skills() → 15` + `load_project_skills() → 8` (7 skills + AGENTS.md pre-existing third-party rule = intended). Direct SDK call confirmed on Colossus; HTTP `/api/skills` returns 0 across the board — unrelated cache/marketplace issue not blocking loader.
 **Stop condition**: skills discoverable by OpenHands SDK v1.40.0 loader on Colossus — MET.
+
+## 2026-08-06 11:20 EDT — Stage 6.6 Skills page shipped (Path B, in-process SDK loader)
+
+**Stage/plugin/port**: 6.6 Skills/Microagents management page · BFF (:8081), agent-server (:8090) · no new ports.
+
+**What was built**:
+- **`bff/routers/skills.py`** — in-process SDK loader router. Calls `openhands.sdk.skills.skill.load_user_skills()` + `load_project_skills(Path.cwd())` and reshapes SDK `SkillInfo` → frontend `SkillOut` (500-char content preview + truncation flag). Endpoints: `GET /api/skills` (list all + sources counts), `GET /api/skills/installed` (alias for `/skills` — everything on-disk is "installed"), `GET /api/skills/marketplace` (empty; no marketplaces wired on Colossus).
+- **`bff/services/trace_reconstruction.py`** — propagate `activated_skills` from MessageEvents onto span `attributes.activatedSkills` so the Trace tab can render a chip without a second network call. Non-invasive: only sets the key when the event carried a non-empty list.
+- **`bff/main.py`** — register `skills` router at `/api` prefix.
+- **`src/lib/schemas/skill.ts`** — Zod schema for the reshaped SkillOut row (name, type, description, triggers, source, contentPreview, contentTruncated, isAgentSkillsFormat, disableModelInvocation) + sources-count schema.
+- **`src/lib/api/endpoints.ts`** — `ENDPOINTS.SKILLS.list()` updated to `include_user` / `include_project` params matching the new BFF contract.
+- **`src/features/skills/api.ts` + `hooks.ts`** — `fetchSkills` + `useSkills` (TanStack Query, 30s stale-time).
+- **`src/app/(dashboard)/skills/page.tsx`** — scope filter buttons (All / User / Project with counts), name/description search, per-row expand → 500-char preview + full-path source. Renders empty state on 0 rows.
+- **`src/components/navigation/Sidebar.tsx`** — new `Skills` entry between `Plugins` and `RepoGraph`.
+- **`src/components/domain/SpanRow.tsx`** — `SkillsChip` next to span name; renders `📚 name` (or `📚 name +N` when multiple) sourced from `span.attributes.activatedSkills`.
+- **`bff/tests/test_skills_router.py`** — 9 unit tests exercising the reshaper (user/project rows, scope filter both directions, content truncation, short-content no-truncation, triggers + flags reshape, `/installed` alias, marketplace empty, empty-load fallback, attribute-fallback for older Skill objects lacking `to_skill_info`).
+- **`src/tests/e2e/skills-page.spec.ts`** — 4 Playwright checks: sidebar → /skills nav, list renders + scope-filter buttons + search filter, scope toggles don't crash, row expand toggles aria-expanded.
+
+**Why in-process instead of HTTP proxy** (Path B): agent-server `POST /api/skills` at pinned SDK v1.40.0 returns `{sources: all zeros, skills: []}` even when the SDK loader returns the correct rows against the same directories on the same host. §6.6.2 explicitly permits on-disk reads. The router body can be swapped back to a proxy in one commit when upstream is fixed; the FE contract does not change.
+
+**Files touched**: 5 modified + 6 new/directories (12 files total including `src/features/skills/` and `src/app/(dashboard)/skills/`).
+
+**Stop-condition status**: §6.6.5 DoD met on paper — `/skills` lists real skill definitions with triggers, and MessageEvents that carry `activated_skills` now surface a chip on the Trace tab. **Playwright visual verification on Colossus is the next action** (see SESSION_HANDOFF). Not blocking merge because unit tests and TS types compile-check the contract end-to-end.
+
+**PORTING_LEDGER**: no entries — no OSS vendored in this slice.

@@ -9,6 +9,40 @@ const STATUS_CLASS: Record<Span['status'], string> = {
   ok: 'ok', error: 'error', unset: 'unset',
 };
 
+/**
+ * SkillsChip — renders one "skill" pill per activated skill on a span.
+ * Attributes.activatedSkills is populated by
+ * bff/services/trace_reconstruction.py for MessageEvent spans that carried
+ * a non-empty activated_skills list on the wire.
+ */
+function SkillsChip({ span }: { span: Span }) {
+  const raw = (span.attributes as Record<string, unknown> | undefined)?.activatedSkills;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const names = raw.filter((v): v is string => typeof v === 'string' && v.length > 0);
+  if (names.length === 0) return null;
+  const title = `Activated skills: ${names.join(', ')}`;
+  return (
+    <span
+      data-testid="activated-skills-chip"
+      title={title}
+      aria-label={title}
+      style={{
+        marginLeft: '8px',
+        fontSize: '10px',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        background: 'var(--chip-skill-bg, #1e3a8a)',
+        color: 'var(--chip-skill-fg, #dbeafe)',
+        padding: '1px 6px',
+        borderRadius: '10px',
+        whiteSpace: 'nowrap',
+        verticalAlign: 'baseline',
+      }}
+    >
+      📚 {names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`}
+    </span>
+  );
+}
+
 function flattenSpans(span: Span, depth = 0): { span: Span; depth: number }[] {
   return [{ span, depth }, ...span.children.flatMap((c) => flattenSpans(c, depth + 1))];
 }
@@ -55,6 +89,7 @@ export const SpanRow: React.FC<SpanRowProps> = ({ span, depth, traceStartTime, t
             </button>
           )}
           <span className={styles.spanName}>{span.name}</span>
+          <SkillsChip span={span} />
         </td>
 
         {/* Status */}

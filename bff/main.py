@@ -45,6 +45,7 @@ from bff.routers import (
     secrets,
     selfeval,
     settings,
+    skills,
     trajectories,
     workspaces,
 )
@@ -166,6 +167,7 @@ app.include_router(inference_backends.router, prefix="/api")
 app.include_router(repograph.router, prefix="/api")
 app.include_router(selfeval.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
+app.include_router(skills.router, prefix="/api")
 app.include_router(trajectories.router, prefix="/api")
 app.include_router(workspaces.router, prefix="/api")
 

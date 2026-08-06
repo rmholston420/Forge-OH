@@ -200,6 +200,14 @@ def build_spans(events: list[dict[str, Any]], run_id: str) -> list[dict[str, Any
                 attrs["inputTokens"] = inp
             if out is not None:
                 attrs["outputTokens"] = out
+            # Stage 6.6 — surface skill activations on the span so the FE
+            # Trace tab can render a "skills fired" chip without a second
+            # network round-trip. `activated_skills` is emitted by the
+            # agent-server when a keyword/task trigger matches; already
+            # consumed by event_normalize for preview text (line ~139).
+            activated = ev.get("activated_skills")
+            if isinstance(activated, list) and activated:
+                attrs["activatedSkills"] = [str(s) for s in activated if s]
             span = {
                 "spanId": ev.get("id") or "",
                 "traceId": run_id,
