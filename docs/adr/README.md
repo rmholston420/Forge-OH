@@ -19,6 +19,7 @@ Index of ADRs under `docs/adr/`. Numbering is sequential; gaps (e.g. ADR-010) ar
 | [017](./017-bench-nvml-mandatory.md) | NVML GPU sampling mandatory on every bench harness | Ratified | — | — |
 | [018](./018-serena-lspclient-integration.md) | Serena LSPClient integration via MCP passthrough (Stage 4.4) | Accepted | — | — |
 | [019](./019-dozerdb-consolidation.md) | DozerDB consolidation: Kosmos-canonical shared instance (Stage 4.5) | Accepted | — | — |
+| [020](./020-qwen3-embedding-default.md) | Qwen3-Embedding as Forge-OH's default EmbeddingsPort model (Stage 5.2) | Accepted | — (departs from Kosmos upstream `nomic-embed-text` default) | — |
 
 ## Authoring workflow
 

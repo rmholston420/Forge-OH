@@ -52,7 +52,7 @@ def test_embed_returns_vectors_from_canned_response(monkeypatch) -> None:
     fake_client.post = AsyncMock(
         return_value=_make_response(
             {
-                "model": "nomic-embed-text",
+                "model": "qwen3-embedding:0.6b",
                 "embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
             }
         )
@@ -64,7 +64,8 @@ def test_embed_returns_vectors_from_canned_response(monkeypatch) -> None:
     fake_client.post.assert_awaited_once()
     call_args = fake_client.post.await_args
     assert call_args.args == ("/api/embed",)
-    assert call_args.kwargs["json"]["model"] == "nomic-embed-text"
+    # Forge-OH default: ADR-020 (qwen3-embedding:0.6b) — was upstream Kosmos nomic-embed-text.
+    assert call_args.kwargs["json"]["model"] == "qwen3-embedding:0.6b"
     assert call_args.kwargs["json"]["input"] == ["a", "b"]
 
 

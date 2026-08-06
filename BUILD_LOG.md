@@ -5423,3 +5423,23 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
     ollama pull nomic-embed-text
     FORGE_MEMORY_LIVE=1 pytest bff/tests/memory/test_ollama_embeddings_adapter_contract.py -q
 - Frontend pairing: N/A for 5.2 (adapters only); Stage 5's UI pairing satisfied at § 5.6.
+
+## 2026-08-06 01:57 EDT — ADR-020 filed: Qwen3-Embedding default (Stage 5.2 amendment)
+- Filed `docs/adr/020-qwen3-embedding-default.md` — Forge-OH departs from Kosmos upstream `nomic-embed-text` default in favor of `qwen3-embedding:0.6b` (1024-dim, ~1.2 GB VRAM, MTEB Code ~73). Rationale: ~+8 MTEB avg / ~+10 MTEB Code over Nomic; fits comfortably in the ~7 GB VRAM headroom above the resident 35B chat model with display-driver reserve intact.
+- `qwen3-embedding:4b` (2560-dim, ~5 GB VRAM, MTEB Code ~79) registered in `_MODEL_DIMENSIONS` for opt-in A/B via `OLLAMA_EMBED_MODEL=qwen3-embedding:4b`.
+- 8B rejected as default — ~8 GB VRAM at Q4_K_M would evict the 35B chat model and destabilize the display driver on the shared 5090.
+- Files touched:
+  - `docs/adr/020-qwen3-embedding-default.md` (new)
+  - `docs/adr/README.md` (index row added)
+  - `openhands_tools_ext/memory/adapters/embeddings/ollama/adapter.py` (`_MODEL_DIMENSIONS` + default fallback + docstring)
+  - `.env.example` (`OLLAMA_EMBED_MODEL=qwen3-embedding:0.6b` + comment block on 4B A/B)
+  - `bff/tests/memory/test_ollama_embeddings_adapter_contract.py` (default-model assertion updated)
+  - `PORTING_LEDGER.md` (Stage 5.2 amendment note)
+  - `SESSION_HANDOFF.md` (live-smoke commands updated)
+- Verification: 43/43 memory contract tests pass; 1 correctly skipped (live tier). `OllamaEmbeddingsAdapter().dimension()` returns 1024 for the new default.
+- Colossus live smoke updated (pull both models, verify 0.6B dim=1024 by default):
+    docker compose up -d qdrant
+    ollama pull qwen3-embedding:0.6b
+    ollama pull qwen3-embedding:4b
+    curl -s http://localhost:6333/collections
+    FORGE_MEMORY_LIVE=1 pytest bff/tests/memory/test_ollama_embeddings_adapter_contract.py -q

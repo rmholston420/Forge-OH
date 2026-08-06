@@ -13,7 +13,14 @@ Env vars (constructor args override):
                                  ``/v1`` OpenAI-compat variant used by the
                                  chat model_router — do NOT reuse it here).
     OLLAMA_EMBED_MODEL           Default embedding model, defaults to
-                                 ``nomic-embed-text`` (768-dim).
+                                 ``qwen3-embedding:0.6b`` (1024-dim,
+                                 MTEB Code ~73, ~1.2 GB VRAM). See
+                                 ADR-020 for the switch from Kosmos's
+                                 upstream default of ``nomic-embed-text``.
+                                 ``qwen3-embedding:4b`` (2560-dim, MTEB
+                                 Code ~79) is the quality-priority option
+                                 when the display/chat models allow the
+                                 extra ~5 GB VRAM.
 
 References:
     - ADR-073 D2 (this adapter's authority)
@@ -43,6 +50,11 @@ _MODEL_DIMENSIONS: dict[str, int] = {
     "mxbai-embed-large": 1024,
     "all-minilm": 384,
     "snowflake-arctic-embed": 1024,
+    # Qwen3-Embedding family (Forge-OH default per ADR-020).
+    # Native dims; MRL truncation to smaller sizes not used.
+    "qwen3-embedding:0.6b": 1024,
+    "qwen3-embedding:4b": 2560,
+    "qwen3-embedding:8b": 4096,
 }
 
 
@@ -68,7 +80,7 @@ class OllamaEmbeddingsAdapter:
         resolved_model = (
             default_model
             or os.environ.get("OLLAMA_EMBED_MODEL")
-            or "nomic-embed-text"
+            or "qwen3-embedding:0.6b"
         )
         self._base_url = resolved_url.rstrip("/")
         self._default_model = resolved_model
