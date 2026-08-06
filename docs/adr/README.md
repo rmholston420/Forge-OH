@@ -28,6 +28,7 @@ Index of ADRs under `docs/adr/`. Numbering is sequential.
 | [025](./025-restore-via-fork.md) | Restore via fork, not in-place `git reset` + conversation-state rewind (Stage 6.4b enables · Stage 6.4c consumes) | Superseded by ADR-026 (2026-08-06 07:55 EDT) | Reconciliation-plan-v1 §6.4 + stage-6 §6.4.1–6.4.5 (design layer only) | [ADR-026](./026-restart-from-here.md) |
 | [026](./026-restart-from-here.md) | Restart-from-here (fresh run at target file state, not fork-and-reset) — Stage 6.4c | Ratified (2026-08-06) · Amended (frontend gate uses `commit_sha_at_time_of_event`) | [ADR-025](./025-restore-via-fork.md) (design premise invalidated by evidence probes) | — |
 | [027](./027-runtime-model-switching-forwards-switch-llm.md) | Runtime model switching — BFF forwards only `switch_llm`, blast-radius-minimized (Stage 6.5.2) | Ratified (2026-08-06) | — | — |
+| [028](./028-stage-7-deviation-topology-first-capability-slices-renumbered.md) | Stage 7 deviation — topology-first reconciliation (§7.1 + §7.4 now), canonical §7.2–§7.6 folded to deferred tail §7.6–§7.10, Council-Synthesis capability slices renumbered to Stage 8 (8.0–8.9); 30/500 SWE-bench gate waived for Stage-6→Stage-7 transition | Ratified (2026-08-06) | Amends `docs/reconciliation-plan-v1.md` §7 and §Recommended Execution Order (item 7); adopts workspace-draft companion as `docs/reconciliation-plan-stage-7.md` | — |
 
 ## Authoring workflow
 

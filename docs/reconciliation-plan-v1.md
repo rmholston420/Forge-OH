@@ -258,32 +258,52 @@ See `docs/reconciliation-plan-stage-2.md` § "Stage 2 exit gate" for the full ma
 
 ---
 
-## Stage 7 — Infra Cleanup and Deferred Items (last, no runtime impact on Colossus dev flow)
+## Stage 7 — Reconciliation Closeout + Infra Cleanup
 
-### 7.1 Docker Compose reconciliation
-- Rewrite `docker-compose.yml` to match the real single-host topology: containerize `bff` + `frontend` + DozerDB (Stage 4) + Qdrant (Stage 5); run agent-server as a host process per the documented `forge-up.sh` path.
-- Fix the nonexistent `Dockerfile.frontend` reference.
+> **Detailed execution plan:** see [`docs/reconciliation-plan-stage-7.md`](./reconciliation-plan-stage-7.md).
+> The companion doc is the authoritative Stage 7 spec — sub-stage numbering,
+> exit checklists, and command blocks live there. This section is a short
+> summary for navigation.
+>
+> **Deviation notice (2026-08-06, per [ADR-028](./adr/028-stage-7-deviation-topology-first-capability-slices-renumbered.md)):**
+> Stage 7 executes topology-first — companion §7.1 (docker-compose
+> reconciliation) + §7.4 (ledger + `.gitignore` audit) land now, then
+> Stage 8 (Council-Synthesis capability slices 8.0–8.9) runs, then
+> companion §7.0/§7.2/§7.3/§7.5 (baseline · regression · deferred-items ·
+> closeout report) execute as the true v1 closeout together with the
+> §7.6–§7.10 items folded from this file's pre-ADR-028 canonical text
+> (see below).
 
-### 7.2 Healthcheck fix
-- Add a real `src/app/api/health/route.ts` returning `{ok: true}`; point the Dockerfile healthcheck at it.
+### 7.1 Docker Compose single-host topology reconciliation
+- Companion doc §7.1. Fold every containerized service accumulated across Stages 1–6 (`bff`, frontend, `dozerdb`, `qdrant`, `searxng`) into `docker-compose.yml` with correct `env_file` sourcing, no duplicate `volumes:` keys. Document host-process vs. containerized split in `docs/deployment-topology.md`. Add `scripts/start-host-services.sh` for host-side inference engines.
+- Fixes the nonexistent `Dockerfile.frontend` reference in-passing.
 
-### 7.3 Remove `next-auth` vestige
-- Strip the `next-auth` dependency and `NEXTAUTH_SECRET`/`NEXTAUTH_URL` CI env vars together — auth is explicitly out of scope for this single-user local system.
+### 7.2 Full-system regression pass — deferred to post-Stage-8
+- Companion doc §7.2. Not run before Stage 8; running it against the current tree would only need to be re-run after Stage 8 modifies the code. See ADR-028 §Consequences for the mitigation chain (green Stage 6 exit gate, Stage 8.0 zero-code, Stage 8.0.5 expanded smoke).
 
-### 7.4 Webhook subscriber
-- Backend: minimal `bff/services/webhook_dispatcher.py` posting to a configurable local URL on `FINISHED`/`ERROR`/`WAITING_FOR_CONFIRMATION` transitions, reusing existing `event_relay.py` transition-detection.
-- Frontend: settings field to configure the target URL.
+### 7.3 Resolve every deferred/flagged SDK-gap item — deferred to post-Stage-8
+- Companion doc §7.3. Security-analyzer risk scoring, runtime model switching REST surface, token-usage display, Zetesis research-loop upgrade go/no-go. Re-checked against the then-pinned openhands-sdk version at the closeout.
 
-### 7.5 VSCode / VNC / live browser takeover
-- Lowest ROI, largest integration effort. Backend: proxy agent-server's VSCode/VNC/browser session URLs through the BFF, reusing the existing MCP passthrough auth pattern. Frontend: new embedded iframe tabs alongside Trace/Terminal/Files.
-- Build both halves as one unit; defer until all prior stages are functional.
+### 7.4 Documentation and ledger completeness audit
+- Companion doc §7.4. Every Stage 4–6 ported component has a `PORTING_LEDGER.md` entry with a resolvable commit hash. Donor-repo resolution runs against **`rmholston420/kosmos` on GitHub** via `gh api` (not a local `~/dev/kosmos-reference` checkout — that path is not maintained). No `.env`-family file staged or tracked.
 
-### 7.6 Explicitly deferred (real ACA-v8 items, no current dependency chain forcing them)
-- Local LoRA/QLoRA fine-tuning path (Axolotl/Unsloth, Blackwell FP4/NVFP4 tensor-core support).
-- MLflow champion/challenger evaluation harness.
-- Langfuse tracing.
-- Voice I/O (whisper.cpp/Piper).
-- Revisit these based on actual need after Stage 6, not spec completeness.
+### 7.5 Final reconciliation closeout report — deferred to post-Stage-8
+- Companion doc §7.5. `docs/reconciliation-closeout-v1.md` is written once §7.0/§7.2/§7.3/§7.6–§7.10 have all executed, so it accurately reflects the final Stage-8-inclusive system state.
+
+### 7.6 Healthcheck fix
+- Folded from pre-ADR-028 canonical §7.2. Add a real `src/app/api/health/route.ts` returning `{ok: true}`; point the Dockerfile healthcheck at it. Deferred to post-Stage-8.
+
+### 7.7 Remove `next-auth` vestige
+- Folded from pre-ADR-028 canonical §7.3. Strip the `next-auth` dependency and `NEXTAUTH_SECRET`/`NEXTAUTH_URL` CI env vars together — auth is explicitly out of scope for this single-user local system. Deferred to post-Stage-8.
+
+### 7.8 Webhook subscriber
+- Folded from pre-ADR-028 canonical §7.4. Backend: minimal `bff/services/webhook_dispatcher.py` posting to a configurable local URL on `FINISHED`/`ERROR`/`WAITING_FOR_CONFIRMATION` transitions, reusing existing `event_relay.py` transition-detection. Frontend: settings field to configure the target URL. BE+FE-together per the governing rule. Deferred to post-Stage-8.
+
+### 7.9 VSCode / VNC / live browser takeover
+- Folded from pre-ADR-028 canonical §7.5. Lowest ROI, largest integration effort. Backend: proxy agent-server's VSCode/VNC/browser session URLs through the BFF, reusing the existing MCP passthrough auth pattern. Frontend: new embedded iframe tabs alongside Trace/Terminal/Files. Build both halves as one unit. Deferred indefinitely inside the post-Stage-8 tail — dependency chain does not force it.
+
+### 7.10 Explicitly deferred (real ACA-v8 items, no current dependency chain forcing them)
+- Folded from pre-ADR-028 canonical §7.6. Local LoRA/QLoRA fine-tuning path (Axolotl/Unsloth, Blackwell FP4/NVFP4 tensor-core support); MLflow champion/challenger evaluation harness; Langfuse tracing; voice I/O (whisper.cpp/Piper). Revisit based on actual need after Stage 8, not spec completeness.
 
 ---
 
@@ -295,6 +315,6 @@ See `docs/reconciliation-plan-stage-2.md` § "Stage 2 exit gate" for the full ma
 4. Stage 4.1 → 4.2+4.3 (same pass) → 4.4 → resolve DozerDB consolidation decision
 5. Stage 5.1 → 5.2 → 5.3 → 5.4 → 5.5 → 5.6 → 5.7 → 5.8 → 5.9
 6. Stage 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7
-7. Stage 7.1–7.5 in any order, 7.6 deferred indefinitely pending need
+7. Stage 7.1 → Stage 7.4 (topology-first per [ADR-028](./adr/028-stage-7-deviation-topology-first-capability-slices-renumbered.md)) → Stage 8.0 through 8.9 (Council-Synthesis capability slices — see [`Forge-OH-Improvements-Research-Model-Council-Synthesis.md`](../../../projects/forge-oh-txB2F9nfTSmjglK4fGyWvg/files/) in the Perplexity project files repo, commit `8e093bc`) → Stage 7 tail (§7.0, §7.2, §7.3, §7.5–§7.9) as the true v1 closeout. §7.10 remains indefinitely deferred pending need.
 
 Never advance to the next numbered stage with an unresolved backend-only or frontend-only half from the current stage.
