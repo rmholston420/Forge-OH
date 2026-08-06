@@ -138,24 +138,55 @@ fi
 
 # ─── 2. Create the source run ──────────────────────────────────────
 
+# Try each preset in FORGE_VERIFY_PRESET_IDS (space-separated, default
+# 'ap-3 ap-1 ap-2' — Ollama coder first, then vLLM coder, then vLLM
+# planner) until one resolves.  Routing failures return
+# status='blocked' with an empty data.id; we surface the routing error
+# and fall through to the next candidate.
+CANDIDATES="${FORGE_VERIFY_PRESET_IDS:-$PRESET_ID ap-1 ap-2}"
+# de-dup while preserving order
+CANDIDATES="$(printf '%s\n' $CANDIDATES | awk '!seen[$0]++' | tr '\n' ' ')"
+
 echo
-echo "→ Creating source run against workspace $WS_ID (preset $PRESET_ID)…"
+echo "→ Creating source run against workspace $WS_ID (candidates: $CANDIDATES)…"
 
-# Non-empty taskPrompt so create_run seeds the initial user MessageEvent
-# and hits the sha-capture path in §3b.
-body='{"title":"6.4c-verify-source","agentPresetId":"'"$PRESET_ID"'","workspaceId":"'"$WS_ID"'","taskPrompt":"stage 6.4c verify anchor prompt"}'
+SOURCE_ID=""
+src_resp=""
+used_preset=""
+for cand in $CANDIDATES; do
+  # Non-empty taskPrompt so create_run seeds the initial user
+  # MessageEvent and hits the sha-capture path in §3b.
+  body='{"title":"6.4c-verify-source","agentPresetId":"'"$cand"'","workspaceId":"'"$WS_ID"'","taskPrompt":"stage 6.4c verify anchor prompt"}'
+  echo
+  echo "→ trying preset $cand…"
+  src_resp="$(curl -sS --max-time 25 -X POST -H 'content-type: application/json' \
+      -d "$body" "$BFF/api/runs")"
+  cand_id="$(printf '%s' "$src_resp" | _json_get "(d.get('data') or {}).get('id')")"
+  cand_status="$(printf '%s' "$src_resp" | _json_get "(d.get('data') or {}).get('status')")"
+  if [[ -n "$cand_id" ]]; then
+    SOURCE_ID="$cand_id"
+    used_preset="$cand"
+    echo "→ preset $cand routed OK (status=$cand_status, run_id=$SOURCE_ID)"
+    break
+  fi
+  route_err="$(printf '%s' "$src_resp" | _json_get "((d.get('data') or {}).get('routing') or {}).get('error')")"
+  echo "   preset $cand blocked: ${route_err:-<no routing error surfaced>}"
+done
 
-src_resp="$(curl -sS --max-time 20 -X POST -H 'content-type: application/json' \
-    -d "$body" "$BFF/api/runs")"
-echo "→ source response:"
-echo "$src_resp" | python3 -m json.tool 2>/dev/null | head -30 || echo "$src_resp"
-
-SOURCE_ID="$(printf '%s' "$src_resp" | _json_get "(d.get('data') or {}).get('id')")"
 if [[ -z "$SOURCE_ID" ]]; then
-  echo "✗ create_run response missing data.id — aborting." >&2
+  echo
+  echo "✗ Every preset returned status='blocked'. All coder/planner backends" >&2
+  echo "   are unreachable.  Bring one up (Ollama with a qwen3-coder tag OR" >&2
+  echo "   vLLM :8501/:8511) and rerun." >&2
+  echo
+  echo "→ last source response for reference:" >&2
+  echo "$src_resp" | python3 -m json.tool 2>/dev/null | head -30 >&2 || echo "$src_resp" >&2
   exit 1
 fi
 created_run_ids+=("$SOURCE_ID")
+
+echo "→ source response (preset=$used_preset):"
+echo "$src_resp" | python3 -m json.tool 2>/dev/null | head -30 || echo "$src_resp"
 echo "→ source_run_id=$SOURCE_ID"
 
 # ─── 3. Locate the initial user event + its captured sha ───────────
