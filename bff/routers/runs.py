@@ -65,6 +65,11 @@ from bff.services.model_router import (
     route_by_role,
 )
 from bff.services.sidecar import seed_sidecar
+from bff.services.restart import (
+    RestartError,
+    RestartResult,
+    restart_from_here,
+)
 from bff.services.worktree import (
     WorktreeError,
     head_sha,
@@ -1257,4 +1262,67 @@ async def fork_run(run_id: str, body: ForkRunRequest | None = None) -> dict:
         "run_id": run_id,
         "forked_id": forked_id,
         "from_event_id": from_event_id,
+    }
+
+
+class RestartRunRequest(BaseModel):
+    """Body for POST /runs/{run_id}/restart (ADR-026, Stage 6.4c).
+
+    ``from_event_id`` must point at a user MessageEvent on the source
+    run that carries a captured commit sha in the event-commit ledger.
+    Restart-from-here creates a NEW run whose worktree lands at that
+    sha and whose first user message is the anchor's text.
+    """
+
+    from_event_id: str
+
+
+# Discriminator: RestartError.code → HTTP status
+_RESTART_CODE_TO_STATUS: dict[str, int] = {
+    "source_not_found": 404,
+    "anchor_not_found": 404,
+    "no_sha_anchor": 409,
+    "not_user_message": 409,
+    "source_no_working_dir": 409,
+    "worktree_failed": 502,
+    "create_failed": 502,
+    "seed_failed": 502,
+    "upstream_error": 502,
+}
+
+
+@router.post("/runs/{run_id}/restart")
+async def restart_run(
+    request: Request,
+    run_id: str,
+    body: RestartRunRequest,
+) -> dict:
+    """Restart-from-here on a user-message event (ADR-026).
+
+    Delegates to ``bff.services.restart.restart_from_here`` for the
+    ordered composition (source lookup → sha resolve → worktree
+    provision → agent-server create → seed → best-effort ledger stamp).
+    Maps ``RestartError.code`` to HTTP status via ``_RESTART_CODE_TO_STATUS``.
+
+    Response shape (frontend contract):
+        {ok, restarted_run_id, source_run_id, from_event_id,
+         reset_to_sha, worktree_path}
+    """
+    try:
+        result: RestartResult = await restart_from_here(
+            request.app,
+            source_run_id=run_id,
+            anchor_event_id=body.from_event_id,
+        )
+    except RestartError as exc:
+        status = _RESTART_CODE_TO_STATUS.get(exc.code, 502)
+        raise HTTPException(status_code=status, detail=exc.detail) from exc
+
+    return {
+        "ok": True,
+        "restarted_run_id": result.restarted_run_id,
+        "source_run_id": result.source_run_id,
+        "from_event_id": result.from_event_id,
+        "reset_to_sha": result.reset_to_sha,
+        "worktree_path": result.worktree_path,
     }
