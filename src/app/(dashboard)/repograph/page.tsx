@@ -7,16 +7,25 @@
  * RepoGraphPanel with a workspace-path prefill drawn from either a
  * ?ws=... query param or a sensible default (~/dev/forge-oh).
  *
+ * `useSearchParams()` must be rendered under a Suspense boundary in
+ * Next.js 15+ so the outer route can prerender; the inner component
+ * that actually reads the params lives in a Suspense subtree.
+ *
  * Feature-gated on FEATURE_REPOGRAPH via the panel itself.
  */
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { RepoGraphPanel } from '@/components/domain/RepoGraphPanel';
 
-export default function RepoGraphPage() {
-  const search = useSearchParams();
-  const ws = search.get('ws') ?? '/home/rmholston/dev/forge-oh';
+const DEFAULT_WS = '/home/rmholston/dev/forge-oh';
 
+function RepoGraphPanelWithSearchParams() {
+  const search = useSearchParams();
+  const ws = search?.get('ws') ?? DEFAULT_WS;
+  return <RepoGraphPanel defaultWorkspacePath={ws} />;
+}
+
+export default function RepoGraphPage() {
   return (
     <main
       data-testid="repograph-page"
@@ -31,7 +40,9 @@ export default function RepoGraphPage() {
       >
         RepoGraph
       </h1>
-      <RepoGraphPanel defaultWorkspacePath={ws} />
+      <Suspense fallback={<RepoGraphPanel defaultWorkspacePath={DEFAULT_WS} />}>
+        <RepoGraphPanelWithSearchParams />
+      </Suspense>
     </main>
   );
 }

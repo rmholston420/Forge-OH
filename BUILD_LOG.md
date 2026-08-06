@@ -5241,3 +5241,14 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **ADR:** none required — no new formal port, no OSS-vs-hand-build decision (dep-only), no governance change.
 - **Verification status:** static/parse checks green on Colossus workstation checkout (this session). **Runtime verification (pytest + pnpm typecheck + pnpm test:unit + pnpm build + Playwright) still pending on Colossus** — separate follow-up step in this session.
 - **Stop-condition status:** § 4.2 + § 4.3 CODE COMPLETE. Blocks on runtime green before § 4.4 (LSPClient / Serena).
+
+## 2026-08-06 00:37 EDT — Stage 4.3 hotfix: `/repograph` Suspense boundary for `useSearchParams`
+
+- **Symptom:** `pnpm build` failed at prerender with `useSearchParams() should be wrapped in a suspense boundary at page "/repograph"`. Next.js 15+ requires any client component that reads search params to be inside a `<Suspense>` subtree so the outer route can be statically prerendered.
+- **Fix:** Split `src/app/(dashboard)/repograph/page.tsx` — the outer page component now renders a `<Suspense fallback={...}>` wrapping an inner `RepoGraphPanelWithSearchParams` component that owns the `useSearchParams()` call. Fallback prefills with the default workspace path so the shell UX is intact during hydration.
+- **Verification (local, Colossus):** Live cypher smoke against the BFF was already green — `GET /api/repograph/graph?repo_key=6bcc20c96720&limit=25` returned `stats={nodes:35, symbols:25, files:10, edges:290}`, both `file`+`symbol` node kinds present, both `CONTAINS`+`CALLS` edge types present, first symbol node had real pagerank (0.045), first CALLS edge had real line number.
+- **Pytest:** 28 of 29 tests pass. Only failure is `TestHealthNoPassword::test_returns_error_when_password_missing` — pre-existing DozerDB-dev-container test-assumption bug, logged in KNOWN_ISSUES 2026-08-06 00:37 EDT.
+- **Vitest:** 844 of 852 tests pass. Two failures: one confirmed pre-existing (`gitDiff.test.tsx :: diff-source-toggle` waitFor timeout), one unclassified pending a re-run with a clearer reporter. Both logged in KNOWN_ISSUES 2026-08-06 00:37 EDT.
+- **Frontend typecheck:** clean.
+- **Files touched:** `src/app/(dashboard)/repograph/page.tsx` (only), KNOWN_ISSUES.md, BUILD_LOG.md.
+- **Stop-condition status:** Stage 4.2 + 4.3 build gate expected to clear on next `pnpm build`; pytest + typecheck already green.

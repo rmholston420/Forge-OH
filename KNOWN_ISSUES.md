@@ -94,3 +94,25 @@ Resolved in Slice B of the post-Stage-3 hygiene batch. `event_relay._run_loop` n
   2. Add `RunSummarySchema.parse(json.data)` in `fetchRun` + `RunSummarySchema.parse` in the runs list to catch future drift at the boundary.
 - **Related BUILD_LOG entry:** 2026-08-05 23:34 EDT — Stage 3.2.
 - **RESOLVED 2026-08-05 23:49 EDT:** Canonical form chosen (`awaiting_approval` underscore). Schema flipped, every consumer + test + fixture flipped, `_normalizeRunStatus` deleted, `RunSummarySchema.parse` now called at the `fetchRun` boundary as the tripwire against future drift. See BUILD_LOG 2026-08-05 23:49 EDT for the full 12-file diff. Only follow-up: two dead-code `StatusBadge` component files (`src/components/core/StatusBadge.tsx` + `src/components/core/StatusBadge/StatusBadge.tsx`) could be deleted; the real runtime `StatusBadge` lives in `src/components/core/Badge.tsx`.
+
+---
+
+## 2026-08-06 00:37 EDT — Pre-existing test failures surfaced during Stage 4.2/4.3 verification
+
+Two unit-test failures observed on Colossus while running `pytest bff/tests/test_repograph_router.py` and `pnpm test:unit` for Stage 4.2/4.3 verification. Neither is caused by Stage 4 code — they are pre-existing debt made visible by the first end-to-end run in this configuration.
+
+### 1. `TestHealthNoPassword::test_returns_error_when_password_missing`
+
+- **Symptom:** Test asserts `body["reachable"] is False` when `neo4j_password=""`, but on Colossus (with DozerDB running unauthenticated in dev mode on `bolt://localhost:7687`) the driver connects successfully anyway → `reachable=True` → assertion fails.
+- **Root cause:** The test conflates "empty password" with "auth failure." In DozerDB's local dev container, empty-password Bolt handshakes succeed because the container isn't enforcing auth on the default connector. The test only holds on hardened Neo4j instances that reject empty passwords.
+- **Impact:** Green on hardened Neo4j, red on Colossus/DozerDB dev container. Does not affect production behavior of the `/health` endpoint.
+- **Fix path (out of Stage 4 scope):** Either (a) mock the driver factory in this specific test so the connect attempt is deterministic regardless of local Neo4j auth state, or (b) split into two tests: one that mocks a rejected auth (`reachable=False`), one that documents that unauthenticated dev containers connect (`reachable=True`).
+- **Do NOT block Stage 4.2/4.3 on this.**
+
+### 2. `gitDiff.test.tsx` — `diff-source-toggle` waitFor timeout
+
+- **Symptom:** `pnpm test:unit` reports the `waitFor(() => expect(screen.getByTestId('diff-source-toggle')).toBeInTheDocument())` step in `src/tests/unit/gitDiff.test.tsx` around line 127 times out.
+- **Root cause:** Unknown as of 2026-08-06 00:37 EDT — first surfaced during Stage 4.2/4.3 verification. Predates Stage 4 (component is unrelated to RepoGraph).
+- **Impact:** Blocks a fully green `pnpm test:unit`. Does not affect runtime behavior of the diff viewer or any Stage 4 code path.
+- **Fix path (out of Stage 4 scope):** Bisect against `main` to isolate the commit that broke the test, then either fix the test-side wait/render flow or the underlying component regression. Look at recent changes to `DiffViewer` component and its "source view" toggle.
+- **Do NOT block Stage 4.2/4.3 on this.**
