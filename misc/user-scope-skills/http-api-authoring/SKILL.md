@@ -9,8 +9,8 @@ triggers:
   - FastAPI
   - HTTPException
   - status code
-  - 502
-  - 404
+  - "502"
+  - "404"
   - pagination
   - idempotency
   - OpenAPI
