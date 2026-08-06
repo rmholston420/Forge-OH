@@ -5518,3 +5518,18 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Deferred (follow-up slices):**
   - Add `neo4j>=5.26` to `.env.example` deps documentation and `.oh-venv` bootstrap script.
   - qdrant-client 1.19 vs server 1.12.4 version drift (carried over from 5.3a).
+
+## 2026-08-06 02:41 EDT — Stage 5.3b: Colossus live-tier verification PASSED — STAGE CLOSED
+- **Regression:** 96 passed, 1 skipped in `bff/tests/memory/` under Colossus `.oh-venv` (Python 3.12.13, neo4j 5.28.4)
+- **Round-trip smoke (env sourced from `.env.neo4j`):**
+  - Wrote event `b34a7f08-95ba-439e-8ae2-4a4223e4e3c5` at `2026-08-06T06:41:36.340483+00:00`
+  - `search_semantic("Colossus")`: 1 hit, id matches, score 0.7382 (cosine similarity via Qdrant)
+  - `query_temporal("Colossus")`: 1 hit, id matches, score 0.1308 (Lucene BM25 via DozerDB fulltext index)
+  - Same event_id in both retrieval paths confirms ADR-021 α (dedicated :MemoryEvent primary key) + δ (vector-store payload unchanged) invariants live end-to-end.
+- **Only diagnostic noise:** qdrant-client 1.19 vs server 1.12.4 UserWarning (deferred follow-up from 5.3a).
+- **STAGE 5.3b CLOSED.**
+- **Definition of Done met:**
+  - MemoryPort adapter live against Colossus DozerDB + Ollama + Qdrant
+  - Contract suite 96/1 green under both baseline and qwen3-embedding:4b embedders
+  - Zero-trust guards, AMG NoOp policy, graph write, temporal index, and semantic lane all exercised in a single round-trip
+- **Next stage:** 5.4 — per ADR-021 Consequences, use Kosmos's existing `validate_zero_trust_write` (ports/memory.py) + `validate_zero_trust_payload` (ports/vector.py) instead of the plan §5.4 proposed `MemoryWriteEvent` pydantic model. Confirm scope before starting.
