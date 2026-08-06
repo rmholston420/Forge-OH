@@ -113,7 +113,11 @@ rm -f /tmp/wt-r1 /tmp/wt-r2
 # and hand back the {run_id, working_dir}.  On a coder role that hasn't
 # warmed up, the actual /run kick-off will still be in flight when we
 # probe.
-body='{"title":"6.4b-verify","agentPresetId":"ap-1","workspaceId":"'"$WS_ID"'","taskPrompt":"noop"}'
+# Preset defaults to ap-3 (Ollama-backed) so vLLM being down doesn't
+# block the DoD test.  Override via FORGE_VERIFY_PRESET_ID if needed.
+PRESET_ID="${FORGE_VERIFY_PRESET_ID:-ap-3}"
+body='{"title":"6.4b-verify","agentPresetId":"'"$PRESET_ID"'","workspaceId":"'"$WS_ID"'","taskPrompt":"noop"}'
+echo "   using preset: $PRESET_ID"
 
 curl -sS --max-time 15 -X POST -H 'content-type: application/json' -d "$body" \
      "$BFF/api/runs" > /tmp/wt-r1.json &
