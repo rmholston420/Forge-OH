@@ -6343,3 +6343,14 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **PORTING_LEDGER:** N/A (native code).
 - **ADR reference:** ADR-025 §Decision · Stage 6.4b · A1 + B2 + C1.
 - **Stop-condition status (6.4b):** primitive live, run lifecycle wired. **DoD not yet met** — read-path updates + Colossus concurrency verify still ahead. Next: step 3 (surface `workspaceType: "worktree"` on the RunSummary + confirm `run_compare` handles the divergent working_dirs correctly).
+
+## 2026-08-06 07:22 EDT — Stage 6.4b step 3 · VERIFIED NO-OP (read-path callers pass working_dir through)
+
+- **Scope:** step 3 in SESSION_HANDOFF asked to verify `bff/services/event_relay.py::_extract_working_dir`, `bff/services/run_compare.py`, and `bff/services/metrics_aggregation.py` don't double-resolve the working_dir now that step 2 makes it the worktree path.
+- **Inspection result:** all three read `conv.workspace.working_dir` verbatim and pass it through unchanged. No workspace-id lookup, no rewriting, no double-resolution. **Zero code changes needed.**
+  - `event_relay.py:88-100` — returns the raw string, falls through to sidecar producers.
+  - `run_compare.py:150-157` — accepts `base_working_dir` / `fork_working_dir` as `str | None` parameters and reads files from each side independently. Already handles divergent working_dirs by design.
+  - `metrics_aggregation.py:174-186` — uses working_dir as a workspace grouping key. Two runs off the same source repo will now group as distinct workspace_ids (their worktree paths differ). That's the CORRECT behavior for per-run worktrees; the aggregation is at the workspace-path level, so two isolated runs against the same source should indeed be distinct rows. If we want them collapsed later, that's a follow-up.
+- **Files inspected, none touched.**
+- **Step 4 deferred:** the SESSION_HANDOFF-drafted `test_runs_create.py` regression check would require ~7 patches to isolate the `create_run` slice (route_by_role, workspace GET, conv POST, security_analyzer POST, confirmation_policy POST, run POST, seed_sidecar, start_relay). Value/cost is poor for a unit test compared to the Colossus concurrency verify (step 6) which validates the same invariant end-to-end. Leaving as a deferred item; can re-open if step 6 surfaces a create-path bug.
+- **Stop-condition status (6.4b):** primitive live + lifecycle wired + read-path verified. Next: step 5 (FE chip — one deliberate design decision needed) then step 6 (Colossus concurrency verify — the actual DoD gate).
