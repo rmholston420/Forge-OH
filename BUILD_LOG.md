@@ -7281,3 +7281,23 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
 - **Ports / adapters affected:** none. Serving-infra config only.
 - **PORTING_LEDGER / ADR updated:** none. ADR-029 §D5 governs Slice 8.0/8.0b as a cross-cutting condenser tweak; no new ADR required per plan companion line 187.
 - **Stop-condition status:** in-progress. Awaiting user launch on Colossus for VRAM verify.
+
+## 2026-08-06 18:25 EDT — Slice 8.0b closeout: planner 65k live-VRAM verified
+
+- **Stage / plugin / port:** Stage 8 · Slice 8.0b · vLLM planner serving-infra
+- **What changed:** DoD verification complete. Slice 8.0b closed.
+- **Live evidence (Colossus, one 30k-token prompt against planner :8511):**
+  - argv verified via `docker inspect`: `--max-model-len 65536`, `--kv-cache-dtype fp8`, `--enable-chunked-prefill`, `--long-prefill-token-threshold 4096`, `--reasoning-parser deepseek_r1`, `--quantization awq_marlin`. `--speculative-config` absent (ablation preserved).
+  - `/v1/models` → `max_model_len: 65536`
+  - Idle VRAM: 30,109 MiB used / 2,039 MiB free
+  - Peak VRAM during 30k-token active decode: 30,668 MiB used / 1,480 MiB free
+  - Post-request settle: 30,575 MiB used / 1,572 MiB free
+  - Prompt tokens accepted: 30,004 (65k ceiling holds under real inference)
+  - Working-set delta during active decode: +419 MiB (comfortable)
+  - Rollback path testable: `FORGE_VLLM_PLANNER_MAX_MODEL_LEN=32768`
+- **VRAM math correction:** The napkin estimate predicted ~26 GiB total with ~2.8 GiB headroom. Actual is ~30.6 GiB peak with ~1.5 GiB headroom. Delta of ~4.6 GiB likely comes from (a) AWQ-marlin weight kernels having a larger scratch than the naive 4bit × 32B = 16 GiB estimate, (b) the full fp8 KV pool being pre-allocated at startup rather than incrementally, and (c) vLLM's block scheduler holding reserve buffers. The system is stable but tight — concurrent multi-seq inference at high concurrency could push it over.
+- **Files touched:** `BUILD_LOG.md`, `SESSION_HANDOFF.md`.
+- **Ports / adapters affected:** none. Config-only slice.
+- **PORTING_LEDGER / ADR updated:** none. Governing plan: `docs/reconciliation-plan-stage-8.md` §8.0b lines 178-187.
+- **Stop-condition status:** MET. All four DoD items verified against live Colossus evidence.
+- **Deferred/carryover:** (a) spec-decode alternative — still deferred, applies to both coder and planner. (b) Planner VRAM headroom is tighter than coder (~1.5 GiB vs ~2 GiB); if we later observe eviction stalls at high concurrency, ADR the planner-specific 32k rollback. (c) The `--tasks <csv>` planner bench is still un-drafted; a proper planner-role smoke belongs to a future §8.0c or a bench-methodology addition.

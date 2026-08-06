@@ -1,43 +1,55 @@
-# Forge-OH Session Handoff — 2026-08-06 18:05 EDT
+# Forge-OH Session Handoff — 2026-08-06 18:25 EDT
 
 ## Current build-sequencing position
 
-- **Stage / phase:** Stage 8 · Slice 8.0 (SDK-native vLLM serving-infra config) — **CLOSED**
-- **Plugin / kernel component:** none active. Slice 8.0 ships as the new coder default.
+- **Stage:** 8 · vLLM serving-infra config bundle
+- **Slice:** 8.0b (planner-role mirror) — **CLOSED**
 - **Ports in progress:** none
-- **Next slice:** Stage 8 · Slice 8.1 per `docs/reconciliation-plan-stage-8.md` (not yet scoped in this session)
+- **Next slice:** Slice 8.1 kickoff (per `docs/reconciliation-plan-stage-8.md` line 191 — placeholder; requires scope-drafting from `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` commit `8e093bc` + ADR-029 §D1-§D5)
 
-## Completed this session
+## Completed this session (chronological)
 
-- **Slice 8.0 flag bundle applied and verified** (`ops/vllm_launch_coder.sh`, commit `56bb2e3`).
-- **Bench harness alignment**: fixed port drift `:8000` → `:8501`, `--concurrency` dead flag removed, `--tasks all` semantic fix, `served-model-name` field wire-through, env overrides `FORGE_BENCH_CODER_URL` + `FORGE_BENCH_MAX_MODEL_LEN` (commits `0ed48e5`, `a9fb99a`, `3d0f59a`, `3954ad2`, `a98f390`).
-- **Spec-decode ablation** (commit `ee6b55c`): removed `--speculative-config ngram` after Step 1 smoke returned pass@1 = 0/26 vs 33.3% baseline. Root-caused via `patch_raw` comparison: n-gram draft mis-acceptance was truncating `+++` filename headers on structured diff output. Documented in DEBUG_LOG 16:32 EDT.
-- **Attestation complete** (see BUILD_LOG 18:05 EDT):
-  - Step 1 matched-context 32k, no-spec: pass@1 = 30.0% (9/30) — within ±1 of 33.3% baseline
-  - Step 2 65k, no-spec: pass@1 = 26.7% (8/30); 3 of 4 previously-context-skipped tasks recovered
-  - Targeted noise-floor probe (3 × 3 × 2): confirmed Step 2 "-1 task" delta is seed variance; documented ±2-task pass@1 noise floor on 30-task smoke.
+1. Slice 8.0 attestation closed (30% pass@1 at 32k, 26.7% at 65k, seed variance confirmed via 3×3×2 probe). Commit `2b4fb9b`.
+2. Slice 8.0b launcher change: mirrored flag bundle to `ops/vllm_launch_planner.sh`. Commit `b812f49`.
+3. Slice 8.0b DoD verified on Colossus: argv clean, /v1/models reports 65k, VRAM peak 30,668 MiB stable under 30k-token real inference. Closeout committed and pushed.
 
-## Remaining before current DoD is met
+## Live coder + planner state on Colossus
 
-**None. Slice 8.0 DoD is MET and closed.** Coder ships with the flag bundle in `ops/vllm_launch_coder.sh`.
+- **Coder** `:8501` — Qwen3.6-27B int4-AutoRound, 65k, fp8 KV, chunked prefill, no spec-decode. Attestation: 30% / 26.7% pass@1 (32k/65k).
+- **Planner** `:8511` — DSR1-Distill-32B AWQ-marlin, 65k, fp8 KV, chunked prefill, no spec-decode. VRAM peak 30,668 MiB (~1.5 GiB headroom).
+- **Auto-swap:** supervisor cold-starts vLLM on first request per role; coder ~3.5 min, planner ~86 s.
 
-## Open questions / awaiting answer
+## Remaining before current Definition of Done
 
-- **Spec-decode revisit (deferred, not blocking):** F.19-pre research called for `--speculative-config ngram`; Slice 8.0 shipped without it after malformed-header regression. Future work: evaluate an alternative draft model (e.g. n-gram with lower `num_speculative_tokens`, or a small dedicated draft model) that doesn't break structured-diff generation. Not scoped as a slice yet.
-- **sphinx-7590 (100k prompt):** permanently exceeds the 65k ceiling; only way to recover is a further ceiling raise (would need VRAM math redo) or a prompt-compression step in the harness. Not scoped.
+- None for Slice 8.0 / 8.0b.
+
+## Open questions / awaiting user answer
+
+- **Next slice choice** — Slice 8.1 kickoff requires scope-drafting from the Model-Council-Synthesis file + ADR-029 §D1-§D5. Estimated 30-60 min just to draft the slice contract before any executable work. Alternative: revisit deferred items (spec-decode alternative with a small draft model, or draft a planner-role bench for future §8.0c).
+
+## Deferred items (both slices)
+
+- **Spec-decode revisit** (both coder and planner) — the n-gram approach broke structured-diff generation. Follow-up needs either a small dedicated draft model (VRAM math + weight-download) or a different draft-token config to justify. Not on critical path.
+- **Planner-role bench** — no canonical planner smoke exists; §8.0b DoD used argv+VRAM+one real inference in lieu. A proper planner bench (reasoning correctness, tool-call JSON validity, maybe reasoning-block escape rate) is a future §8.0c or a bench-methodology addition.
+- **Planner VRAM tightness** — actual headroom (~1.5 GiB) is tighter than the napkin estimate (~2.8 GiB). Stable at concurrency=1; concurrent-request behavior at high load unverified. If we see eviction stalls, ADR the planner-specific 32k rollback.
 
 ## Exact next action
 
-**On next session start:** decide whether to begin Slice 8.1 (per `docs/reconciliation-plan-stage-8.md`) or to open a scoped probe on spec-decode alternatives. Reconciliation plan is the canonical planning doc per `AGENTS.md` § Canonical Planning Documents.
+Read `docs/reconciliation-plan-stage-8.md` and `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` (project files, commit `8e093bc`) side-by-side to draft Slice 8.1's scope, DoD, and stop condition. File the draft as a new §8.1 section in the plan companion. Then execute.
+
+Alternative next action if spec-decode revisit is picked instead: identify a small draft model (e.g. Qwen2.5-1.5B or similar) compatible with the coder's tokenizer, check VRAM budget (~1.5 GiB extra), and design the draft-token config with lower `num_speculative_tokens` to avoid the low-entropy mis-acceptance failure mode.
+
+## Verification on next session start
 
 ```bash
-# Verify Slice 8.0 is still the live coder config on session resume:
 cd ~/dev/forge-oh
+# Confirm coder flags (if coder is up):
 CID=$(docker ps --filter 'name=coder' --format '{{.ID}}' | head -1)
-docker inspect --format '{{join .Args " "}}' "$CID" | tr ' ' '\n' | \
+[ -n "$CID" ] && docker inspect --format '{{join .Args " "}}' "$CID" | tr ' ' '\n' | \
   grep -E 'speculative|kv-cache-dtype|chunked-prefill|long-prefill|max-model-len'
-# Expected: --max-model-len 65536, --kv-cache-dtype fp8, --enable-chunked-prefill,
-# --long-prefill-token-threshold 4096. NO --speculative-config line.
 
-# Then read docs/reconciliation-plan-stage-8.md for Slice 8.1 scope.
+# Confirm planner flags (if planner is up):
+CID=$(docker ps --filter 'name=planner' --format '{{.ID}}' | head -1)
+[ -n "$CID" ] && docker inspect --format '{{join .Args " "}}' "$CID" | tr ' ' '\n' | \
+  grep -E 'speculative|kv-cache-dtype|chunked-prefill|long-prefill|max-model-len|reasoning-parser|quantization'
 ```
