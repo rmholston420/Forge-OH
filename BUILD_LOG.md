@@ -5461,3 +5461,28 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Test results:** 54 passed, 1 skipped in `bff/tests/memory/` under both baseline and `OLLAMA_EMBED_MODEL=qwen3-embedding:4b` (11 new SemanticMemoryPath contract tests + 43 prior memory contract tests)
 - **Stage 5.3a stop condition:** Sandbox-side complete. Awaiting Colossus live-tier verification: `python -c "import asyncio; from openhands_tools_ext.memory.adapters.dozerdb.smoke import search_semantic; print(asyncio.run(search_semantic('smoke', corpus='default')))"` should return `[]` cleanly.
 - **Next slice:** 5.3b (port `DozerDbMemoryAdapter` + graph backend + AMG policy; wire `MemoryPort.search_semantic` at last).
+
+## 2026-08-06 02:17 EDT — Stage 5.3a: Colossus live-tier verification PASSED
+- Contract suite: 54 passed, 1 skipped
+- Regression check (Stage 5.2 live-tier): 10 passed
+- Stage 5.3a stop-condition smoke:
+  - Command: `python -c "import asyncio; from openhands_tools_ext.memory.adapters.dozerdb.smoke import search_semantic; print(asyncio.run(search_semantic('smoke', corpus='default')))"`
+  - Result: `[]` (empty list, no exceptions raised, graceful degradation on missing collection working as designed per ADR-074 §2)
+  - Warning logged (expected): `RealQdrantBackend: query_points(kosmos-memory-default) raised: Unexpected Response: 404 (Not Found)` — collection doesn't exist yet; adapter catches, logs, returns `[]`
+- **STAGE 5.3a CLOSED.**
+- **Deferred to follow-up:** `qdrant-client` v1.19 vs Qdrant server v1.12.4 minor drift — client ships a UserWarning but functions correctly. Options: pin client to <1.13, or bump server to v1.15+ in docker-compose.yml. Not blocking 5.3b.
+
+## 2026-08-06 02:17 EDT — Stage 5.3b: SCOPE FROZEN, awaiting user sign-off before port
+- **Stage/plugin/port:** Stage 5.3b — DozerDB `MemoryPort` adapter (ADR-027 + ADR-074 §D3 completion + ADR-075 D1 Graphiti-hard-delete)
+- **Kosmos pinned SHA:** `c455165bca0d645f0d43572d0c286dca7033d31d`
+- **Colossus infra confirmed:**
+  - `kosmos-dozerdb` (`graphstack/dozerdb:5.26.27`, Up 4 days healthy) — shared instance, ADR-019 Option A
+  - `forgeoh` database online; `neo4j` + `system` also online
+  - APOC procs: 190 loaded
+  - Graphiti procs: 0 (aligns with ADR-075 D1 hard-delete — no server-side Graphiti needed)
+  - Env: `NEO4J_BOLT_URI=bolt://localhost:7687`, `NEO4J_USER=neo4j`, `NEO4J_PASSWORD=kosmos-dev-password`, `NEO4J_DATABASE=forgeoh` (Forge-OH-side naming)
+- **Kosmos post-Graphiti state at pinned SHA:**
+  - `GraphitiTemporalIndex` file DELETED per ADR-075 D1
+  - `TemporalIndex` Protocol still declared in `adapter.py`
+  - `InMemoryTemporalIndex` remains as the only concrete implementation Kosmos ships
+  - Adapter ctor still requires `temporal: TemporalIndex` — a concrete impl MUST be injected
