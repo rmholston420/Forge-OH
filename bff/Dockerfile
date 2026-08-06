@@ -30,11 +30,6 @@ RUN pip install --no-cache-dir -r /app/bff/requirements.txt
 COPY bff/                  /app/bff/
 COPY openhands_tools_ext/  /app/openhands_tools_ext/
 
-# Copy top-level project markers that Settings / config resolution may
-# consult at import time (pyproject.toml is read by pydantic-settings for
-# some feature flags; harmless if absent).
-COPY pyproject.toml        /app/pyproject.toml
-
 RUN chown -R bff:bff /app
 USER bff
 
