@@ -1922,3 +1922,45 @@ Related read routes:
 **Fix applied**: none — read-only inspection. Stage 6.5 §6.5.2 authorized to proceed under ADR-027 (Proposed 2026-08-06 09:47 EDT) which locks BFF forwarding to `switch_llm` only, preset-driven, credentials server-side.
 
 **Files changed**: DEBUG_LOG.md.
+
+## 2026-08-06 11:11 EDT — SKILL.md load fails: bare numeric triggers
+
+**Symptom**:
+```
+WARNING  Failed to load user skills from /home/rmholston/.agents/skills: 2
+         validation errors for KeywordTrigger
+         keywords.6
+           Input should be a valid string [type=string_type, input_value=502, input_type=int]
+         keywords.7
+           Input should be a valid string [type=string_type, input_value=404, input_type=int]
+```
+`load_user_skills()` returned 0 skills; one bad file aborts the whole scope's batch.
+
+**Affected**: OpenHands SDK v1.40.0 · skill loader · any SKILL.md with bare-numeric triggers in YAML frontmatter
+
+**Root cause**: YAML parses unquoted `502` / `404` / port numbers / years as int. `KeywordTrigger` pydantic model requires `keywords: list[str]`. One invalid trigger raises before the loader can move on, dropping every skill in that directory.
+
+**Fix applied**: Quote all numeric triggers in SKILL.md frontmatter:
+```yaml
+triggers:
+  - "502"      # not: 502
+  - "404"      # not: 404
+  - "port 8090"
+```
+
+**Files changed**: `misc/user-scope-skills/http-api-authoring/SKILL.md`
+**Commit**: `ee6bbaa`
+
+**Prevention**: `skill-authoring` SKILL.md includes a "quote numeric triggers" rule. Future authors: any YAML value that could parse as int/float/bool/null MUST be quoted.
+
+## 2026-08-06 11:11 EDT — Phantom "agents" skill in load_project_skills output
+
+**Symptom**: `load_project_skills("/home/rmholston/dev/forge-oh")` returned 8 skills instead of 7, extra entry named `agents` with `description=None`, `triggers=None`.
+
+**Affected**: OpenHands SDK v1.40.0 · `load_project_skills`
+
+**Root cause**: NOT a bug. SDK calls `find_third_party_files()` which loads `AGENTS.md`, `.cursorrules`, `CLAUDE.md`, etc. as permanent-context "third-party" skills. Our repo has `AGENTS.md` at root (the agent-execution contract). Loaded as a skill named `agents` with `trigger=None` (always-active repo-level context).
+
+**Fix**: None needed. This is the intended behavior — `AGENTS.md` was already the mandatory read for every Forge-OH session. The SDK is correctly wiring it up as always-on context.
+
+**Files changed**: none

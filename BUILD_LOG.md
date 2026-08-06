@@ -6801,3 +6801,21 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   1. Playwright live-path — assert the `🔀 Switch model` button actually renders + modal opens against a real running run. Needs a fixture run in `running`/`paused` state; can be picked up when we add e2e run-fixture seeding.
   2. Expose `agentPresetId` on `RunSummarySchema` so the modal can preselect the current preset instead of falling back to `presets[0]`.
 - **Files touched** (verified on Colossus): 7 modified + 3 new — same list as the `Stage 6.5.3` commit at `19d3f90`.
+
+## 2026-08-06 11:11 EDT — Skills batch 1: 22 SKILL.md files (15 user + 7 project) installed + verified
+
+**Stage/plugin/port**: cross-cutting (agent authoring infrastructure) · not tied to a build stage
+**What was built**:
+- 15 user-scope skills (cross-project engineering discipline) → `~/.agents/skills/` (staged in `misc/user-scope-skills/` for repo distribution)
+- 7 project-scope skills (Forge-OH-specific) → `.agents/skills/`
+- `docs/proposed-skills-BACKLOG.md` (3 future skills + skill-proposal-pipeline design)
+- `misc/user-scope-skills/README.md` (install instructions for future pulls)
+
+**User-scope (15)**: python-testing-discipline, web-frontend-authoring, http-api-authoring, shell-hygiene, debug-first-response, git-workflow, benchmarking-discipline, vllm-serving-pitfalls, fastapi-router-authoring, local-llm-integration, markdown-docs-authoring, env-and-secrets-discipline, skill-authoring (meta), deep-research, planning
+
+**Project-scope (7)**: bff-router-authoring, bff-fe-contract-sync, playwright-forge-oh, socketio-events-tracing, openhands-agent-server-proxy, forge-oh-repo-navigation, forge-oh-event-normalizer
+
+**Files touched**: 24 new files under `.agents/skills/`, `misc/user-scope-skills/`, `docs/`
+**Commits**: `e856b46` (initial 22), `ee6bbaa` (fix bare-int triggers in http-api-authoring)
+**Verified**: `load_user_skills() → 15` + `load_project_skills() → 8` (7 skills + AGENTS.md pre-existing third-party rule = intended). Direct SDK call confirmed on Colossus; HTTP `/api/skills` returns 0 across the board — unrelated cache/marketplace issue not blocking loader.
+**Stop condition**: skills discoverable by OpenHands SDK v1.40.0 loader on Colossus — MET.
