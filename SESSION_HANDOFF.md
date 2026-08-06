@@ -66,12 +66,12 @@ for i in $(seq 1 90); do
   sleep 10
 done
 
-# Re-run smoke-30 (matches F.3.0 concurrency=1 baseline conditions).
-# Must run as a module from repo root (not as a script) so bench.pathF_swebench.*
-# imports resolve. See DEBUG_LOG 2026-08-06 15:37 EDT.
+# Re-run smoke-30 (F.3.0 calibrated 30-task stratified sample = --smoke flag,
+# NOT --tasks all which is the full 500-task F.3.1 run). See DEBUG_LOG
+# 2026-08-06 15:39 EDT for why. Harness is serial (no --concurrency flag).
 cd ~/dev/forge-oh && \
   python -m bench.pathF_swebench.bench_pathF_swebench \
-    --tasks all --model c01 --concurrency 1 2>&1 | tee ~/.forge-oh/bench_pathF_smoke30_slice8.0.log
+    --smoke --model c01 2>&1 | tee ~/.forge-oh/bench_pathF_smoke30_slice8.0.log
 ```
 
 Return: (a) the `/v1/models` JSON, (b) the final pass@1 line from the smoke-30 run, (c) whether the 4 previously-context-skipped tasks now show a real pass/fail instead of `context-budget-skip`.

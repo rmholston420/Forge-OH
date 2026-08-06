@@ -2153,3 +2153,33 @@ Not a bench-code breakage; agent-side handoff error.
 
 **Files changed:** — (no code change; handoff-command correction only)
 **Related BUILD_LOG entry:** 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED.
+
+## 2026-08-06 15:39 EDT — Slice 8.0 smoke: TWO stale-invocation errors in handoff
+
+**Symptom (from Colossus terminal):**
+```
+usage: bench_pathF_swebench.py [-h] (--tasks TASKS | --smoke)
+                              [--model {c01,c11,c03b}] [--dry-plan-only]
+                              [--keep-sandbox] [--resume-run DIR]
+bench_pathF_swebench.py: error: unrecognized arguments: --concurrency 1
+```
+
+**Affected:** Slice 8.0 DoD attestation · bench harness invocation (second attempt).
+
+**Root cause:** Two independent handoff errors, both agent-side:
+
+1. **`--concurrency` is dead docs.** `bench_pathF_swebench.py` argparse (lines 570-583) has no `--concurrency` flag. The harness is always serial (single-model + single-container; no ThreadPool/ProcessPool). The flag WAS documented in the file's own docstring line 32 and in `bench/pathF_swebench/README.md` line 89, but the arg is gone from argparse. Stale documentation.
+
+2. **`--tasks all` != 30-task smoke.** The smoke-30 set is triggered by `--smoke` (equivalent alias `--smoke-25`). `--tasks all` invokes the full 500-task Verified (F.3.1), not the 30-task calibrated stratified sample (F.3.0). The baseline pass@1 = 33.3% (10/30) at `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/` was `--smoke`, so DoD comparison must be `--smoke`. Sending `--tasks all` would have committed the user to a full 500-task run (~10+ hours vs ~1 hour smoke).
+
+**Fix applied:**
+- Corrected SESSION_HANDOFF exact-next-action to `python -m bench.pathF_swebench.bench_pathF_swebench --smoke --model c01`.
+- README + docstring stale-flag cleanup pushed in the same commit (removed `--concurrency 1` mentions in docstring and README to prevent re-hitting this).
+- Kept the `--tasks all` example in README but retagged it as "F.3.1 Full 500 Verified" only, not smoke.
+
+**Files changed:**
+- `SESSION_HANDOFF.md`
+- `bench/pathF_swebench/bench_pathF_swebench.py` (docstring only)
+- `bench/pathF_swebench/README.md` (stale `--concurrency 1` removal)
+
+**Related BUILD_LOG entry:** 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED. Note: prior 2026-08-06 15:37 EDT DEBUG_LOG entry only caught the script-vs-module mistake, missed both of these. Two-error cascade.

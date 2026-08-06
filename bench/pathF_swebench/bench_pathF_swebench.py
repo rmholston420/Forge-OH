@@ -27,9 +27,13 @@ Usage
     python -m bench.pathF_swebench.bench_pathF_swebench \\
         --tasks django__django-10914 --model c01
 
+    # F.3.0 smoke-30 (calibrated stratified 30-task sample):
+    python -m bench.pathF_swebench.bench_pathF_swebench \\
+        --smoke --model c01
+
     # F.3.1 full 500 (only after F.3.0 passes):
     python -m bench.pathF_swebench.bench_pathF_swebench \\
-        --tasks all --model c01 --concurrency 1
+        --tasks all --model c01
 """
 from __future__ import annotations
 

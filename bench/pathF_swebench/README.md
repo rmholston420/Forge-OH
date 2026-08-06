@@ -86,11 +86,20 @@ Only after F.3.0 passes. This is the ADR-013-amendment-#2 evidence.
 ```bash
 python -m bench.pathF_swebench.bench_pathF_swebench \
     --tasks all \
-    --model c01 \
-    --concurrency 1
+    --model c01
 ```
 
-Wall time estimate populated from the dry-run × 500. Concurrency stays at 1 because the sandbox images are already CPU-heavy and vLLM saturates the GPU.
+Wall time estimate populated from the dry-run × 500. The harness is serial (no `--concurrency` flag) because the sandbox images are already CPU-heavy and vLLM saturates the GPU.
+
+## F.3.0 smoke-30 (calibrated stratified sample)
+
+30-task subset stratified from the F.3 full-500 ground truth. Predicts full-500 pass@1 within ~3pt. Used as the Slice 8.0 DoD baseline (33.3% pass@1 at `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/`).
+
+```bash
+python -m bench.pathF_swebench.bench_pathF_swebench --smoke --model c01
+```
+
+`--smoke-25` is an alias kept for backward compat but now runs the 30-task set.
 
 ## Output layout
 
