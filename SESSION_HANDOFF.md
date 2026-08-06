@@ -1,83 +1,77 @@
-# Forge-OH — SESSION_HANDOFF
+# SESSION_HANDOFF — Forge-OH
 
-Current state as of end-of-session. This file is overwritten every session end; the append-only history lives in BUILD_LOG.md and DEBUG_LOG.md.
+**Last touched:** 2026-08-06 01:02 EDT
 
-Timestamp format: `YYYY-MM-DD HH:MM EDT`.
+## Current build-sequencing position
 
----
-
-## Last updated: 2026-08-06 00:07 EDT
-
-## Current build-sequencing stage / plugin / port in progress
-
-- **Stage 3 · Security & Safety — CLOSED.** All sub-slices verified green on Colossus. § 3.3 DependencyGuard descoped.
-- **Post-Stage-3 hygiene batch — CLOSED.** Four slices landed:
-  - Enum drift unification (canonical `awaiting_approval` + Zod boundary tripwire)
-  - Slice A: delete dead StatusBadge files
-  - Slice B: route `event_relay` stream events through `normalize_event` + tripwire test
-  - Slice C: `PatternSecurityAnalyzer` coverage audit (flip rejected)
-- **Next up:** Stage 4 (`reconciliation-plan-v1.md` § 4). Scope has NOT been restated yet — do this before writing any code.
+- **Stage 4** (RepoGraph + LSP retrieval), `docs/reconciliation-plan-stage-4.md`.
+- **§ 4.2 + § 4.3 CLOSED** — automated gate + Playwright PASS (see BUILD_LOG 2026-08-06 00:47 EDT).
+- **§ 4.4 (Serena LSPClient) — CODE COMPLETE and pushed** in commit `8def365`. Awaiting Colossus verification (see below).
+- **§ 4.5 (DozerDB consolidation)** — not started. Hard blocker for Stage 4 close; needs user sign-off (Option A shared DozerDB vs Option B separate).
 
 ## What was completed this session
 
-**Thirteen commits on `origin/main`:**
+1. Pass 3 (§ 4.4) shipped in a single commit `8def365`:
+   - `bff/services/mcp_bootstrap.py` (new) — idempotent Serena registration via `POST /api/mcp` at BFF startup. Best-effort; never raises.
+   - `bff/settings.py` — `SERENA_ENABLED` (default false), `SERENA_WORKSPACE_DEFAULT`, `SERENA_PIN_SHA` (`c7af2c09ef45faa4367c0e2a9f770fb73a62a612`).
+   - `bff/main.py` — lifespan hook wired after `gpu_monitor.start()`.
+   - `bff/services/event_normalize.py` — promotes ActionEvent `type` to `lsp_<op>` when `tool_name` matches a known Serena tool; produces `Serena <op>: <symbol>` summary line.
+   - `src/components/domain/EventCard.tsx` — 6 LSP icons + `data-testid="event-lsp-badge"` badge for `event.type.startsWith("lsp_")`.
+   - Tests: `bff/tests/test_mcp_bootstrap.py` (5 async cases via `httpx.MockTransport`), 6 new cases in `bff/tests/test_event_normalize.py`, `src/tests/unit/EventCard-lsp.test.tsx` (4 cases).
+   - Docs: `docs/adr/018-serena-lspclient-integration.md` (D1..D4 + 4 plan-doc corrections), `docs/adr/README.md` extended, `docs/reconciliation-plan-stage-4.md` copied into repo, `PORTING_LEDGER.md` entry, `AGENTS.md` "Three-Tier Retrieval Cascade" section.
 
-1. `5d6f779` feat(stage-3.1): risk indicators
-2. `9266aa7` fix(stage-3.1): route-mock envelope
-3. `707e938` docs(stage-3.1): DoD verified green
-4. `94237f9` feat(stage-3.2): real HITL — ConfirmRisky + ApprovalBanner
-5. `5e4cd63` fix(stage-3.2): scope Playwright banner locator
-6. `be6f006` feat(stage-3.4-3.5): compare-endpoint query-key contract
-7. `00a5f94` docs(stage-3): DoD verified green — Stage 3 CLOSED
-8. `b7d6317` hygiene: unify status enum on awaiting_approval + Zod boundary tripwire
-9. `dbd643f` docs(hygiene): status enum drift verified green on Colossus
-10. `e83d5f0` hygiene(A+B): delete dead StatusBadge files + normalize wire events
-11. `fa014a9` fix(hygiene-B): tripwire double-emit — return empty page on 2nd fetch
-12. `33bdc83` docs(hygiene-C): PatternSecurityAnalyzer coverage audit — flip rejected
-13. **Pending push (hygiene close docs):** BUILD_LOG close entry + this SESSION_HANDOFF.
+## What remains before § 4.4 Definition of Done is met
 
-**Verification results this session:**
+Automated gate on Colossus (run in `~/dev/forge-oh` with `.oh-venv` active):
 
-- Stage 3.4/3.5 close: 30 pytest · 79 vitest · typecheck clean · stack healthy · prod=200 · 5 Playwright — all green first pass.
-- Enum-drift hygiene close: 10 pytest · 156 vitest (7 files) · typecheck clean · stack healthy · prod=200 · 5 Playwright — all green first pass.
-- Slice A+B first verify: 1 real test bug fixed (`fa014a9`), 56 vitest green, typecheck clean, prod=200, 5 Playwright green.
-- Slice B tripwire final verify: `test_relay_emits_normalized_wire_shape` PASSED in 0.56s.
+```bash
+cd ~/dev/forge-oh && source .oh-venv/bin/activate
+git pull origin main
+pytest bff/tests/test_mcp_bootstrap.py bff/tests/test_event_normalize.py -q
+pnpm typecheck
+pnpm test:unit src/tests/unit/EventCard-lsp.test.tsx
+pnpm build
+```
 
-## What remains before the current Definition of Done is met
+Then enable Serena and smoke-test:
 
-Nothing outstanding for the hygiene batch. Both Stage 3 and hygiene batch are DoD-met.
+```bash
+# 1. Enable
+grep -q '^SERENA_ENABLED=' .env || echo 'SERENA_ENABLED=true' >> .env
+sed -i 's/^SERENA_ENABLED=.*/SERENA_ENABLED=true/' .env
 
-**Stage 4 kickoff (next session):**
+# 2. Restart BFF (uvicorn --reload will pick up settings but the lifespan
+#    only fires on cold start; kill + relaunch)
+pkill -f 'uvicorn bff.main:app_with_sio' || true
+sleep 1
+nohup uvicorn bff.main:app_with_sio --host 127.0.0.1 --port 8081 \
+  --reload --reload-dir bff --workers 1 \
+  > ~/.forge-oh/bff.log 2>&1 &
+sleep 3
 
-1. Read this SESSION_HANDOFF first.
-2. Load `docs/reconciliation-plan-v1.md` — restate Stage 4 scope: which plugins/kernel components, which ports touched, DoD or "minimal working system" boundary, exact stop condition.
-3. Load stage-4 companion (`docs/reconciliation-plan-v1-stage-4.md`) if it exists. If missing, ask the user before proceeding.
-4. Flag any ambiguity for the user's review before starting.
-5. Vendor-first check per project instructions before writing any new code.
+# 3. Verify Serena is registered
+curl -s http://127.0.0.1:8081/api/mcp | jq '.[] | select(.id=="serena")'
 
-## Open questions / ambiguity awaiting the user's answer
+# 4. Ping Serena (this is where uvx will resolve + cache the pin sha
+#    on first run; may take 30-60s the first time)
+curl -sX POST http://127.0.0.1:8081/api/mcp/serena/ping | jq
+```
 
-None. Batch is closed. Ready to proceed to Stage 4.
+Expected: step 3 returns a non-empty JSON object with `transport:"stdio"` and `command:"uvx"`. Step 4 returns `{"ok":true, ...}` with a non-empty tools list once `uvx` has resolved.
 
-## Tracked follow-up items (in KNOWN_ISSUES)
+## Open questions / ambiguities awaiting user answer
 
-- **2026-08-06 00:05 EDT** — `confirm_unknown=True` is required until analyzer attach is hard-required. Precondition for a future flip documented. Post-Stage-4 candidate.
-- **2026-08-06 00:02 EDT** — `test_event_relay_yield` hazard-demonstration test cannot fail. Measurement bug; runtime protection intact. Rewrite needed to actually guard the G.1 fix.
-- **2026-08-05** — pnpm workspace CI check red on every PR (Node 20 + pnpm v11 interaction). Non-blocking.
+None for § 4.4. All four locked decisions (D1..D4) are recorded in ADR-018.
 
-## Exact next action to take
+**Standing block for Stage 4 close:** § 4.5 DozerDB consolidation needs Option A vs Option B sign-off before this stage can be marked done. See the plan doc's § 4.5 for the two options. The agent should present both with a recommendation before starting § 4.5.
 
-**When the user resumes:**
+## Exact next action
 
-1. Read this file.
-2. Ask: "Proceed with Stage 4 per `reconciliation-plan-v1.md` § 4?"
-3. If yes: read `reconciliation-plan-v1.md` § 4 (+ stage-4 companion if it exists), restate scope with build sequencing / ports touched / DoD / stop condition, flag any ambiguity, wait for confirmation before writing any code.
+Run the Colossus verification block above. If green, mark § 4.4 CLOSED in BUILD_LOG and open § 4.5 by presenting the DozerDB consolidation options to the user.
 
-## Reference — hygiene batch closing commits
+If a step fails, the deb path is:
 
-- `b7d6317` — status enum drift unification + Zod boundary tripwire
-- `dbd643f` — status enum drift verification docs
-- `e83d5f0` — delete dead StatusBadge files + normalize wire events
-- `fa014a9` — tripwire test fix (double-emit)
-- `33bdc83` — Slice C audit docs (flip rejected)
-- (pending push) — hygiene batch CLOSED entry
+1. **`pytest` failure in `test_mcp_bootstrap.py`:** most likely the monkeypatch of `_bff_client` didn't take because pytest-asyncio needs `pytest.ini`'s `asyncio_mode = auto`. Confirm mode in `pyproject.toml` or `pytest.ini`; if strict, tests are fine as-written (they use `@pytest.mark.asyncio`).
+2. **`test_event_normalize.py` failure:** almost certainly a `_action` fixture mismatch — the new cases pop `summary` before calling `normalize_event`. Inspect the failing case's dict; the LSP branch fires only when `summary` is falsy.
+3. **`pnpm test:unit` failure on `EventCard-lsp.test.tsx`:** the test imports from `@/lib/schemas/event` — if that path alias is not configured in `vitest.config.ts`, the test will fail to resolve. All other unit tests use the same alias, so this should Just Work; if it doesn't, the whole suite is broken.
+4. **`curl /api/mcp` returns no Serena entry:** the lifespan try/except swallowed the failure. Check `~/.forge-oh/bff.log` for the `serena mcp bootstrap failed:` line — likely reason is agent-server rejected the `RegisterMcpRequest` (schema drift). Fix by matching the exact `RegisterMcpRequest` shape from `bff/routers/mcp.py`.
