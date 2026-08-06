@@ -5279,3 +5279,15 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   2. `lsof -i :3100` to confirm the port is free.
   3. Fix launch env if needed; re-run the Playwright spec block from the 2026-08-06 00:43 EDT verification transcript.
 - **Stop-condition status:** Stage 4.2 + 4.3 remain CLOSED. Playwright deferred is not a regression of the gate.
+
+## 2026-08-06 00:47 EDT — Stage 4.3 Playwright PASSED (deferral rescinded)
+
+- **Root cause of 00:43 EDT Playwright failure:** stale `next-server` process (pid 1455968) was bound to port 3100 from a persistent `nohup npx next start` launched pre-Stage-4.3. New `next start` couldn't bind (EADDRINUSE) so no updated frontend ever came up, and Playwright hit the old build (no `/repograph`).
+- **Fix:** killed the stale process with `fuser -k 3100/tcp`, rebuilt with `NEXT_PUBLIC_FEATURE_REPOGRAPH=true`, relaunched `next start -H 127.0.0.1 -p 3100` fresh, polled `GET /repograph` until HTTP 200 (2s to ready).
+- **Playwright result:**
+  - `[chromium] repograph-graph.spec.ts:25 › renders the panel and the sidebar entry` — **PASS** (307ms)
+  - `[chromium] repograph-graph.spec.ts:40 › List/Graph toggle appears after an index and switches views` — **PASS** (3.2s)
+  - **2 passed (3.8s total).**
+- **Deferral rescinded:** the 2026-08-06 00:44 EDT deferral note is now historical. Playwright bar is CLEARED as part of the Stage 4.2 + 4.3 exit gate.
+- **Operational note for future sessions:** production frontend on Colossus is a long-lived `nohup npx next start -H 127.0.0.1 -p 3100` process. Before an ad-hoc launch that will re-bind port 3100 (e.g. Playwright E2E prep), run `fuser -k 3100/tcp` first or use `ss -ltnp | grep 3100` to check. Added this to KNOWN_ISSUES 2026-08-06 00:47 EDT as an operational trap.
+- **Stop-condition status:** Stage 4.2 + 4.3 FULLY VERIFIED. Cleared to begin Pass 3 (§ 4.4 Serena LSPClient via MCP passthrough).

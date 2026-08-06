@@ -124,3 +124,24 @@ Two unit-test failures observed on Colossus while running `pytest bff/tests/test
 - **Impact:** Second of two failures blocking a fully green `pnpm test:unit`. Does not affect runtime behavior of any Stage 4 code path.
 - **Fix path (out of Stage 4 scope):** Inspect `AgentPresetCard` component + fixture used by the test around line 29. Likely a rename, a prop-shape drift, or a testid/aria change that the test wasn't updated for. Bisect against `main` if the trigger commit isn't obvious.
 - **Do NOT block Stage 4.2/4.3 on this.**
+
+---
+
+## 2026-08-06 00:47 EDT — Operational trap: port-3100 conflict with long-lived `next start`
+
+- **Context:** Colossus keeps a long-lived production frontend at `nohup npx next start -H 127.0.0.1 -p 3100 > ~/.forge-oh/next-prod.log 2>&1 &`. It survives shell exits and does NOT auto-reload on git pulls or new builds.
+- **Trap:** any subsequent `pnpm start` / ad-hoc launch that tries to bind port 3100 fails with `EADDRINUSE`, so Playwright and manual checks silently hit the stale build (which may lack routes added since the persistent process started). Symptom: `/some-new-route` returns 404 or an outdated shell, tests fail at first `getByTestId(...)`.
+- **Detection:** `ss -ltnp | grep ':3100'` shows the bound `next-server` PID.
+- **Recovery before any new `next start`:**
+  ```bash
+  fuser -k 3100/tcp && sleep 1
+  # or: kill -TERM <PID_from_ss>
+  ```
+  Then rebuild (`pnpm build`) if the checkout advanced since the old process started, and relaunch.
+- **Playwright launch template that works:**
+  ```bash
+  NEXT_PUBLIC_FEATURE_REPOGRAPH=true NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \
+    nohup npx next start -H 127.0.0.1 -p 3100 > ~/.forge-oh/next-prod.log 2>&1 &
+  # poll GET /repograph until HTTP 200 before running the spec
+  ```
+- **Long-term fix path (out of Stage 4 scope):** wrap the persistent launcher in a systemd unit or a `pplx start-server`-style script so kill/replace is one command. For now, the manual `fuser -k` step is the workflow.
