@@ -239,15 +239,34 @@ class IdempotentToolExecutor(ToolExecutor, Generic[ActionT, ObservationT]):
     def _observation_to_cached_json(self, observation: ObservationT) -> Any:
         """Serialize an observation to a JSON-safe payload for caching."""
 
+    # SDK ``Action`` inherits from a discriminated-union base and pydantic
+    # emits a discriminator field on ``model_dump()``.  In v1.40.0 that
+    # field is called ``kind`` and its value is the concrete Action
+    # subclass name (e.g. ``"WriteNoteAction"``).  We strip it because:
+    #   1. TOOL_NAME already discriminates across tools.
+    #   2. Letting an SDK-internal discriminator into the arg-hash means
+    #      an upstream rename of the discriminator (e.g. ``kind`` -> ``type``)
+    #      or of the subclass would invalidate every ledger row on a
+    #      library upgrade.
+    # Add any future SDK-added meta fields here.
+    _EXCLUDED_ACTION_META_FIELDS = frozenset({"kind"})
+
     def _action_to_arguments(self, action: ActionT) -> dict[str, Any]:
         """Extract stable dict of arguments from the pydantic Action.
 
         Default: ``action.model_dump(mode='json', by_alias=False)`` for
-        pydantic models; falls back to ``vars(action)`` otherwise.
+        pydantic models, with SDK-added meta fields
+        (``_EXCLUDED_ACTION_META_FIELDS``) stripped; falls back to
+        ``vars(action)`` otherwise.
         """
         dump = getattr(action, "model_dump", None)
         if callable(dump):
-            return dump(mode="json", by_alias=False)
+            payload = dump(mode="json", by_alias=False)
+            return {
+                k: v
+                for k, v in payload.items()
+                if k not in self._EXCLUDED_ACTION_META_FIELDS
+            }
         return dict(vars(action))
 
     # ------------------------------------------------------------------

@@ -250,6 +250,38 @@ def test_check_network_failure_fails_open(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# SDK-added meta-field stripping (regression test)
+# ---------------------------------------------------------------------------
+
+
+def test_arguments_exclude_sdk_kind_discriminator(
+    notes_dir: Path, patched_httpx: dict
+):
+    """The mixin must strip pydantic's ``kind`` discriminator before hashing.
+
+    Otherwise an SDK-internal rename (or a subclass rename) invalidates
+    every ledger row on library upgrade.  See the block-comment above
+    ``_EXCLUDED_ACTION_META_FIELDS`` in idempotent_executor.py.
+    """
+    patched_httpx["client"] = _StubClient(
+        check_response={"data": {"completed": False, "key": "k", "cached": None}}
+    )
+    executor = wn.WriteNoteExecutor()
+    action = wn.WriteNoteAction(title="Meta", body="X")
+    # Confirm the raw pydantic dump would have included ``kind`` — this
+    # test guards against SDK dropping the discriminator entirely (in
+    # which case the strip is a no-op but the assertion below is still
+    # valid).
+    raw = action.model_dump(mode="json", by_alias=False)
+    executor(action, _FakeConversation("c", "l"))
+    mark_body = patched_httpx["client"].calls[1][1]
+    assert "kind" not in mark_body["arguments"], (
+        f"expected 'kind' stripped, raw dump was {raw}, arguments={mark_body['arguments']}"
+    )
+    assert mark_body["arguments"] == {"title": "Meta", "body": "X"}
+
+
 def test_same_title_yields_same_filename(
     notes_dir: Path, patched_httpx: dict
 ):

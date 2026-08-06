@@ -18,9 +18,17 @@
 - Crash-and-resume harness `scripts/test-crash-resume.sh` — minimal uvicorn app, SIGKILL, resume with fresh process on same on-disk DB.
 - `bff/main.py` lifespan wired for `init_db` + `close_db`; `scripts/forge-up.sh` imports the new tool.
 
+## Colossus verification result (2026-08-06 05:42 EDT run)
+
+- Backend + endpoint tests: **34/35 PASS**, 1 FAIL.
+  - Failure: `test_first_call_writes_file_and_marks_ledger` — SDK emits `kind` discriminator in `Action.model_dump()`, my assertion + the ledger arg-hash didn't account for it.
+  - Fixed in commit **TBD** (2026-08-06 05:45 EDT): strip `kind` in `_action_to_arguments` + regression test. See DEBUG_LOG entry.
+- Crash-and-resume: **PASSED** (`/tmp/forge-ledger-lRBvQ0/`). Phase 4 was silent; added a success echo (cosmetic).
+- Restart: BFF + agent-server + Next.js all came up clean.
+
 ## What remains before Stage 6.3 DoD
 
-User verification on Colossus:
+Rerun on Colossus after pulling the hotfix:
 
 ```bash
 cd ~/dev/forge-oh && git pull origin main
@@ -41,7 +49,7 @@ export FORGE_SEARXNG_BASE_URL=http://127.0.0.1:18888
 ./scripts/test-crash-resume.sh
 ```
 
-Expected: ~37 backend tests pass; crash-resume script exits 0 with "PASS".
+Expected: 36/36 backend tests pass (35 previous + 1 new regression test); crash-resume script exits 0 with visible phase-4 line and "PASS".
 
 Report failures — I'll fix immediately.
 

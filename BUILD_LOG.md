@@ -6106,3 +6106,15 @@ export FORGE_SEARXNG_BASE_URL=http://127.0.0.1:18888
 Expected: ~37 tests pass; crash-and-resume script exits 0 with "PASS".
 
 **Next up (after DoD verified):** Stage 6.4 — checkpoint-to-disk revert.
+
+
+## 2026-08-06 05:45 EDT — Stage 6.3 hotfix: strip SDK `kind` discriminator
+
+**Followup on Stage 6.3 DoD run:** 34/35 tests passed on first run; one failure due to SDK adding a `kind` discriminator to `Action.model_dump()`. Documented in DEBUG_LOG 2026-08-06 05:45 EDT.
+
+**Files touched:**
+- `openhands_tools_ext/common/idempotent_executor.py` — `_EXCLUDED_ACTION_META_FIELDS` frozenset; `_action_to_arguments` strips those keys before returning.
+- `openhands_tools_ext/tests/write/test_write_note_idempotent.py` — regression test `test_arguments_exclude_sdk_kind_discriminator`.
+- `scripts/test-crash-resume.sh` — added phase-4 success echo for observability. Crash-resume itself PASSED on Colossus (exit 0); the silent phase 4 was just cosmetic.
+
+**Stop-condition status:** Colossus verified crash-and-resume PASSED (see /tmp/forge-ledger-lRBvQ0/ transcript). Awaiting rerun of pytest with hotfix — expected 35/35 + 1 new = 36/36 tests pass.

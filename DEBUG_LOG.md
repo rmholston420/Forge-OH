@@ -1691,3 +1691,33 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
 - **Files changed:** `src/tests/e2e/search-timeline-marker.spec.ts` (both commits).
 - **Same bugs latent in:** `src/tests/e2e/memory-timeline-marker.spec.ts` (identical structural copy) — fix if/when re-run.
 - **Prevention:** Any future E2E spec that needs REPO_ROOT must use `resolve(__dirname, '..', '..', '..')`. Do NOT rely on `process.cwd()`. Do NOT use `import.meta` until `package.json` gains `"type": "module"` (which would require broader migration).
+
+
+## 2026-08-06 05:45 EDT — write_note test assertion missed SDK `kind` discriminator
+
+**Symptom:** `openhands_tools_ext/tests/write/test_write_note_idempotent.py::test_first_call_writes_file_and_marks_ledger` failed on Colossus with:
+```
+AssertionError: assert {'title': 'He...teNoteAction'} == {'title': 'He...ody': 'World'}
+Left contains 1 more item:
+{'kind': 'WriteNoteAction'}
+```
+
+**Affected stage/plugin/port:** Stage 6.3 · openhands_tools_ext/common · IdempotentToolExecutor.
+
+**Root cause:** `openhands.sdk.tool.tool.Action` is a pydantic discriminated-union base. `action.model_dump()` on any subclass emits `{"kind": "<SubclassName>", ...}`. `IdempotentToolExecutor._action_to_arguments` was dumping without filtering, so the `kind` key leaked into (a) the ledger's `arguments` payload and (b) the `sha256(canonical_args_json)` input.
+
+Two independent problems this caused:
+1. Test asserted `mark_body["arguments"] == {"title": ..., "body": ...}` and failed.
+2. Ledger arg-hashes would be invalidated on any future SDK rename (`kind` → `type`) or Action-subclass rename.
+
+**Fix applied:**
+- Added `_EXCLUDED_ACTION_META_FIELDS = frozenset({"kind"})` on `IdempotentToolExecutor`.
+- `_action_to_arguments` now strips those keys after `model_dump()` before returning.
+- Added regression test `test_arguments_exclude_sdk_kind_discriminator` that confirms `kind` is stripped even when pydantic still emits it (and remains valid if SDK ever drops the discriminator).
+- Rationale block-comment above the frozenset explains why we don't just live with `kind` in the hash.
+
+**Files changed:**
+- `openhands_tools_ext/common/idempotent_executor.py` — `_EXCLUDED_ACTION_META_FIELDS` + strip logic + docstring.
+- `openhands_tools_ext/tests/write/test_write_note_idempotent.py` — regression test.
+
+**Also fixed in same commit:** `scripts/test-crash-resume.sh` phase 4 was silent on success. Added `echo` on success + on the replay-mark response for observability. No behavior change.

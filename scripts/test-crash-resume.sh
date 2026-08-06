@@ -206,11 +206,13 @@ fi
 # --- Phase 4: replay mark returns recorded=false ------------------------
 replay_resp=$(curl -fsS -X POST "${BASE_URL}/api/idempotency/mark" \
   -H 'content-type: application/json' -d "$MARK_BODY")
+echo "[crash-resume] post-crash replay-mark response: $replay_resp"
 replay_recorded=$(python3 -c "import json,sys;print(json.loads(sys.argv[1])['data']['recorded'])" "$replay_resp")
 if [[ "$replay_recorded" != "False" ]]; then
   echo "[crash-resume] FAIL: post-crash replay mark expected recorded=False, got: $replay_resp"
   exit 8
 fi
+echo "[crash-resume] phase 4 OK: replay mark reported recorded=false (ledger already had the row)"
 
 echo
 echo "[crash-resume] PASS"
