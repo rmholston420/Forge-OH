@@ -1,0 +1,75 @@
+# .dockerignore — keep the BFF image slim by excluding everything the
+# runtime doesn't need. bff/Dockerfile explicitly COPYs the paths it does
+# need (bff/, openhands_tools_ext/, pyproject.toml); everything else is
+# ignored.
+
+# VCS
+.git
+.github
+.gitignore
+.gitattributes
+
+# Node / Next.js frontend (runs as host process, not in the BFF image)
+node_modules
+.next
+.turbo
+.pnpm-store
+pnpm-lock.yaml
+package.json
+package-lock.json
+
+# Python virtualenvs
+.oh-venv
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Tests, benches, docs, scripts (agents/host tooling — not runtime)
+bench
+docs
+scripts
+tests
+ops
+tools
+tool_invocation_bench
+
+# Frontend source (runs as host process)
+src
+public
+tailwind.config.*
+postcss.config.*
+next.config.*
+next-env.d.ts
+tsconfig.json
+tsconfig.*.json
+
+# Local editor / IDE
+.vscode
+.idea
+.DS_Store
+
+# Runtime state, logs, data caches
+.forge-oh
+screenshots
+*.log
+
+# Env files (secrets — never bake into an image)
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env.test
+
+# Playwright artifacts
+test-results
+playwright-report
+
+# Docker/OCI leftovers
+Dockerfile.frontend
+docker-compose.override.yml

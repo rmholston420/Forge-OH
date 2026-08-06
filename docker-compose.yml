@@ -51,8 +51,11 @@
 services:
   bff:
     build:
-      context: ./bff
-      dockerfile: Dockerfile
+      # Repo root as context — bff.main imports from top-level sibling package
+      # openhands_tools_ext, so bff/Dockerfile must COPY both trees. See
+      # DEBUG_LOG 2026-08-06 14:40 EDT for the ModuleNotFoundError this fixes.
+      context: .
+      dockerfile: bff/Dockerfile
     ports:
       - "8081:8081"
     environment:

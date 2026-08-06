@@ -2050,3 +2050,34 @@ AssertionError: assert False
 **Files changed**: `bff/tests/test_inference_backends.py`
 
 **Prevention**: Any test that asserts a code default should explicitly clear the corresponding env key with `monkeypatch.delenv` — never assume the shell/`.env` is clean.  The `.env`-at-import pattern in `model_router.py` is architectural and can't be removed (BFF prod path needs it).
+
+## 2026-08-06 14:40 EDT — Containerized BFF crash-loops with ModuleNotFoundError: No module named 'bff'
+
+**Symptom**: After Stage 7.1 `docker compose up -d --build`, `forge-oh-bff-1` is `Restarting (1) 3 seconds ago`. `docker logs forge-oh-bff-1` shows:
+
+```
+File "/usr/local/lib/python3.13/site-packages/uvicorn/importer.py", line 19, in import_from_string
+  module = importlib.import_module(module_str)
+ModuleNotFoundError: No module named 'bff'
+```
+
+Bff/qdrant compose came up (build succeeded, image tagged `forge-oh-bff`), but every container start dies immediately at `uvicorn bff.main:app_with_sio` import.
+
+**Affected stage / plugin / port**: Stage 7.1 (docker-compose topology reconciliation, per [ADR-028](docs/adr/028-stage-7-deviation-topology-first-capability-slices-renumbered.md)) · `bff/Dockerfile` · containerized BFF on 8081.
+
+**Root cause**: Two-part mismatch between the old `bff/Dockerfile` and current repo layout:
+
+1. **Build context was `./bff`** in `docker-compose.yml` and Dockerfile did `COPY . .` from that context — so files landed at `/app/main.py`, `/app/routers/`, etc. Uvicorn was invoked as `bff.main:app_with_sio`, which requires the `bff` package be importable — meaning files must live at `/app/bff/main.py`, not `/app/main.py`. The old Dockerfile predates the current package layout entirely.
+2. **Missing sibling package** — even with (1) fixed, `bff.main` imports from top-level sibling `openhands_tools_ext` (memory, repograph, trajectory, search adapters). A `./bff` build context has no access to that tree.
+
+**Fix applied**:
+- Rewrote `bff/Dockerfile` to expect repo root as build context; `COPY bff/ /app/bff/` and `COPY openhands_tools_ext/ /app/openhands_tools_ext/` explicitly, plus `pyproject.toml`.
+- `docker-compose.yml`: changed `build.context: ./bff` → `build.context: .` with `build.dockerfile: bff/Dockerfile`.
+- Added top-level `.dockerignore` to keep image slim (excludes `.git`, `node_modules`, `.next`, `.oh-venv`, `bench/`, `docs/`, `scripts/`, `tests/`, `src/`, `screenshots/`, `.env*` except templates, playwright artifacts).
+
+**Files changed**:
+- `bff/Dockerfile` (rewrite — explicit COPY of bff + openhands_tools_ext + pyproject.toml; requirements.txt copy for layer cache)
+- `docker-compose.yml` (build context + comment linking here)
+- `.dockerignore` (new)
+
+**Related BUILD_LOG entry**: 2026-08-06 14:36 EDT (Stage 7.1 initial commit `6200028` that introduced the broken build context).
