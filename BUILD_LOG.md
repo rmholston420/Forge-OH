@@ -6512,3 +6512,17 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Regression check:** `test_runs_sha_capture` (14), `test_runs_fork` (9), `test_runs_worktree` (7), `test_event_commit_ledger` (15) — 68/68 total green including step 1d's 16.
 - **Commit:** `7bca18e` — clean first push, no fixups needed.
 - **Stop-condition status:** Stage 6.4c step 1a + 1b + 1c + 1d COMPLETE (backend). Remaining before Stage 6.4c DoD: (1) step 2 — frontend `RestartFromHereButton.tsx` + vitest + wired into event card, gated behind `NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED`; (2) end-to-end Colossus integration verify script following the `scripts/stage-6.4b-verify.sh` pattern.
+
+## 2026-08-06 08:41 EDT — Stage 6.4c step 2: RestartFromHereButton (frontend)
+
+- **Stage/plugin/port:** Stage 6.4c · `src/components/domain/RestartFromHereButton.tsx` (new) · `src/features/runs/{api,hooks}.ts` + `src/lib/api/endpoints.ts` (extended) · `src/app/(dashboard)/runs/[runId]/page.tsx` (mount site).
+- **What:** Frontend surface for `POST /api/runs/{run_id}/restart` (backend at 7bca18e). Symmetric to `ForkFromHereButton` — same event-inspector aside, same feature-flag gate (`NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED`), same click-then-modal-confirm pattern. Confirm-dialog copy explicitly promises "resets files on disk to the anchor commit" per ADR-026 §Storage.
+- **Wiring:**
+  - `ENDPOINTS.RUNS.restart(runId)` → `/api/runs/{runId}/restart`.
+  - `restartRun(runId, {fromEventId})` posts `{from_event_id}` on the wire; returns `RestartAck` (`ok`, `restarted_run_id`, `source_run_id`, `from_event_id`, `reset_to_sha`, `worktree_path`).
+  - `useRestartRun` mutation invalidates source-run row + list + new-run detail on success.
+  - Event inspector: `ForkFromHereButton` + `RestartFromHereButton` stacked in a wrap-flex row on user MessageEvents only.
+- **Tests (12, `src/tests/unit/domain-RestartFromHereButton.test.tsx`):** flag-gate → null; trigger renders; modal closed on mount; opens on click; eventLabel surfaces; ADR-026 "resets files on disk" copy guard; wire-key regression (`{ runId, fromEventId }`); success → `router.push('/runs/{restarted_run_id}')`; cancel closes without mutate; error → banner; pending → disabled + aria-busy + "Restarting…"; missing `restarted_run_id` → no nav.
+- **Regression:** `pnpm typecheck` clean (`tsc --noEmit`). Both button test files green: `ForkFromHereButton` 10/10, `RestartFromHereButton` 12/12 → 22/22 verified on Colossus 2026-08-06 08:40 EDT.
+- **Commit:** `aff6062` — clean first push, no fixups.
+- **Stop-condition status:** Stage 6.4c backend + frontend COMPLETE. Remaining before Stage 6.4c full DoD: end-to-end Colossus verify script following the `scripts/stage-6.4b-verify.sh` pattern (real BFF + real agent-server + real worktree provision + real restart, asserting `restarted_run_id`, new `worktree_path`, HEAD == captured anchor sha; plus 404 and 409 failure paths).

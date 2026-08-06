@@ -1,49 +1,37 @@
 # Session Handoff
 
-**Last update:** 2026-08-06 08:33 EDT
-**Current stage/plugin/port:** Stage 6.4c · restart-from-here endpoint (ADR-026 §Decision item 1) · `bff/services/restart.py` (new), `bff/routers/runs.py` (new endpoint), `src/components/timeline/RestartFromHereButton.tsx` (not yet built).
+**Last update:** 2026-08-06 08:41 EDT
+**Current stage/plugin/port:** Stage 6.4c · restart-from-here (ADR-026) — backend at `7bca18e`, frontend at `aff6062`. Remaining scope: end-to-end Colossus verify script.
 
 ## What was completed this session
 
-- **Stage 6.4c step 1c** (assistant / user-message ledger stamping regression fixes): the four fixup commits landed and 81/81 tests went green — see `BUILD_LOG.md` entry `2026-08-06 04:12 EDT`.
-- **Stage 6.4c step 1d — backend COMPLETE** (this commit set, `7bca18e`):
-  - `bff/services/restart.py` (new, ~400 lines): `RestartError`, `RestartResult`, `restart_from_here(app, *, source_run_id, anchor_event_id)`.
-    - 9-step composition: source-conversation GET → ledger `bulk_get_shas` → anchor event fetch + validate (MessageEvent + source=='user') → source-repo resolve for worktree → mint `run-<hex12>` + `provision_worktree(..., base_ref=anchor_sha)` → POST `/api/conversations` with source's agent config → POST `/events` seed with anchor text (run:true) → best-effort seed-sha ledger stamp → return `RestartResult`.
-    - Worktree rollback on both create-failure and seed-failure via `remove_worktree(new_run_id, missing_ok=True)`.
-  - `bff/routers/runs.py`: `RestartRunRequest` pydantic (required `from_event_id: str`), `_RESTART_CODE_TO_STATUS` map (404/409/502), `POST /runs/{run_id}/restart` handler with `Request` injection to reach `app.state.event_commit_db`.
-  - `bff/tests/test_runs_restart.py` (new, 16 tests, 3 classes) — all green.
-  - Regression: `test_runs_sha_capture` (14) + `test_runs_fork` (9) + `test_runs_worktree` (7) + `test_event_commit_ledger` (15) → 68/68 green including new tests. Verified on Colossus 2026-08-06 08:32 EDT.
+- **Stage 6.4c step 1c** (four fixup commits landing user-message ledger stamping tests): 81/81 green — `BUILD_LOG.md` entry `2026-08-06 04:12 EDT`.
+- **Stage 6.4c step 1d — backend (`7bca18e`):** `bff/services/restart.py` (new, ~400 lines) + `bff/routers/runs.py` (`RestartRunRequest`, `_RESTART_CODE_TO_STATUS`, `POST /runs/{run_id}/restart`) + 16 tests. 68/68 regression + new green on Colossus.
+- **Stage 6.4c step 2 — frontend (`aff6062`, this final commit):**
+  - `ENDPOINTS.RUNS.restart(runId)`, `restartRun()` API, `useRestartRun()` hook.
+  - `src/components/domain/RestartFromHereButton.tsx` — parallel to `ForkFromHereButton`. Wire key `from_event_id`. Copy explicitly promises "resets files on disk" per ADR-026 §Storage.
+  - Mounted next to `ForkFromHereButton` in the event-inspector aside on `src/app/(dashboard)/runs/[runId]/page.tsx` — same visibility gate (`displayEv.type==='message' && source==='user'`), same feature flag (`NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED`).
+  - 12 vitest cases green; combined with fork button = 22/22. `pnpm typecheck` clean.
 
 ## What remains before Stage 6.4c Definition of Done
 
-1. **Step 2 (frontend, next session):** `RestartFromHereButton.tsx` timeline component.
-   - Visible only on `MessageEvent` events with `source: 'user'`.
-   - Gated behind `NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED` (same flag family as fork-from-here in step 1c).
-   - Calls `POST /api/runs/{run_id}/restart` with `{ from_event_id }`, on success navigates the router to `/runs/{restarted_run_id}` (matches fork's post-action nav).
-   - Include vitest coverage: renders on user message, hidden on assistant, disabled while pending, error-toast on non-2xx, success-nav on 200.
-   - Wire the button into the event inspector alongside the existing "Fork from here" button.
-2. **End-to-end Colossus verify script** — extend the pattern from `scripts/stage-6.4b-verify.sh`:
-   - Create a run with a two-message conversation (user + assistant reply).
-   - POST `/api/runs/{id}/restart` with `from_event_id` of the user message.
-   - Assert HTTP 200, new `restarted_run_id`, new `worktree_path` (differs from source), and that the new worktree's HEAD matches the sha captured for the anchor event.
-   - Assert failure paths: unknown event id → 404, no-sha ledger row → 409.
+**End-to-end Colossus verify script** (`scripts/stage-6.4c-verify.sh`), following the `scripts/stage-6.4b-verify.sh` pattern:
+
+1. Create a source run against real BFF + real agent-server; wait for two events (initial user + first assistant).
+2. `GET /api/runs/{source_id}/events` → confirm the user event has a captured `sha` in the ledger response.
+3. `POST /api/runs/{source_id}/restart` with `{from_event_id: <user_ev_id>}`.
+4. Assert HTTP 200, response has `restarted_run_id`, `worktree_path` distinct from the source's working dir, and `reset_to_sha` == the sha from step 2.
+5. Poke the new run's worktree via a lightweight sh-inside-BFF proxy or just `git -C {worktree_path} rev-parse HEAD` — must equal `reset_to_sha`.
+6. Negative paths — asserts against a fresh source run: (a) unknown `from_event_id` → 404; (b) `from_event_id` pointing at an assistant event → 409; (c) `from_event_id` pointing at a user event with no ledger row → 409.
+7. Best-effort cleanup: `DELETE /api/runs/{restarted_run_id}` + source.
 
 ## Open questions / ambiguities awaiting user
 
-- **None.** ADR-026 §Storage locked the Option-R2 design; step 1d shipped on that design without deviation.
+- **None** on backend or frontend. On the verify script:
+  - Should this be an end-to-end **shell** harness like `stage-6.4b-verify.sh`, or a pytest-under-BFF-venv integration test analogous to `test_runs_restart.py` but hitting real HTTP? Pattern reads shell — will follow that unless corrected.
 
 ## Exact next action
 
-Start step 2 (frontend):
+Author `scripts/stage-6.4c-verify.sh` following the `stage-6.4b-verify.sh` shape. Before writing, read `stage-6.4b-verify.sh` end-to-end to inherit its idioms (setup, assertion helpers, cleanup trap). Then verify a full green run against the live Colossus BFF + agent-server on `:8081` / `:8090`.
 
-```bash
-cd ~/dev/forge-oh && git pull --ff-only
-```
-
-Then read the existing "Fork from here" button implementation for the pattern:
-
-```bash
-grep -rln --include='*.tsx' 'from_event_id\|ForkFromHere\|useForkRun' src/ | head
-```
-
-Build `src/components/timeline/RestartFromHereButton.tsx` from that template, add vitest, wire it into the event inspector next to the fork button. Backend is stable at `7bca18e`; frontend can be developed and shipped independently since the endpoint contract is locked.
+Backend at `7bca18e`, frontend at `aff6062`, close-out log entries appended (see `BUILD_LOG.md`).
