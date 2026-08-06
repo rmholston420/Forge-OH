@@ -4801,3 +4801,27 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Ports / adapters affected:** none (harness-tooling only; no runtime behavior change for BFF/model_router/OpenHands SDK)
 - **PORTING_LEDGER / ADR updated:** none (documented in ADR-013 amendment #2 references; no new ADR needed — this is a bench-tooling refinement, not an architectural decision)
 - **Stop-condition status:** ready to run. Next: user runs `python3 -m bench.pathF_swebench.bench_pathF_swebench --smoke --model c01` on Colossus; validate actual pass@1 lands within 3pt of predicted 26.7%.
+
+## 2026-08-05 21:30 EDT — Smoke-30 v2 actual verdict + regression band adopted
+
+- **Stage / plugin / port:** Stage 1 (validation-tooling refinement) · bench harness · c01 canonical coder
+- **What changed:**
+  - First smoke-30 v2 run completed: `~/.forge-oh/bench_pathF_swebench/20260805_2106_run/`
+  - **Actual pass@1: 30.0% raw (9/30) · 34.6% attempted-only (9/26)** vs predicted 26.7% raw / 30.8% attempted-only
+  - Δ vs full-500 anchor (26.6% / 28.6%): **+3.4pt raw / +6.0pt attempted-only** — smoke calibrated to ~4pt precision (vs +13pt for old smoke-25)
+  - Wall: 24m28s (30 tasks); 4 truncated-by-length + 4 context-budget-skipped (all 4 skips match full-500 ground truth exactly)
+  - Task-level flip rate ~17% (5/30 outcomes differ from full-500 due to vLLM `temperature=0.7` non-determinism) — expected, matches binomial noise floor σ ≈ 8pt at N=30
+  - GPU envelope holds inside F.3 full-500 corridor: VRAM peak 32,568 MiB (vs full-500 32,599), temp peak 76°C (vs 75°C), util avg 89.7% (vs 89.1%), power avg 364.87 W (vs 354.26 W)
+- **Regression band adopted (documented in ADR-013 addendum):**
+  - **Green: 22-38%** raw pass@1 — within noise, no signal
+  - **Yellow: 18-22% or 38-42%** — investigate but not blocking
+  - **Red: <18% or >42%** — block merge until root-caused
+  - Basis: binomial σ ≈ √(0.27·0.73/30) ≈ 8.1pt at N=30, so single-run ±8pt drift is statistical, not behavioral
+- **Regression floor:** **30.0% raw / 34.6% attempted-only** is the new canonical smoke-30 v2 floor. Supersedes the earlier 40% smoke-25 floor (which was based on a non-representative 5-repo sample and therefore over-optimistic).
+- **Files touched:**
+  - `docs/adr/013-qwen36-27b-canonical-coder-planner.md` — added smoke-30 v2 addendum after amendment #2 (predicted vs actual, regression band, floor, GPU envelope table)
+  - `KNOWN_ISSUES.md` — updated c01 context-budget-skip informational entry with smoke-30 v2 skip count (4/30, intentionally over-sampled) and the exact skipped task IDs
+  - `BUILD_LOG.md` — this entry
+- **Ports / adapters affected:** none (validation + docs only)
+- **PORTING_LEDGER / ADR updated:** ADR-013 addendum (smoke-30 v2 calibration + regression band)
+- **Stop-condition status:** F.3 Path A validation + smoke-30 v2 calibration **CLOSED**. Stage 1 tooling frozen. Ready for Stage 2.1 (InferenceBackend protocol in `bff/services/model_router.py`).

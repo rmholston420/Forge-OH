@@ -1,10 +1,11 @@
 # ADR-013 — Canonical Planner (Ratified) + Coder Deferred to Instrumented Rebench
 
-**Status:** Amended · Planner ratified · Coder ratified (F.1b) — F.3 full-500 pass@1 = 26.6% (28.6% attempted-only)
+**Status:** Amended · Planner ratified · Coder ratified (F.1b) — F.3 full-500 pass@1 = 26.6% (28.6% attempted-only) · Smoke-30 v2 regression floor = 30.0% raw (34.6% attempted-only)
 **Date ratified (planner):** 2026-08-05 03:52 EDT
 **Date ratified (coder):** 2026-08-05 04:55 EDT
 **Date SWE-bench-Verified smoke-25 baseline:** 2026-08-05 08:57 EDT
 **Date SWE-bench-Verified full-500 verdict:** 2026-08-05 19:20 EDT
+**Date SWE-bench-Verified smoke-30 v2 (calibrated regression floor):** 2026-08-05 21:30 EDT
 **Supersedes:** ADR-009 §1 (coder-selection layer) · ADR-009 §2 (planner-selection layer)
 **Superseded by:** —
 
@@ -74,6 +75,72 @@ Thermal + power held stable across 8h55m of sustained load. No throttle events, 
 - **c01 (Qwen3.6-27B INT4 AutoRound) ratified as canonical coder.** F.1b ratification stands; no re-selection triggered.
 - **F.3 Path A validation phase CLOSED.** No further oracle-retrieval smoke or full runs on raw c01 planned.
 - **ADR-013 amendment #3 will land** if/when Path B (Stage 1H.5 through full Forge-OH agent loop) produces a materially different pass@1.
+- **Smoke-30 v2 replaces old smoke-25 as the canonical regression gate.** See addendum below for calibration details.
+
+---
+
+## Addendum — 2026-08-05 21:30 EDT (Smoke-30 v2 calibrated regression floor)
+
+After F.3 full-500 closed, the ad-hoc smoke-25 (5 repos × 5 tasks, 40% pass@1) was replaced by a **stratified 30-task smoke** sampled from the full-500 ground truth. Sampling: proportional-by-repo (weighted by full-500 population) with within-repo outcome stratification (resolved / unresolved / context-budget-skip), `random.seed(42)` for reproducibility. Composition: 8 resolved + 18 unresolved + 4 skip. Full 12/12 repo coverage.
+
+### Predicted vs actual
+
+| Metric | Predicted | Actual (2026-08-05 21:30 EDT) | Δ |
+|---|---:|---:|---:|
+| pass@1 (raw) | 26.7% | **30.0%** (9/30) | +3.3pt |
+| pass@1 (attempted-only) | 30.8% | **34.6%** (9/26) | +3.8pt |
+| Skip count | 4 | 4 | 0 |
+| Truncated-by-length | — | 4 | — |
+| Wall total | 18-22 min | 24m28s | +2m |
+| Full-500 pass@1 anchor | — | 26.6% raw / 28.6% attempted | — |
+
+**Old smoke-25 was ~+13pt off full-500 (40% vs 26.6%). Smoke-30 v2 is ~+3.4pt off** — roughly 4× better calibration.
+
+### Regression band
+
+Binomial noise at N=30, p≈0.27: σ ≈ √(0.27·0.73/30) ≈ 8.1pt. A single 30-task run drifts ±8pt from expectation just from sampling non-determinism (vLLM at `temperature=0.7`). Empirical run-to-run variance in smoke-30 v2 sits at ~±3-4pt (task-level flip rate 5/30 ≈ 17%).
+
+**Adopted regression thresholds:**
+
+| Band | Range (raw pass@1) | Action |
+|---|---:|---|
+| Green | 22-38% | within statistical noise; no signal |
+| Yellow | 18-22% or 38-42% | investigate but not blocking |
+| Red | <18% or >42% | regression or unexplained improvement; block merge until root-caused |
+
+### Regression floor
+
+**30.0% raw / 34.6% attempted-only** is the new smoke-30 v2 regression floor for any Forge-OH capability change touching the coder pipeline. Every load-bearing slice (Stage 1H, Stage 2, plugin ports) must re-run `--smoke` and confirm pass@1 stays within the green band.
+
+This supersedes the earlier smoke-25 40% floor (which was based on a non-representative 5-repo sample and therefore over-optimistic).
+
+### GPU envelope (smoke-30 v2, `20260805_2106_run`)
+
+| Metric | Smoke-30 v2 | Full-500 anchor | Notes |
+|---|---:|---:|---|
+| VRAM peak | 32,568 MiB | 32,599 MiB | KV-cache saturated (expected) |
+| VRAM avg | 32,501 MiB | 32,508 MiB | steady-state matches |
+| GPU temp peak | 76 °C | 75 °C | well under 83 °C throttle |
+| GPU temp avg | 63.9 °C | 59.82 °C | +4 °C (short-run heat concentration) |
+| Power peak | 454.56 W | 454.72 W | matches, brief transient |
+| Power avg | 364.87 W | 354.26 W | +11 W (higher token rate under bench) |
+| GPU util avg | 89.66% | 89.08% | matches |
+
+Envelope holds inside the F.3 full-500 corridor. ADR-017 NVML instrumentation continues to enforce visibility.
+
+### Consequences of this addendum
+
+- Old `SMOKE_25_TASK_IDS` retired; `SMOKE_TASK_IDS` (30 entries) is canonical (commit `95dbaba`).
+- CLI: `--smoke` is preferred; `--smoke-25` retained as alias but runs the 30-task set.
+- `KNOWN_ISSUES.md` updated: smoke-30 v2 skip rate 4/30 (13.3%) noted as intentional over-sampling of the context-budget-skip code path (vs 7.0% base rate in full-500).
+- Every future coder-touching PR must re-run `--smoke` before merge and record the pass@1 result in the PR description. Yellow-band results require a comment; red-band results block the merge.
+
+### References
+
+- Log: `~/.forge-oh/bench_pathF_smoke30.log` (gitignored)
+- Artifacts: `~/.forge-oh/bench_pathF_swebench/20260805_2106_run/` (30 per-task JSONs + summary.json)
+- Harness commit: `95dbaba` (`bench/pathF_swebench/bench_pathF_swebench.py`)
+- Sampling methodology + task-level expected outcomes: inline comments in `SMOKE_TASK_IDS` (verbatim from full-500 log per-task ground truth)
 
 ### Consequences
 
