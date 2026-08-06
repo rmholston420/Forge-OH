@@ -169,3 +169,20 @@ Format per entry:
   - `src/components/domain/EventCard.tsx` — LSP badge + LSP-family icons
   - `docs/adr/018-serena-lspclient-integration.md` — design decisions and spec-diff record
 - **Rollback:** set `SERENA_ENABLED=false` in `.env` and restart BFF. Registration coroutine no-ops. No frontend rollback needed — the LSP icons and badge are dead code when no LSP-typed events arrive.
+
+## Kosmos `ops/compose/memory.yml` (referenced 2026-08-06 · Stage 4.5 · ADR-019)
+
+- **Type:** dependency reference (not vendored). Forge-OH does not copy Kosmos code; this ledger entry records the cross-repo dependency locked by ADR-019.
+- **Source:** `github.com/rmholston420/kosmos` — path `ops/compose/memory.yml`.
+- **Pinned commit:** `c455165bca0d645f0d43572d0c286dca7033d31d` (Kosmos HEAD as of ADR-019 acceptance).
+- **SPDX license:** MIT (Kosmos `pyproject.toml` → `license = { text = "MIT" }`).
+- **What Forge-OH depends on:**
+  - Container name `kosmos-dozerdb` and image `graphstack/dozerdb:5.26.27`.
+  - Bolt endpoint `bolt://127.0.0.1:7687` (host port 7687).
+  - HTTP endpoint `http://127.0.0.1:7474` (host port 7474).
+  - APOC plugin available (`NEO4J_PLUGINS: '["apoc"]'`).
+- **What Forge-OH does NOT depend on:**
+  - Kosmos's exact password (`kosmos-dev-password`) — Forge-OH holds its own in `.env.neo4j`.
+  - Kosmos's heap sizing — informational only.
+- **Rollback / drift detection:** if Kosmos changes any of the "depended-on" items above, Forge-OH's `GET /api/repograph/health` breaks. Re-verify against the Kosmos file at the pinned SHA and either re-pin (updating this entry) or file a new ADR if the change is incompatible.
+- **Migration to Option B (if ever required):** see ADR-019 D4 — Kosmos brings up a second DozerDB with a new container name and different port bindings; Forge-OH keeps its existing binding unchanged.

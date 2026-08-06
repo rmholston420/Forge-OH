@@ -106,6 +106,14 @@ Any new retrieval capability must be pitched as "strengthens Tier N because …"
 
 ---
 
+## Graph Storage (DozerDB)
+
+Forge-OH does **not** own the DozerDB container. The canonical spec is Kosmos's `ops/compose/memory.yml` at `github.com/rmholston420/kosmos`. The container is named `kosmos-dozerdb`, image `graphstack/dozerdb:5.26.27`, Bolt on `127.0.0.1:7687`, HTTP on `127.0.0.1:7474`. Forge-OH RepoGraph writes to the `forgeoh` database inside that shared instance; Kosmos memory plugins use different database names. This is ratified by ADR-019.
+
+**Do not add DozerDB to Forge-OH's `docker-compose.yml` or `docker-compose.dev.yml`** — doing so forks the deployment surface and breaks Option A. If a completely isolated Forge-OH DozerDB is ever needed (e.g., CI without Kosmos co-located), use the same image tag but a different container name and update ADR-019 to record the exception. See `PORTING_LEDGER.md` for the pinned Kosmos SHA.
+
+---
+
 ## Commit Message Format
 
 ```

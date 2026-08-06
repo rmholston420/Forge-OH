@@ -596,6 +596,8 @@ EOF
 
 ## 4.5 Decision point: DozerDB consolidation (resolve before Stage 5)
 
+> **RESOLVED 2026-08-06 01:15 EDT — Option A (Kosmos-canonical shared instance).** See `docs/adr/019-dozerdb-consolidation.md` for the decision, the facts gathered, and the D1–D4 corollaries. Facts summary: zero `dozer.*` procedure calls in Kosmos (`grep -rn` confirmed); Kosmos owns the canonical DozerDB definition at `github.com/rmholston420/kosmos:ops/compose/memory.yml`, pinned to commit `c455165bca0d`; Forge-OH's compose files do not define DozerDB; the current live `kosmos-dozerdb` container on Colossus is the shared instance with `forgeoh` as an isolated database name (547 File + 2150 Symbol nodes, verified 2026-08-03 07:11 EDT and still current). No code changes required for § 4.5. `PORTING_LEDGER.md` has the corresponding dependency reference entry.
+
 This is a real architectural decision, not a mechanical task — flag it explicitly and get sign-off before proceeding to Stage 5's memory-port work.
 
 ### 4.5.1 Gather the facts needed to decide

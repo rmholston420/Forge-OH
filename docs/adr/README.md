@@ -18,6 +18,7 @@ Index of ADRs under `docs/adr/`. Numbering is sequential; gaps (e.g. ADR-010) ar
 | [016](./016-colossus-github-mirror-parity.md) | Colossus ↔ GitHub mirror parity | Ratified | — | — |
 | [017](./017-bench-nvml-mandatory.md) | NVML GPU sampling mandatory on every bench harness | Ratified | — | — |
 | [018](./018-serena-lspclient-integration.md) | Serena LSPClient integration via MCP passthrough (Stage 4.4) | Accepted | — | — |
+| [019](./019-dozerdb-consolidation.md) | DozerDB consolidation: Kosmos-canonical shared instance (Stage 4.5) | Accepted | — | — |
 
 ## Authoring workflow
 

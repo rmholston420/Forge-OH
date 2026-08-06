@@ -5350,3 +5350,22 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   - `src/tests/unit/EventCard-lsp.test.tsx` — ops list extended to 11.
 - **Stop-condition status:** § 4.4 **CLOSED**. Automated gate green, live gate green, agent-server confirms 21-tool Serena instance. Deferred to Stage 4 exit sweep: an agent-driven end-to-end symbol rename (not part of § 4.4 DoD).
 - **Next up:** § 4.5 — DozerDB consolidation. Requires a user decision between Option A (shared DozerDB instance, Kosmos-donor-friendly) vs Option B (dedicated Forge-OH DozerDB). Hard blocker for the Stage 4 exit gate. Agent will inspect the Kosmos donor for `dozer.*` procedure calls first, then present both options with a recommendation.
+
+## 2026-08-06 01:15 EDT — Stage 4.5: DozerDB consolidation decision (ADR-019)
+
+- **Decision:** Option A — single shared DozerDB instance, Kosmos-canonical.
+- **Rationale (facts gathered from `github.com/rmholston420/kosmos` HEAD `c455165b`):**
+  - Zero `dozer.*` procedure calls anywhere in the Kosmos tree (`grep -rn "dozer\." --include="*.py"` returned no hits). Kosmos accesses DozerDB exclusively through the stock `neo4j` async Python driver over Bolt — no fork-specific dependency.
+  - Kosmos owns the canonical DozerDB definition at `ops/compose/memory.yml`: container `kosmos-dozerdb`, image `graphstack/dozerdb:5.26.27`, ports 7474/7687, plugins `["apoc"]`, heap 2G initial / 4G max, pagecache 2G, healthcheck via `cypher-shell`. This is the same container currently running on Colossus.
+  - Forge-OH's `docker-compose.yml` and `docker-compose.dev.yml` do NOT define DozerDB — Forge-OH connects to whatever DozerDB is listening on `bolt://127.0.0.1:7687`.
+  - Database-per-workload isolation is already in code: ADR-006 established `forgeoh`; `openhands_tools_ext/repograph/store.py` prefixes all constraints/indices with `forgeoh_*`; `bff/settings.py` defaults `neo4j_database = "forgeoh"`.
+  - Live state on Colossus (verified 2026-08-03 07:11 EDT, still current): the Kosmos-spec `kosmos-dozerdb` container has `forgeoh` created inside it, indexed to 547 File + 2150 Symbol nodes. Consolidation was already in effect operationally; this ADR only ratifies it.
+- **Affects:** Stage 5's Kosmos-ported `semantic_memory_path.py` will target the same shared `kosmos-dozerdb` instance via Bolt at `127.0.0.1:7687`, using a different database name from `forgeoh`. No connection-string changes needed on either side.
+- **Files touched:**
+  - `docs/adr/019-dozerdb-consolidation.md` (new — the ADR with D1–D4 corollaries).
+  - `docs/adr/README.md` — index row appended.
+  - `PORTING_LEDGER.md` — Kosmos dependency reference entry (pinned SHA `c455165bca0d645f0d43572d0c286dca7033d31d`, SPDX MIT).
+  - `docs/reconciliation-plan-stage-4.md` — `RESOLVED` banner in § 4.5 pointing at ADR-019.
+  - `AGENTS.md` — new `## Graph Storage (DozerDB)` section anchored on ADR-019.
+- **Stop-condition status:** § 4.5 **RESOLVED**. Stage 4 exit gate item "DozerDB consolidation decision (4.5) explicitly confirmed by the project owner and logged" now green. All eight manual-verification items from the reconciliation plan's exit gate are complete.
+- **Next up:** Stage 4 close-out entry. Then Stage 5.1 — port `ports/memory.py`, `ports/vector.py`, `ports/embeddings.py` verbatim from Kosmos.
