@@ -6915,3 +6915,19 @@ Next: Stage 7.1 begins after the queued 30-test benchmark confirms Stage 6 gains
 **Ledger**: n/a (no new port vendored).
 
 **Stop condition**: Full backend + FE exit gate must pass with 0 failures before running the 30-test benchmark.  Now pending re-run.
+
+## 2026-08-06 11:49 EDT — Stage 6 exit-gate residual: .env leaks into pytest
+
+**What**: The 11:46 EDT `@property` fix removed the isolation bomb but the underlying `.env` leak (via `bff.services.model_router` calling `load_dotenv(".env")` at import time) still overrode the default.  Fixed the assertion to `monkeypatch.delenv` the three keys before checking defaults.
+
+**Stage/plugin/port**: Stage 6 close · `bff.tests.test_inference_backends`
+
+**Files touched**:
+- `bff/tests/test_inference_backends.py` — `monkeypatch.delenv` LLM_CODER_URL / LLM_PLANNER_URL / VLLM_URL
+- `DEBUG_LOG.md` — 1 new entry
+
+**Ports/adapters affected**: none (test-only change).
+
+**Ledger**: n/a.
+
+**Stop condition**: Full backend + FE exit gate green.  This is expected to be the last flake.

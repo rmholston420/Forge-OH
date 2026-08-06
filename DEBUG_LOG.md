@@ -2031,3 +2031,22 @@ with (
 **Files changed**: `bff/tests/test_repograph_router.py`
 
 **Prevention**: When a router calls a helper (`get_neo4j_driver`, etc.) that itself reads settings, patching only the router-level `get_settings` is not enough — the helper reads real settings.  Patch both, or refactor the helper to accept an explicit settings arg.
+
+## 2026-08-06 11:49 EDT — Repo .env leaks LLM_CODER_URL into pytest via model_router import
+
+**Symptom**: `test_registry_vllm_ports_match_router_env_defaults` still fails after the `@property` fix (2026-08-06 11:46 EDT).  Failure:
+```
+AssertionError: assert False
+ +  where False = <'http://localhost:8000'>.endswith(':8501')
+```
+`LLM_CODER_URL` is empty in the shell, but `.oh-venv/bin/python -c 'import os; print(os.getenv("LLM_CODER_URL"))'` also returns `None`.  The env is set INSIDE pytest, not by the shell.
+
+**Affected**: Stage 6 exit gate · `bff.tests.test_inference_backends` · `bff.services.model_router` import-time `load_dotenv(".env")`
+
+**Root cause**: `bff/services/model_router.py` calls `load_dotenv(dotenv_path=".env", override=False)` at module import.  The repo `.env` (edited today by `scripts/vllm-coder-bringup.sh` for F.19-pre) contains `LLM_CODER_URL=http://localhost:8000`.  Any test that transitively imports `model_router` (which happens throughout the BFF test suite) triggers the `.env` load and pollutes `os.environ` for the rest of the pytest process.  The test asserts DEFAULTS but was reading whatever `.env` said.
+
+**Fix applied**: Delete the three env keys with `monkeypatch.delenv(..., raising=False)` at the top of the test.  Works because `VLLMBackend.base_url` is now a `@property` (see 2026-08-06 11:46 EDT) that re-reads env at access time — before the property fix, this `monkeypatch.delenv` would have been a no-op because the URL was frozen at `BACKEND_REGISTRY` init.
+
+**Files changed**: `bff/tests/test_inference_backends.py`
+
+**Prevention**: Any test that asserts a code default should explicitly clear the corresponding env key with `monkeypatch.delenv` — never assume the shell/`.env` is clean.  The `.env`-at-import pattern in `model_router.py` is architectural and can't be removed (BFF prod path needs it).

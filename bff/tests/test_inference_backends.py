@@ -51,7 +51,17 @@ def test_registry_role_hints_match_stage2_plan():
     assert r["sglang"].role_hint == "any"
 
 
-def test_registry_vllm_ports_match_router_env_defaults():
+def test_registry_vllm_ports_match_router_env_defaults(monkeypatch):
+    # This test asserts the DEFAULTS.  In a real dev shell the repo
+    # ``.env`` (loaded by ``bff.services.model_router`` at import) may
+    # export ``LLM_CODER_URL`` / ``LLM_PLANNER_URL`` / ``VLLM_URL`` — e.g.
+    # after ``scripts/vllm-coder-bringup.sh`` bakes in port 8000 for the
+    # bench harness.  Explicitly delete those keys so we assert the code
+    # defaults, not the ambient shell/.env state.  See DEBUG_LOG
+    # 2026-08-06 11:49 EDT for the original leak.
+    monkeypatch.delenv("LLM_CODER_URL", raising=False)
+    monkeypatch.delenv("LLM_PLANNER_URL", raising=False)
+    monkeypatch.delenv("VLLM_URL", raising=False)
     r = BACKEND_REGISTRY
     assert r["vllm-coder"].base_url.endswith(":8501")
     assert r["vllm-planner"].base_url.endswith(":8511")
