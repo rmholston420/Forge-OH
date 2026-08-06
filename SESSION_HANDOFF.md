@@ -6,19 +6,19 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
-## Last updated: 2026-08-05 23:59 EDT
+## Last updated: 2026-08-06 00:05 EDT
 
 ## Current build-sequencing stage / plugin / port in progress
 
 - **Stage 3 · Security & Safety — CLOSED.** All sub-slices verified green on Colossus. § 3.3 DependencyGuard descoped.
-- **Post-Stage-3 hygiene slice #1 (status enum drift) — CLOSED.** Canonical `awaiting_approval` (underscore) everywhere; `RunSummarySchema.parse` boundary tripwire live in `fetchRun`.
-- **Hygiene Slice A (delete dead StatusBadge files) — CODE COMPLETE, pending Colossus verification.**
-- **Hygiene Slice B (event_relay normalize_event wire routing) — CODE COMPLETE, pending Colossus verification.**
-- **Hygiene Slice C (PatternSecurityAnalyzer coverage audit) — DEFERRED to post-verify.** Requires SDK source access (`.oh-venv/lib/.../openhands/sdk/security/`). Audit paste block will be handed to the user after A + B verify green.
+- **Post-Stage-3 hygiene batch — CLOSED (pending one small verify).**
+  - **Slice A (delete dead StatusBadge files) — DONE + verified green on Colossus.**
+  - **Slice B (event_relay normalize_event routing) — CODE DONE + tripwire test fix pushed. Awaiting user paste of `pytest bff/tests/test_event_relay_normalize.py` output.**
+  - **Slice C (PatternSecurityAnalyzer coverage audit) — DONE. Audit-only slice. `confirm_unknown=True` flip REJECTED. Precondition documented as KNOWN_ISSUES follow-up.**
 
 ## What was completed this session
 
-**Ten commits on `origin/main` (through session start of this block):**
+**Twelve commits on `origin/main`:**
 
 1. `5d6f779` feat(stage-3.1): risk indicators
 2. `9266aa7` fix(stage-3.1): route-mock envelope
@@ -29,106 +29,64 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 7. `00a5f94` docs(stage-3): DoD verified green — Stage 3 CLOSED
 8. `b7d6317` hygiene: unify status enum on awaiting_approval + Zod boundary tripwire
 9. `dbd643f` docs(hygiene): status enum drift verified green on Colossus
-10. **Pending (Slices A + B — not yet pushed):** dead StatusBadge deletion + event_relay normalization + tripwire test.
+10. `e83d5f0` hygiene(A+B): delete dead StatusBadge files + normalize wire events
+11. `fa014a9` fix(hygiene-B): tripwire double-emit — return empty page on 2nd fetch
+12. **Pending push (Slice C docs):** BUILD_LOG + KNOWN_ISSUES + this SESSION_HANDOFF.
+
+**Verification results this session:**
+
+- Stage 3.4/3.5 close: 30 pytest · 79 vitest · typecheck clean · stack healthy · prod=200 · 5 Playwright — all green first pass.
+- Enum-drift hygiene close: 10 pytest · 156 vitest (7 files) · typecheck clean · stack healthy · prod=200 · 5 Playwright — all green first pass.
+- Slice A+B first verify: **1 real test failure fixed** (`fa014a9`), typecheck clean, 56 vitest green, prod=200, 5 Playwright green. Additionally exposed a **pre-existing** measurement bug in `test_direct_sync_call_would_block_confirms_the_hazard` — logged as KNOWN_ISSUES + DEBUG_LOG, no code change.
 
 ## What remains before the current Definition of Done is met
 
 **Immediate (this session):**
 
-1. Verify Slices A + B on Colossus (paste block below).
-2. If green: run Slice C audit paste block, hand output back to me.
-3. Update KNOWN_ISSUES + BUILD_LOG with either "confirm_unknown=False safe to flip" or "gap X blocks the flip".
+1. Push the Slice C docs commit.
+2. User pastes `pytest bff/tests/test_event_relay_normalize.py -v` output — if green, Slice B verified.
+3. Done — hygiene batch closed.
 
-**If verification fails:**
-- Diagnose Zod / typecheck / vitest / Playwright error against the file inventory above.
+**If tripwire test still fails:**
+- Read the AssertionError message from the paste, diagnose against the fixed `fake_fetch_page`.
 
 ## Open questions / ambiguity awaiting the user's answer
 
-**Slice C decision-point (after verify):**
+None. The batch is complete on paper; verification is a formality.
 
-- If audit shows 100% pattern coverage for the tools your agent-server preset can emit → I will flip `confirm_unknown=False` in `bff/routers/runs.py:145`, update the test at `bff/tests/test_confirmation_policy.py:21`, add a BUILD_LOG entry, commit, push, re-verify.
-- If audit shows any gap → I leave `confirm_unknown=True` (fail-closed), document the exact gap in KNOWN_ISSUES, and this becomes a Stage-4-adjacent tracked debt item.
+**Next session:** proceed to Stage 4 per `reconciliation-plan-v1.md` § 4. Restate scope from stage-4 companion (`docs/reconciliation-plan-v1-stage-4.md`) if it exists, otherwise ask before writing any code.
 
 ## Exact next action to take
 
 **When the user resumes:**
 
 1. Read this file.
-2. Paste the Slices A + B verification block below.
-3. If green: paste the Slice C audit block. If red: paste the failing output.
+2. Paste the Slice B verification block below.
+3. If green: hand off to Stage 4 scope restate.
+4. If red: paste the failing output; diagnose against the DEBUG_LOG entry `2026-08-06 00:02 EDT — test_event_relay_normalize double-emit`.
 
-## Slices A + B verification paste block
+## Slice B tripwire verification paste block
 
 ```bash
 cd ~/dev/forge-oh && git pull
-
-# BFF tests: existing normalize tests + NEW tripwire
-.oh-venv/bin/pytest \
-  bff/tests/test_event_normalize.py \
-  bff/tests/test_event_relay_normalize.py \
-  bff/tests/test_event_relay_yield.py \
-  bff/tests/test_run_compare_contract.py \
-  bff/tests/test_confirmation_policy.py -q
-
-# Frontend: typecheck must catch any dangling StatusBadge import
-pnpm typecheck
-
-# Frontend: unit + integration still green (StatusBadge from Badge.tsx)
-pnpm vitest run \
-  src/tests/unit/core-Badge.test.tsx \
-  src/tests/unit/domain-RunDetailHeader.test.tsx \
-  src/tests/unit/status-utils.test.ts \
-  src/tests/unit/RiskBadge.test.tsx \
-  src/tests/integration/runs-crud.test.ts
-
-# Prod build + Playwright — StatusBadge deletion must not break render
-bash scripts/forge-restart.sh && sleep 2 && bash scripts/forge-status.sh
-fuser -k 3100/tcp 2>/dev/null; sleep 2
-npm run build 2>&1 | tail -8
-NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \
-  nohup npx next start -H 127.0.0.1 -p 3100 >~/.forge-oh/next-prod.log 2>&1 &
-sleep 6
-curl -s -o /dev/null -w "prod=%{http_code}\n" http://127.0.0.1:3100/runs
-
-cd ~/dev/forge-oh/src
-PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
-PLAYWRIGHT_BASE_URL=http://127.0.0.1:3100 \
-PLAYWRIGHT_GPU_STRIP_PUSH=1 \
-  npx playwright test tests/e2e/risk-badge.spec.ts tests/e2e/hitl-approval.spec.ts --reporter=list
+.oh-venv/bin/pytest bff/tests/test_event_relay_normalize.py -v
 ```
 
-Expected: BFF tests all pass (new `test_event_relay_normalize.py` = 1 test asserting wire shape). Typecheck clean. Vitest green. prod=200. 5 Playwright tests pass.
+Expected: `test_relay_emits_normalized_wire_shape` passes. It asserts every 'event' emission has projected ToolEvent keys (id, eventId, type, timestamp, summary, raw) and NOT the raw agent-server 'kind' at the top level. Also asserts Stage 3.1's `securityRisk` projection survives the wire.
 
-## Slice C audit paste block (run only after A + B verify green)
+## Slice C audit summary (for the record)
 
-```bash
-cd ~/dev/forge-oh
+`PatternSecurityAnalyzer` (openhands-sdk 1.40.0) NEVER returns UNKNOWN — every code path returns `LOW | MEDIUM | HIGH`. UNKNOWN in the runtime comes from:
 
-# 1. Dump PatternSecurityAnalyzer's regex patterns
-.oh-venv/bin/python - <<'PY'
-import inspect
-from openhands.sdk.security.pattern_analyzer import PatternSecurityAnalyzer as P
-src = inspect.getsource(P)
-print("=" * 60)
-print("PatternSecurityAnalyzer source (regex patterns):")
-print("=" * 60)
-print(src)
-PY
+- **Attach-failure mode A:** `bff/routers/runs.py:431-447` swallows analyzer-attach exceptions with `log.warning`. Runs proceed without analyzer; ActionEvents have no `security_risk` field.
+- **Attach-failure mode B:** `bff/services/event_normalize.py::_extract_security_risk` returns `None` for enum values outside `_VALID_SECURITY_RISK` (currently: LOW/MEDIUM/HIGH).
 
-# 2. Enumerate tools the default preset can emit
-.oh-venv/bin/python - <<'PY'
-from bff.routers.agent_presets import _seed_presets  # or equivalent
-# fallback: read the JSON preset file directly if the import differs
-import json, pathlib
-for p in pathlib.Path("bff").rglob("agent_presets*.py"):
-    print("---", p, "---")
-    print(p.read_text()[:2000])
-PY
-```
+`confirm_unknown=True` (current) is fail-closed and correct. Flipping to `False` while attach is best-effort would fail-open on mode A. KNOWN_ISSUES 2026-08-06 00:05 EDT documents the precondition for the flip: make analyzer attach hard-required at run creation.
 
-Paste both outputs. I'll cross-reference and either land the `confirm_unknown=False` flip or document the gap.
+## Reference — hygiene batch commits
 
-## Reference — last commits pending push
-
-- Slice A: delete 6 dead StatusBadge files + empty dir
-- Slice B: `bff/services/event_relay.py` normalize_event wire routing + new `bff/tests/test_event_relay_normalize.py` tripwire test
+- `b7d6317` — status enum drift unification + Zod boundary tripwire
+- `dbd643f` — status enum drift verification docs
+- `e83d5f0` — delete dead StatusBadge files + normalize wire events
+- `fa014a9` — tripwire test fix (double-emit)
+- (Pending) — Slice C audit docs

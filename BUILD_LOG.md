@@ -5127,3 +5127,59 @@ Five commits (`5d6f779`..`be6f006`), 79 vitest, 30 pytest (Stage 3 tests), 5 Pla
 - **Ports/adapters affected:** WebSocket wire event shape (BFF → frontend) — now byte-identical to the HTTP bootstrap shape.
 - **ADR/ledger updates:** none required.
 - **Stop-condition status:** Slice B COMPLETE on disk pending Colossus pytest verification of the new tripwire test.
+
+## 2026-08-06 00:05 EDT — Hygiene Slice C: PatternSecurityAnalyzer coverage audit — confirm_unknown flip REJECTED
+
+- **What:** Audited openhands-sdk 1.40.0 `PatternSecurityAnalyzer` (from `.oh-venv/lib/python3.12/site-packages/openhands/sdk/security/defense_in_depth/pattern.py`) against the seed preset tool set and the BFF attach path.
+- **Scope:** post-Stage-3 hygiene. Resolves the question "can we flip `confirm_unknown=False` safely?"
+
+### Findings
+
+**1. The analyzer itself has 100% risk coverage. It NEVER returns UNKNOWN.**
+
+`PatternSecurityAnalyzer.security_risk()` return-value tree:
+- empty action content → `LOW`
+- any HIGH pattern match (exec fields) → `HIGH`
+- any INJECTION_HIGH pattern match (all fields) → `HIGH`
+- any MEDIUM pattern match (exec fields) → `MEDIUM`
+- any INJECTION_MEDIUM pattern match (all fields) → `MEDIUM`
+- default: no match → `LOW`
+
+Every code path returns `SecurityRisk.LOW | MEDIUM | HIGH`. There is no `UNKNOWN` branch.
+
+**2. Tool identity is irrelevant to the analyzer.**
+
+Seed presets emit `filesystem`, `bash`, `browser`, `search`. The analyzer scans `action.arguments` content regex-style regardless of which tool the ActionEvent belongs to. No per-tool coverage matrix to audit.
+
+**3. Where does UNKNOWN actually come from? Two attach-failure modes.**
+
+Not from analyzer coverage gaps.
+
+- **Mode A — attach failed at run creation.** `bff/routers/runs.py:431-447` best-effort-attaches the analyzer via `POST /api/conversations/{cid}/security_analyzer`. If the request 4xx/5xx or raises, the failure is `log.warning`-swallowed and the run proceeds without an analyzer. Downstream ActionEvents carry no `security_risk` field. Frontend/BFF render this as UNKNOWN.
+- **Mode B — analyzer returned a value outside `_VALID_SECURITY_RISK`.** `bff/services/event_normalize.py::_extract_security_risk` returns `None` for any unrecognized enum. Frontend renders as UNKNOWN.
+
+### Decision: keep `confirm_unknown=True` (fail-closed)
+
+Flipping `confirm_unknown=False` would only be safe if attach-failure mode A were impossible. It isn't — the attach is best-effort. Under the current architecture:
+
+- `confirm_unknown=True` (current): a run whose analyzer attach silently failed still hits HITL on every ActionEvent. Fail-closed, Stage-3.2 safety guarantee preserved.
+- `confirm_unknown=False` (proposed): a run whose analyzer attach silently failed proceeds without confirmation. Fail-open regression.
+
+**The audit rejects the flip.**
+
+### Follow-up (post-Stage-4 candidate)
+
+If we want to eventually flip to `confirm_unknown=False`, the correct precondition is to **make analyzer attach a hard requirement of run creation**:
+
+- If `POST /api/conversations/{cid}/security_analyzer` returns >= 400 or raises, abort run creation with a clear error rather than swallowing the failure.
+- Then a running conversation is proof the analyzer is attached, and UNKNOWN can only originate from mode B (unrecognized enum value), which is a bug rather than a fail-open path.
+
+Not touching that in this session — out of hygiene scope. Logged as a KNOWN_ISSUES follow-up.
+
+### Files touched
+
+- None (audit-only slice).
+
+### Stop-condition status
+
+- Hygiene Slice C COMPLETE. Audit done, flip rejected, follow-up path documented.

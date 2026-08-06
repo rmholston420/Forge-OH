@@ -9,6 +9,18 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
+## 2026-08-06 00:05 EDT — confirm_unknown=True is required until analyzer attach is hard-required
+
+- **Blocks:** none. Current fail-closed behavior is correct; this issue documents the precondition for a future flip.
+- **Symptom:** Slice C audit (BUILD_LOG 2026-08-06 00:05 EDT) rejected the proposed flip `confirm_unknown=True → False` in `bff/routers/runs.py:145`.
+- **Root cause:** `PatternSecurityAnalyzer` never emits UNKNOWN itself — it always returns LOW/MEDIUM/HIGH. UNKNOWN in the runtime originates from analyzer *attach* failure at run creation (`bff/routers/runs.py:431-447`, best-effort with `log.warning`-swallowed exceptions). Flipping to `confirm_unknown=False` while attach can silently fail would create a fail-open regression on any run whose analyzer attach 4xx/5xx'd or raised.
+- **Attempted fixes:** none. Audit-only.
+- **Precondition to flip safely:** make analyzer attach a hard requirement of run creation. If `POST /api/conversations/{cid}/security_analyzer` returns >= 400 or raises, abort run creation with a clear error. Then a running conversation is proof the analyzer is attached, and UNKNOWN can only come from an unrecognized enum value (a bug, not a fail-open path).
+- **Next investigation:** post-Stage-4. Convert the analyzer attach from `log.warning`-swallow to a hard `raise HTTPException(500, "security analyzer attach failed")`. Add a regression test that a run creation with a mocked-failing analyzer POST returns 500 rather than a run id. Then land the `confirm_unknown=False` flip.
+- **Related BUILD_LOG entry:** 2026-08-06 00:05 EDT — Slice C audit findings.
+
+---
+
 ## 2026-08-06 00:02 EDT — test_event_relay_yield hazard-demonstration test cannot fail
 
 - **Blocks:** none. The G.1 event-loop-yield fix in `bff/services/event_relay.py` is still in place (verified via source read); this issue is a defect in its *regression test*, not the code.
