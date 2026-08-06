@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/core/Skeleton';
 import { EmptyState } from '@/components/core/EmptyState';
 import { DiffViewer } from '@/components/domain/DiffViewer';
 import { bffFetch } from '@/lib/http/bff-client';
+import { ENDPOINTS } from '@/lib/api/endpoints';
 import styles from './compare.module.css';
 
 interface CompareResult {
@@ -36,7 +37,9 @@ function useCompare(baseId: string | null, forkId: string | null) {
     queryKey: ['runs', 'compare', baseId, forkId],
     queryFn: async () => {
       if (!baseId || !forkId) throw new Error('Both run IDs are required');
-      const res = await bffFetch(`/api/runs/compare?base=${baseId}&fork=${forkId}`);
+      // Stage 3.4 — use the ENDPOINTS.RUNS.compare helper so the query-key
+      // contract lives in exactly one place (matches BFF ?base=&fork=).
+      const res = await bffFetch(ENDPOINTS.RUNS.compare(baseId, forkId));
       if (!res.ok) throw new Error(`Compare failed: ${res.status}`);
       return res.json();
     },

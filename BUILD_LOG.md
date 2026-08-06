@@ -4999,3 +4999,37 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **PORTING_LEDGER:** unchanged. No external code vendored.
 - **KNOWN_ISSUES:** appended — BFF/frontend status enum drift (`awaiting_approval` vs `awaiting-approval`). Boundary normalizer covers the ConfirmRisky HITL path; the broader unification is a separate hygiene commit.
 - **Stop-condition status:** Stage 3.2 (real HITL — ConfirmRisky enabled by default; ApprovalBanner wired to real pending events; Approve/Reject drive `/approve` and `/reject`) COMPLETE per plan § 3.2 DoD. Pending Colossus live-run verification for the paste-block final check.
+
+## 2026-08-05 23:38 EDT — Stage 3.2 DoD verified green on Colossus
+
+- **What:** Ran the Stage 3.2 verification paste block on Colossus. All checks green after one iteration.
+- **Results:**
+  - `.oh-venv/bin/pytest bff/tests/test_confirmation_policy.py bff/tests/test_event_normalize.py -q`: 16/16 pass in 0.20s (6 new confirmation-policy + 10 event-normalize).
+  - `pnpm typecheck` (`tsc --noEmit`): clean.
+  - `pnpm vitest run src/tests/unit/RiskBadge.test.tsx`: 8/8 pass in 523ms.
+  - `bash scripts/forge-restart.sh` + `forge-status.sh`: all three healthy (agent-server :8090, BFF :8081, Next.js :3000).
+  - `npm run build` + `npx next start -p 3100`: `/runs` 200.
+  - `npx playwright test tests/e2e/risk-badge.spec.ts tests/e2e/hitl-approval.spec.ts`: 5/5 pass in 1.3s (after fix commit `5e4cd63`).
+- **Iteration:** first Playwright run passed 3/5. Two failures on `getByRole('alert')` strict-mode violation — Next.js 16 route announcer at `#__next-route-announcer__` (also `role="alert"`, `aria-live="assertive"`) collided with the ApprovalBanner. Fixed by scoping the banner locator with `.filter({ hasText: /awaiting your approval/i })` and switching click-flow tests to wait on the button label directly. Fixed in `5e4cd63`; DEBUG_LOG entry filed under `2026-08-05 23:37 EDT`.
+- **Files touched:** `src/tests/e2e/hitl-approval.spec.ts`, `DEBUG_LOG.md`.
+- **Stop-condition status:** Stage 3.2 (`ConfirmRisky(MEDIUM, confirm_unknown=True)` as default; `AlwaysConfirm` escalation via `requireApproval=true`; `ApprovalBanner` wired to real socket `approval_required` events; Approve/Reject drive `/api/runs/:id/approve` and `/reject`) COMPLETE per plan § 3.2 DoD. Ready for Commit 3 (Stage 3.4 + 3.5 — compare-endpoint query-key contract fix).
+
+## 2026-08-05 23:40 EDT — Stage 3.4/3.5 compare-endpoint query-key contract fix
+
+- **Stage/plugin/port:** Stage 3.4 + 3.5 · Security & Safety wrap-up · `GET /api/runs/compare` (BFF) + `ENDPOINTS.RUNS.compare` (frontend helper) + `/runs/compare` page query.
+- **What:**
+  - Fixed `ENDPOINTS.RUNS.compare` in `src/lib/api/endpoints.ts`: `?left=<>&right=<>` → `?base=<>&fork=<>` to match the BFF `compare_runs` signature at `bff/routers/runs.py::compare_runs`. Renamed parameter names `left, right` → `baseId, forkId` for clarity.
+  - Migrated the only live BFF caller of the compare URL (`src/app/(dashboard)/runs/compare/page.tsx::useCompare`) from a hand-built path to the `ENDPOINTS.RUNS.compare` helper so the query-key contract lives in exactly one place.
+  - Existing modal `router.push` calls (`RunsCompareModal.tsx:29`, `ForkRunModal.tsx:45`) target the FRONTEND page path `/runs/compare?base=&fork=`, not the BFF endpoint, so they stayed hand-built. Verified — those are correct as-is.
+  - Updated `api-endpoints.test.ts` compare cases to assert `base=`/`fork=` and explicitly reject `left=`/`right=`.
+  - New contract test: `bff/tests/test_run_compare_contract.py` (4 cases — missing `base`→422, missing `fork`→422, only `left`+`right`→422, both present→200 with correct baseRunId/forkRunId).
+  - MSW handler in `src/tests/integration/runs-crud.test.ts:53` was already using `base`/`fork`; no change needed.
+- **Files touched:**
+  - `src/lib/api/endpoints.ts` (helper fix)
+  - `src/app/(dashboard)/runs/compare/page.tsx` (use ENDPOINTS.RUNS.compare)
+  - `src/tests/unit/api-endpoints.test.ts` (flip assertions to base/fork)
+  - `bff/tests/test_run_compare_contract.py` (new file, 4 tests)
+- **Ports / adapters:** none new. Uses the existing BFF `/api/runs/compare` contract.
+- **PORTING_LEDGER:** unchanged. No external code vendored.
+- **KNOWN_ISSUES:** none opened this slice.
+- **Stop-condition status:** Stage 3.4 (endpoints registry matches BFF wire contract) + Stage 3.5 (contract test guarding against future drift) COMPLETE per plan § 3.4 + 3.5 DoD. Pending Colossus live-run verification for the paste-block final check. This closes all Stage 3 sub-slices except the descoped Stage 3.3 DependencyGuard (see KNOWN_ISSUES 2026-08-05 23:15 EDT — belongs in agent-server tool observer, out of scope for Stage 3).

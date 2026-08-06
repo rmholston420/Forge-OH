@@ -24,16 +24,22 @@ describe('ENDPOINTS.RUNS', () => {
   it('approve', () => expect(ENDPOINTS.RUNS.approve('r1')).toBe('/api/runs/r1/approve'));
   it('reject', () => expect(ENDPOINTS.RUNS.reject('r1')).toBe('/api/runs/r1/reject'));
   it('secrets', () => expect(ENDPOINTS.RUNS.secrets('r1')).toBe('/api/runs/r1/secrets'));
-  it('compare encodes IDs as query params', () => {
+  it('compare uses BFF ?base=&fork= query keys', () => {
+    // Stage 3.4 contract: BFF `compare_runs` at bff/routers/runs.py takes
+    // `base` + `fork`. Helper previously used the stale `left` / `right`
+    // spelling with no live callers; drift is now closed.
     const url = ENDPOINTS.RUNS.compare('run-a', 'run-b');
-    expect(url).toContain('left=run-a');
-    expect(url).toContain('right=run-b');
+    expect(url).toContain('base=run-a');
+    expect(url).toContain('fork=run-b');
+    expect(url).not.toContain('left=');
+    expect(url).not.toContain('right=');
     expect(url).toContain('/api/runs/compare');
   });
-  it('compare URL-encodes special chars', () => {
+  it('compare URL-encodes special chars in both params', () => {
     const url = ENDPOINTS.RUNS.compare('id with spaces', 'id/slash');
     expect(url).not.toContain(' ');
-    expect(url).toContain(encodeURIComponent('id with spaces'));
+    expect(url).toContain(`base=${encodeURIComponent('id with spaces')}`);
+    expect(url).toContain(`fork=${encodeURIComponent('id/slash')}`);
   });
 });
 

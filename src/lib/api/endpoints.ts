@@ -30,8 +30,11 @@ export const ENDPOINTS = {
     reject: (runId: string) => `${BASE}/runs/${runId}/reject`,
     message: (runId: string) => `${BASE}/runs/${runId}/message`,
     secrets: (runId: string) => `${BASE}/runs/${runId}/secrets`,
-    compare: (left: string, right: string) =>
-      `${BASE}/runs/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`,
+    // Stage 3.4 — the BFF endpoint at bff/routers/runs.py::compare_runs
+    // takes `base` + `fork` query keys. The previous `left` / `right`
+    // spelling was a stale helper contract with no live callers.
+    compare: (baseId: string, forkId: string) =>
+      `${BASE}/runs/compare?base=${encodeURIComponent(baseId)}&fork=${encodeURIComponent(forkId)}`,
   },
 
   // ------------------------------------------------------------------
