@@ -142,22 +142,43 @@ test.afterAll(() => {
   }
 });
 
-async function createRun(
+/**
+ * Resolve a real agent-server conversation id to use as the ``runId``.
+ *
+ * The BFF's ``GET /api/runs/{id}`` proxies to agent-server
+ * ``/api/conversations/{id}``, so any existing conversation makes
+ * ``/runs/{id}`` render fully. We deliberately do NOT go through the
+ * BFF's ``POST /api/runs`` here — that path requires vLLM/Ollama
+ * routing to be up, which is orthogonal to the memory-marker DoD.
+ */
+async function pickOrCreateConversation(
   request: import('@playwright/test').APIRequestContext,
 ): Promise<string> {
-  const res = await request.post(`${BFF_URL}/api/runs`, {
-    data: {
-      title: 'Stage 5.6b memory-timeline-marker',
-      agentPresetId: PRESET_ID,
-      workspaceId: WORKSPACE_ID,
-      taskPrompt: 'idle: this run only exists to receive a memory_consultation event.',
-    },
-  });
-  expect(res.ok(), await res.text()).toBeTruthy();
-  const body = await res.json();
-  const id = body?.data?.id;
-  expect(id, `create_run body missing data.id: ${JSON.stringify(body)}`).toBeTruthy();
-  return id as string;
+  const listResp = await request.get(`${AGENT_URL}/api/conversations`).catch(() => null);
+  if (listResp && listResp.ok()) {
+    const body = await listResp.json();
+    // agent-server may return a bare list, {items:[...]}, or {data:[...]}.
+    const items: Array<{ id?: string }> = Array.isArray(body)
+      ? body
+      : (body?.items ?? body?.data ?? []);
+    for (const it of items) {
+      if (it && typeof it.id === 'string' && it.id.length > 0) {
+        // eslint-disable-next-line no-console
+        console.log('[memory-timeline] reusing existing conversation id:', it.id);
+        return it.id;
+      }
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      '[memory-timeline] no existing conversations — raw list body:',
+      JSON.stringify(body).slice(0, 400),
+    );
+  }
+  throw new Error(
+    `No existing agent-server conversation found on ${AGENT_URL}/api/conversations. ` +
+    'Create one first (e.g. from the UI once vLLM coder on :8501 is up) or ' +
+    'run any Forge-OH run through the normal flow, then re-run this spec.',
+  );
 }
 
 async function emitConsultation(
@@ -193,8 +214,12 @@ test.describe('Memory timeline marker — live emit (Stage 5.6b)', () => {
   }) => {
     test.setTimeout(120_000);
 
-    // 1. Create a real run so the Socket.IO room and run-detail page exist.
-    const runId = await createRun(request);
+    // 1. Resolve a real conversation id so the Socket.IO room and
+    //    run-detail page exist. We reuse any existing agent-server
+    //    conversation — creating a NEW one through BFF /api/runs
+    //    requires vLLM/Ollama routing to be up, which is outside the
+    //    scope of this memory-marker DoD.
+    const runId = await pickOrCreateConversation(request);
     // eslint-disable-next-line no-console
     console.log('[memory-timeline] runId:', runId);
 

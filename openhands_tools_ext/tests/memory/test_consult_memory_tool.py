@@ -79,38 +79,28 @@ def _reset_fake_http(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_tool_is_registered_under_consult_memory_name() -> None:
-    """The tool must be resolvable via the SDK registry after import.
+    """The tool must be present in the SDK's tool registry after import.
 
-    Different SDK versions have exposed different resolver signatures
-    (some require ``conv_state``, some don't). We probe the registry
-    module for a public entry point and fall back to inspecting its
-    internal state so the assertion is version-tolerant.
+    SDK v1.40.0 exposes ``resolve_tool(tool_spec: Tool, conv_state)`` which
+    takes a full ``Tool`` object (not a string) and requires a live
+    ConversationState. Neither dependency is worth reconstructing here —
+    the assertion we actually care about is 'was register_tool(name, cls)
+    called?', which is answered directly by the module-level ``_REG``
+    dict populated by ``register_tool``.
     """
     from openhands.sdk.tool import registry as reg
 
-    resolved: object | None = None
-    # Try the current-SDK resolver signature (name, conv_state=None).
-    try:
-        resolved = reg.resolve_tool("consult_memory", None)  # type: ignore[misc]
-    except TypeError:
-        try:
-            resolved = reg.resolve_tool("consult_memory")  # type: ignore[misc]
-        except TypeError:
-            resolved = None
-
-    if resolved is None:
-        # Last-resort: peek at the module's registry dict directly.
-        for attr in ("_REGISTRY", "REGISTRY", "_tools", "TOOLS"):
-            container = getattr(reg, attr, None)
-            if isinstance(container, dict) and "consult_memory" in container:
-                resolved = container["consult_memory"]
-                break
-
-    assert resolved is not None, (
-        "consult_memory is not registered in openhands.sdk.tool.registry "
-        "after importing openhands_tools_ext.memory.tools.consult_memory"
+    registry_dict = getattr(reg, "_REG", None)
+    assert isinstance(registry_dict, dict), (
+        "openhands.sdk.tool.registry._REG is not a dict — SDK internals "
+        "changed shape; update the probe."
     )
-    # Accept either the class or an instance thereof.
+    assert "consult_memory" in registry_dict, (
+        "consult_memory is not in openhands.sdk.tool.registry._REG after "
+        "importing openhands_tools_ext.memory.tools.consult_memory — "
+        "register_tool did not run at import time."
+    )
+    resolved = registry_dict["consult_memory"]
     assert resolved is cm.ConsultMemoryTool or isinstance(
         resolved, cm.ConsultMemoryTool
     )

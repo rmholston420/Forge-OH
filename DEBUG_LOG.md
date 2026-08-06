@@ -1607,3 +1607,18 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
 - **Root cause:** `forge-up.sh` starts Next.js on :3000 (`pnpm dev`) — the ADR-verified dev port. Playwright specs must run against `next start` on :3100 (never `next dev`, per `forge-oh-playwright-visual`). The original spec pointed at :3100 unconditionally and had no path to start the prod server if it wasn't already running.
 - **Fix applied:** adopted the same `PLAYWRIGHT_START_PROD=1` pattern the sibling `memory-inspector.spec.ts` uses. When the env var is set, `beforeAll` runs `npm run build` in `src/` and spawns `npx next start -p 3100` (killed in `afterAll`). Precondition-missing message now spells out the exact rebuild command so the operator can also start prod manually and rerun.
 - **Files changed:** `src/tests/e2e/memory-timeline-marker.spec.ts`.
+
+## 2026-08-06 04:00 EDT — resolve_tool takes Tool object, not string (Stage 5.6b)
+- **Symptom:** `resolve_tool("consult_memory", None)` fails with `AttributeError: 'str' object has no attribute 'name'`. SDK source: `resolver = _REG.get(tool_spec.name)` — it dereferences `.name` on the first arg.
+- **Affected stage/plugin/port:** Stage 5.6b — tool registration test.
+- **Root cause:** `openhands.sdk.tool.registry.resolve_tool(tool_spec: Tool, conv_state: ConversationState)` takes a full `Tool` spec object (which carries a `.name` field) and a live `ConversationState`. Neither dependency is worth reconstructing just to answer "is this name registered?". Prior test tried string arg; then fell back to `(name, None)` which also fails for the same reason.
+- **Fix applied:** dropped the resolver call entirely; probe the module's `_REG` dict directly (the exact dict `register_tool(name, cls)` populates). Same semantic question, one assertion, no ConversationState fabrication.
+- **Files changed:** `openhands_tools_ext/tests/memory/test_consult_memory_tool.py`.
+
+## 2026-08-06 04:00 EDT — Playwright DoD spec blocked by vLLM coder down (Stage 5.6b)
+- **Symptom:** Playwright fails at `POST /api/runs` with `"status":"blocked"` and `data.id=""`, routing error `role='coder' pinned to backend_id='vllm-coder' unavailable`. Spec's `expect(id).toBeTruthy()` fires.
+- **Affected stage/plugin/port:** Stage 5.6b live-task DoD; BFF `runs.create_run` routing path.
+- **Root cause:** BFF `create_run` calls `route_by_role()` BEFORE creating the agent-server conversation. When vLLM coder on :8501 is down and supervisor cannot recover, routing raises `ModelUnavailableError`, and the BFF short-circuits with a shell response carrying `id=""` (no agent-server conversation was created — nothing to id). This is by design at the BFF level, but couples the memory-marker DoD to LLM runtime state, which is architecturally wrong.
+- **Fix applied:** spec no longer goes through BFF `POST /api/runs`. Added `pickOrCreateConversation()` which reads `GET /api/conversations` on agent-server and reuses any existing conversation id. The BFF's `GET /api/runs/{id}` proxies to agent-server `/api/conversations/{id}`, so `/runs/{id}` renders fully regardless of vLLM state. If no conversation exists, spec fails loud with instructions.
+- **Files changed:** `src/tests/e2e/memory-timeline-marker.spec.ts`.
+- **Follow-up:** the BFF `blocked` path returning `data.id=""` is a real UX bug (frontend can't render a blocked run). Track separately — out of Stage 5.6b scope. Recommended follow-on: BFF should either persist a blocked-run shell with a synthesized id or return 503, not a 200 with empty id.
