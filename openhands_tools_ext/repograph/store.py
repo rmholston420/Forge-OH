@@ -335,5 +335,128 @@ class Neo4jStore:
                 limit=limit,
             ).data()
 
+    def full_graph(
+        self,
+        repo_key: str,
+        *,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Return a graph-shaped view of the top-``limit`` symbols and their
+        containing files, plus CONTAINS and CALLS edges connecting them.
+
+        Shape (matches ``react-force-graph-2d``'s expected input via string
+        id-references):
+
+            {
+                "nodes": [
+                    {"id": "file::<rel_path>", "kind": "file",   ...},
+                    {"id": "sym::<rel_path>::<name>::<line>", "kind": "symbol", ...},
+                ],
+                "links": [
+                    {"source": "file::...", "target": "sym::...", "type": "CONTAINS"},
+                    {"source": "file::...", "target": "sym::...", "type": "CALLS", "line": 42},
+                ],
+                "stats": {"nodes": N, "symbols": S, "files": F, "edges": E},
+            }
+
+        Selection algorithm:
+          1. Top-``limit`` Symbols by pagerank for the given repo.
+          2. Files that CONTAIN those symbols (auto-pulled so CALLS edges
+             can resolve on both ends).
+          3. CONTAINS edges restricted to the selected set.
+          4. CALLS edges where both endpoints are in the selected set.
+
+        Excluded from v1:
+          - METHOD_OF edges (Symbol-Symbol) — keep the visible graph shape
+            uniformly bipartite File/Symbol for readability.
+          - UNRESOLVED_CALL self-loops — noise for the viewer.
+        """
+        # A single MATCH...RETURN builds the whole payload server-side so
+        # we don't ship 3 round-trips per graph render. All identifiers are
+        # synthesized in Cypher for id-stability with the frontend.
+        cypher = (
+            "MATCH (s:Symbol {repo: $repo}) "
+            "WITH s ORDER BY coalesce(s.pagerank, 0.0) DESC LIMIT $limit "
+            "WITH collect(s) AS syms, collect(DISTINCT s.rel_path) AS files_rp "
+            "MATCH (f:File {repo: $repo}) WHERE f.rel_path IN files_rp "
+            "WITH syms, collect(f) AS files, files_rp "
+            # Build symbol node dicts
+            "WITH files, syms, files_rp, "
+            "     [x IN syms | { "
+            "       id: 'sym::' + x.rel_path + '::' + x.name + '::' + toString(x.start_line), "
+            "       kind: 'symbol', "
+            "       label: x.name, "
+            "       rel_path: x.rel_path, "
+            "       category: x.category, "
+            "       start_line: x.start_line, "
+            "       end_line: x.end_line, "
+            "       parent: x.parent, "
+            "       pagerank: coalesce(x.pagerank, 0.0) "
+            "     }] AS symbol_nodes "
+            "WITH files, syms, files_rp, symbol_nodes, "
+            "     [y IN files | { "
+            "       id: 'file::' + y.rel_path, "
+            "       kind: 'file', "
+            "       label: last(split(y.rel_path, '/')), "
+            "       rel_path: y.rel_path, "
+            "       language: y.language "
+            "     }] AS file_nodes "
+            # CONTAINS edges within the selected set
+            "OPTIONAL MATCH (f2:File {repo: $repo})-[:CONTAINS]->(s2:Symbol {repo: $repo}) "
+            "WHERE f2.rel_path IN files_rp "
+            "  AND (s2 IN syms) "
+            "WITH files, syms, files_rp, symbol_nodes, file_nodes, "
+            "     collect(DISTINCT { "
+            "       source: 'file::' + f2.rel_path, "
+            "       target: 'sym::' + s2.rel_path + '::' + s2.name + '::' + toString(s2.start_line), "
+            "       type: 'CONTAINS' "
+            "     }) AS contains_edges "
+            # CALLS edges within the selected set (File->Symbol)
+            "OPTIONAL MATCH (f3:File {repo: $repo})-[c:CALLS]->(s3:Symbol {repo: $repo}) "
+            "WHERE f3.rel_path IN files_rp "
+            "  AND (s3 IN syms) "
+            "WITH symbol_nodes, file_nodes, contains_edges, "
+            "     collect(DISTINCT { "
+            "       source: 'file::' + f3.rel_path, "
+            "       target: 'sym::' + s3.rel_path + '::' + s3.name + '::' + toString(s3.start_line), "
+            "       type: 'CALLS', "
+            "       line: c.line "
+            "     }) AS calls_edges "
+            "RETURN symbol_nodes, file_nodes, contains_edges, calls_edges"
+        )
+        with self.driver.session(database=self.database) as session:
+            record = session.run(cypher, repo=repo_key, limit=limit).single()
+
+        if record is None:
+            return {
+                "nodes": [],
+                "links": [],
+                "stats": {"nodes": 0, "symbols": 0, "files": 0, "edges": 0},
+            }
+
+        symbol_nodes = record["symbol_nodes"] or []
+        file_nodes = record["file_nodes"] or []
+        # OPTIONAL MATCH with no hits produces a single {source:null, ...}
+        # dict inside the collect(); filter those out.
+        contains_edges = [
+            e for e in (record["contains_edges"] or []) if e.get("source") is not None
+        ]
+        calls_edges = [
+            e for e in (record["calls_edges"] or []) if e.get("source") is not None
+        ]
+
+        nodes = list(file_nodes) + list(symbol_nodes)
+        links = list(contains_edges) + list(calls_edges)
+        return {
+            "nodes": nodes,
+            "links": links,
+            "stats": {
+                "nodes": len(nodes),
+                "symbols": len(symbol_nodes),
+                "files": len(file_nodes),
+                "edges": len(links),
+            },
+        }
+
 
 __all__ = ["CONSTRAINT_STATEMENTS", "Neo4jStore"]

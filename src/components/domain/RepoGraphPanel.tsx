@@ -23,12 +23,16 @@ import {
   useCallers,
   useCallees,
   useCoChanged,
+  useFullGraph,
   useIndexWorkspace,
   useRepoGraphHealth,
   useSymbolSearch,
 } from '@/features/repograph/hooks';
 import type { RepoGraphSymbol } from '@/lib/schemas/repograph';
+import { RepoGraphGraphView } from '@/features/repograph/RepoGraphGraphView';
 import styles from './RepoGraphPanel.module.css';
+
+type ViewMode = 'list' | 'graph';
 
 export interface RepoGraphPanelProps {
   /** Optional workspace path prefilled in the "index" input. */
@@ -76,8 +80,10 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
   );
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<RepoGraphSymbol | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   const repoKey = indexMut.data?.repo_key;
+  const fullGraph = useFullGraph(repoKey, 500, viewMode === 'graph');
   const stats = indexMut.data?.stats;
 
   const search = useSymbolSearch(repoKey, query, Boolean(repoKey));
@@ -130,6 +136,34 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
         >
           {healthBadge.text}
         </span>
+        {repoKey && (
+          <div
+            className={styles.viewToggle}
+            role="group"
+            aria-label="View mode"
+            data-testid="repograph-view-toggle"
+          >
+            <button
+              type="button"
+              className={styles.viewToggleButton}
+              data-selected={viewMode === 'list'}
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              className={styles.viewToggleButton}
+              data-selected={viewMode === 'graph'}
+              onClick={() => setViewMode('graph')}
+              aria-pressed={viewMode === 'graph'}
+              data-testid="repograph-toggle-graph"
+            >
+              Graph
+            </button>
+          </div>
+        )}
       </header>
 
       <form className={styles.form} onSubmit={handleIndex}>
@@ -168,7 +202,44 @@ const RepoGraphPanelInner: React.FC<RepoGraphPanelProps> = ({
         )}
       </form>
 
-      {repoKey && (
+      {repoKey && viewMode === 'graph' && (
+        <div className={styles.results} data-testid="repograph-graph-container">
+          {fullGraph.isFetching && (
+            <p className={styles.hint}>loading graph…</p>
+          )}
+          {fullGraph.isError && (
+            <p className={styles.error}>
+              graph failed: {String(fullGraph.error)}
+            </p>
+          )}
+          {fullGraph.data && (
+            <>
+              <p className={styles.stats}>
+                {fullGraph.data.stats.files} files ·{' '}
+                {fullGraph.data.stats.symbols} symbols ·{' '}
+                {fullGraph.data.stats.edges} edges
+              </p>
+              <RepoGraphGraphView
+                graph={fullGraph.data}
+                onSelectSymbol={(s) =>
+                  setSelected({
+                    rel_path: s.rel_path,
+                    name: s.name,
+                    category: '',
+                    start_line: s.start_line,
+                    end_line: 0,
+                    parent: null,
+                    info: '',
+                    pagerank: 0,
+                  } as RepoGraphSymbol)
+                }
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {repoKey && viewMode === 'list' && (
         <>
           <div className={styles.searchRow}>
             <input

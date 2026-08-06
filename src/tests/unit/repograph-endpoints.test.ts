@@ -62,4 +62,14 @@ describe('ENDPOINTS.REPOGRAPH', () => {
     expect(ENDPOINTS.REPOGRAPH.contextBundle()).toBe(
       '/api/repograph/context_bundle',
     ));
+
+  it('graph uses default limit 500', () => {
+    const url = ENDPOINTS.REPOGRAPH.graph('rk1');
+    expect(url).toBe('/api/repograph/graph?repo_key=rk1&limit=500');
+  });
+
+  it('graph applies custom limit', () => {
+    const url = ENDPOINTS.REPOGRAPH.graph('rk1', 250);
+    expect(url).toBe('/api/repograph/graph?repo_key=rk1&limit=250');
+  });
 });

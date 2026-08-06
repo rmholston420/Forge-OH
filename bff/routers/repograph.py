@@ -23,7 +23,7 @@ import logging
 import subprocess
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -122,6 +122,42 @@ class ContextBundleRequest(BaseModel):
         min_length=1,
     )
     limit: int = Field(default=40, ge=1, le=500)
+
+
+class GraphNodeOut(BaseModel):
+    id: str
+    kind: Literal["file", "symbol"]
+    label: str
+    rel_path: str
+    # symbol-only
+    category: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    parent: str | None = None
+    pagerank: float | None = None
+    # file-only
+    language: str | None = None
+
+
+class GraphEdgeOut(BaseModel):
+    source: str
+    target: str
+    type: Literal["CONTAINS", "CALLS"]
+    line: int | None = None
+
+
+class GraphStatsOut(BaseModel):
+    nodes: int
+    symbols: int
+    files: int
+    edges: int
+
+
+class FullGraphResponse(BaseModel):
+    repo_key: str
+    nodes: list[GraphNodeOut]
+    links: list[GraphEdgeOut]
+    stats: GraphStatsOut
 
 
 # --- Guards ---------------------------------------------------------------
@@ -353,6 +389,32 @@ def repograph_co_changed(
         files=[CoChangedOut(rel_path=f, commits=c) for f, c in files],
         available=error is None,
         error=error,
+    )
+
+
+@router.get(
+    "/graph",
+    response_model=FullGraphResponse,
+    summary="Top-N PageRank symbols with their files and CONTAINS/CALLS edges",
+)
+def repograph_graph(
+    repo_key: str = Query(..., min_length=1),
+    limit: int = Query(500, ge=1, le=2000),
+) -> FullGraphResponse:
+    """Return a graph-shaped view suitable for a force-directed layout.
+
+    Selection is top-``limit`` symbols by PageRank plus every file that
+    contains any of them; edges are CONTAINS (File→Symbol) and CALLS
+    (File→Symbol) restricted to that set. METHOD_OF and UNRESOLVED_CALL
+    are excluded from v1 to keep the graph shape uniformly bipartite.
+    """
+    _reject_if_disabled()
+    data = _get_store().full_graph(repo_key, limit=limit)
+    return FullGraphResponse(
+        repo_key=repo_key,
+        nodes=[GraphNodeOut(**n) for n in data["nodes"]],
+        links=[GraphEdgeOut(**e) for e in data["links"]],
+        stats=GraphStatsOut(**data["stats"]),
     )
 
 

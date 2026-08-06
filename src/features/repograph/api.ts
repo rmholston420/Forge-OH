@@ -14,6 +14,7 @@ import type {
   RepoGraphCallee,
   RepoGraphCaller,
   RepoGraphCoChangedResponse,
+  RepoGraphFullGraph,
   RepoGraphHealth,
   RepoGraphIndexResponse,
   RepoGraphSymbol,
@@ -104,5 +105,16 @@ export async function fetchContextBundle(
       seeds: args.seeds,
       limit: args.limit ?? 20,
     }),
+  );
+}
+
+export async function fetchFullGraph(
+  repoKey: string,
+  limit = 500,
+): Promise<RepoGraphFullGraph> {
+  return unwrap(
+    await bffGet<RepoGraphFullGraph>(
+      ENDPOINTS.REPOGRAPH.graph(repoKey, limit),
+    ),
   );
 }

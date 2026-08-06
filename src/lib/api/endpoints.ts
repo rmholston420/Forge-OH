@@ -230,6 +230,9 @@ export const ENDPOINTS = {
       `${BASE}/repograph/co_changed?repo_key=${encodeURIComponent(repoKey)}` +
       `&rel_path=${encodeURIComponent(relPath)}&window=${window}&limit=${limit}`,
     contextBundle: () => `${BASE}/repograph/context_bundle`,
+    graph: (repoKey: string, limit = 500) =>
+      `${BASE}/repograph/graph?repo_key=${encodeURIComponent(repoKey)}` +
+      `&limit=${limit}`,
   },
 
   // ------------------------------------------------------------------

@@ -126,3 +126,21 @@ Format per entry:
   - [docs/adr/013-qwen36-27b-canonical-coder-planner.md](docs/adr/013-qwen36-27b-canonical-coder-planner.md) — coder ratification (amendment #1)
   - [docs/adr/009-local-llm-selection.md](docs/adr/009-local-llm-selection.md) — superseded by ADR-013 for coder-selection layer
 - **Rollback:** set `LLM_CODER_MODEL=qwen3.6-35b-nvfp4` and pass `--quantization modelopt_fp4` to `vllm_launch_coder.sh` (ADR-009 baseline).
+
+---
+
+## 2026-08-06 00:24 EDT — `react-force-graph-2d` — Stage 4.2/4.3 RepoGraph visualization
+
+- **Slice:** Stage 4.2 (backend `/api/repograph/graph`) + Stage 4.3 (frontend force-directed view).
+- **Upstream:** [vasturiano/react-force-graph](https://github.com/vasturiano/react-force-graph) — package `react-force-graph-2d`.
+- **Version pin:** `^1.29.1` (latest at 2026-08-06 from `https://registry.npmjs.org/react-force-graph-2d`).
+- **SPDX license:** `MIT`.
+- **Port type:** **dependency-only** — no upstream source was copied. The library is added as a `dependencies` entry in `package.json`; no vendored code in `src/`.
+- **Modification notes:** none. Wrapped in `next/dynamic({ ssr: false })` at `src/features/repograph/RepoGraphGraphView.tsx` so the canvas / d3 chain never touches the SSR pass.
+- **Related files:**
+  - `openhands_tools_ext/repograph/store.py::Neo4jStore.full_graph()` — server-side aggregator
+  - `bff/routers/repograph.py::repograph_graph` — `GET /api/repograph/graph`
+  - `src/lib/schemas/repograph.ts::RepoGraphFullGraphSchema` — Zod runtime contract
+  - `src/features/repograph/RepoGraphGraphView.tsx` — force-directed view
+  - `src/app/(dashboard)/repograph/page.tsx` — standalone `/repograph` route
+- **Rollback:** remove the `react-force-graph-2d` line in `package.json`, delete `RepoGraphGraphView.tsx` and `src/app/(dashboard)/repograph/`, revert the Graph toggle branch of `RepoGraphPanel.tsx`. `full_graph()` and `GET /api/repograph/graph` remain callable without the view.

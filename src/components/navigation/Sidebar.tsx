@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/workspaces',    label: 'Workspaces',     icon: '📦' },
   { href: '/tools-mcp',     label: 'Tools & MCP',   icon: '🔧' },
   { href: '/plugins',       label: 'Plugins',        icon: '🧩' },
+  { href: '/repograph',     label: 'RepoGraph',      icon: '🕸' },
   { href: '/metrics',       label: 'Metrics',        icon: '📈' },
   { href: '/observability', label: 'Observability',  icon: '📊' },
   { href: '/secrets',       label: 'Secrets',        icon: '🔒' },

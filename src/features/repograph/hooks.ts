@@ -12,6 +12,7 @@ import {
   fetchCallees,
   fetchCoChanged,
   fetchContextBundle,
+  fetchFullGraph,
   fetchRepoGraphHealth,
   indexWorkspace,
   searchSymbols,
@@ -103,6 +104,19 @@ export function useContextBundle(
     queryKey: QUERY_KEYS.repograph.contextBundle(repoKey, seeds),
     queryFn: () => fetchContextBundle(args!),
     enabled: enabled && Boolean(args) && Boolean(repoKey) && seeds.length > 0,
+    staleTime: STALE_MS,
+  });
+}
+
+export function useFullGraph(
+  repoKey: string | undefined,
+  limit = 500,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: QUERY_KEYS.repograph.graph(repoKey ?? '', limit),
+    queryFn: () => fetchFullGraph(repoKey!, limit),
+    enabled: enabled && Boolean(repoKey),
     staleTime: STALE_MS,
   });
 }

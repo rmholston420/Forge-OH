@@ -5207,3 +5207,37 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Files touched:** none (verification-only slice).
 - **Ports / adapters affected:** RepoGraph subsystem transitioned from disabled -> live. No new port, no new adapter.
 - **Stop-condition status:** § 4.1 COMPLETE. Ready for § 4.2 + § 4.3 (backend graph endpoint + frontend force-graph view, single pass).
+
+## 2026-08-06 00:25 EDT — Stage 4.2 + 4.3: RepoGraph graph endpoint + force-directed view
+
+- **Scope:** reconciliation-plan-v1.md § 4.2 (backend graph aggregator) + § 4.3 (frontend force-directed view + standalone `/repograph` route). Shipped as one pass because the wire contract is a single Zod schema; splitting risked drift.
+- **Design decisions (auto-selected under "make optimal choice"):**
+  - **Graph shape:** heterogeneous `{kind: "file" | "symbol"}` nodes with `CONTAINS` and `CALLS` edges. Matches the real store schema (`repo` property, no `id`, `File-[:CALLS]->Symbol`). The plan doc's `full_graph()` Cypher was schema-incorrect and replaced.
+  - **Wire refs:** id-references (strings). No mutation footgun; force-graph resolves internally.
+  - **v1 exclusions:** `METHOD_OF` (Symbol→Symbol) and `UNRESOLVED_CALL` (File→File self-loop) omitted to keep the graph bipartite File/Symbol.
+  - **Default `limit=500`,** clamped `1..2000` at the router.
+- **Backend files touched:**
+  - `openhands_tools_ext/repograph/store.py` — new `Neo4jStore.full_graph(repo_key, limit)`; single Cypher query builds nodes + edges server-side (no round-trips). Empty-collect edge cases filtered.
+  - `bff/routers/repograph.py` — new `GET /api/repograph/graph`; new pydantic models `GraphNodeOut`, `GraphEdgeOut`, `GraphStatsOut`, `FullGraphResponse`; `Literal` added to imports.
+  - `bff/tests/test_repograph_router.py` — new `TestGraphEndpoint` (2 tests), `/graph` added to `TestRejectsWhenDisabled` parametrize.
+- **Frontend files touched:**
+  - `src/lib/schemas/repograph.ts` — new Zod `RepoGraphFullGraphSchema` + `RepoGraphNode` / `RepoGraphEdge`.
+  - `src/lib/api/endpoints.ts` — new `ENDPOINTS.REPOGRAPH.graph()`.
+  - `src/lib/query/query-keys.ts` — new `QUERY_KEYS.repograph.graph()`.
+  - `src/features/repograph/api.ts` — new `fetchFullGraph()`.
+  - `src/features/repograph/hooks.ts` — new `useFullGraph()`.
+  - `src/features/repograph/RepoGraphGraphView.tsx` — **new**. `react-force-graph-2d` wrapped in `next/dynamic({ssr:false})` for SSR safety. Custom `nodeCanvasObject` painter: files at const radius 6, symbols log-scaled from PageRank into 2..12 band; labels only appear at high zoom or on prominent nodes.
+  - `src/components/domain/RepoGraphPanel.tsx` — List/Graph toggle in header (aria-pressed, data-selected); Graph mode conditionally renders `RepoGraphGraphView`; hook is enabled only when `viewMode === 'graph'` (no wasted fetch in list mode). Panel path is `src/components/domain/`, not the plan doc's `src/features/repograph/`.
+  - `src/components/domain/RepoGraphPanel.module.css` — new `.viewToggle` + `.viewToggleButton` rules.
+  - `src/components/navigation/Sidebar.tsx` — new NAV_ITEMS entry `/repograph` with 🕸 icon.
+  - `src/app/(dashboard)/repograph/page.tsx` — **new** standalone route; workspace path from `?ws=` query or `/home/rmholston/dev/forge-oh` default.
+  - `package.json` — `react-force-graph-2d ^1.29.1` (MIT).
+  - `PORTING_LEDGER.md` — dependency-only port entry.
+- **Frontend tests touched:**
+  - `src/tests/unit/repograph-endpoints.test.ts` — 2 new cases for `graph()` URL builder.
+  - `src/tests/unit/RepoGraphGraphView.test.tsx` — **new**; mocks `next/dynamic` and asserts node-count wiring.
+  - `src/tests/e2e/repograph-graph.spec.ts` — **new**; `/repograph` route + sidebar entry + toggle switch.
+- **Ports / adapters affected:** none new. Reuses existing `Neo4jStore` port; adds one aggregator method, one HTTP endpoint, one force-graph adapter.
+- **ADR:** none required — no new formal port, no OSS-vs-hand-build decision (dep-only), no governance change.
+- **Verification status:** static/parse checks green on Colossus workstation checkout (this session). **Runtime verification (pytest + pnpm typecheck + pnpm test:unit + pnpm build + Playwright) still pending on Colossus** — separate follow-up step in this session.
+- **Stop-condition status:** § 4.2 + § 4.3 CODE COMPLETE. Blocks on runtime green before § 4.4 (LSPClient / Serena).

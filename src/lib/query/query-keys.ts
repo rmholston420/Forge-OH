@@ -99,5 +99,7 @@ export const QUERY_KEYS = {
       ['repograph', 'coChanged', repoKey, relPath] as const,
     contextBundle: (repoKey: string, seeds: string[]) =>
       ['repograph', 'contextBundle', repoKey, [...seeds].sort()] as const,
+    graph: (repoKey: string, limit: number) =>
+      ['repograph', 'graph', repoKey, limit] as const,
   },
 } as const;

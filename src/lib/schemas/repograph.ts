@@ -91,3 +91,45 @@ export const RepoGraphHealthSchema = z.object({
   error: z.string().nullable(),
 });
 export type RepoGraphHealth = z.infer<typeof RepoGraphHealthSchema>;
+
+// ---------------------------------------------------------------------------
+// Full graph (Stage 4.2 / 4.3)
+// ---------------------------------------------------------------------------
+export const RepoGraphNodeSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['file', 'symbol']),
+  label: z.string(),
+  rel_path: z.string(),
+  // symbol-only
+  category: z.string().nullable().optional(),
+  start_line: z.number().nullable().optional(),
+  end_line: z.number().nullable().optional(),
+  parent: z.string().nullable().optional(),
+  pagerank: z.number().nullable().optional(),
+  // file-only
+  language: z.string().nullable().optional(),
+});
+export type RepoGraphNode = z.infer<typeof RepoGraphNodeSchema>;
+
+export const RepoGraphEdgeSchema = z.object({
+  source: z.string(),
+  target: z.string(),
+  type: z.enum(['CONTAINS', 'CALLS']),
+  line: z.number().nullable().optional(),
+});
+export type RepoGraphEdge = z.infer<typeof RepoGraphEdgeSchema>;
+
+export const RepoGraphStatsSchema = z.object({
+  nodes: z.number(),
+  symbols: z.number(),
+  files: z.number(),
+  edges: z.number(),
+});
+
+export const RepoGraphFullGraphSchema = z.object({
+  repo_key: z.string(),
+  nodes: z.array(RepoGraphNodeSchema),
+  links: z.array(RepoGraphEdgeSchema),
+  stats: RepoGraphStatsSchema,
+});
+export type RepoGraphFullGraph = z.infer<typeof RepoGraphFullGraphSchema>;

@@ -197,6 +197,7 @@ class TestRejectsWhenDisabled:
                 "/api/repograph/context_bundle",
                 {"repo_key": "r", "seeds": ["a.py"]},
             ),
+            ("get", "/api/repograph/graph?repo_key=r", None),
         ],
     )
     def test_503_when_disabled(self, client: TestClient, method: str, path: str, payload) -> None:
@@ -467,6 +468,68 @@ class TestContextBundleEndpoint:
                 json={"repo_key": "r1", "seeds": [], "limit": 10},
             )
         assert r.status_code == 422  # min_length=1 on the list
+
+
+class TestGraphEndpoint:
+    def test_graph_returns_nodes_links_stats(self, client: TestClient) -> None:
+        fake_store = MagicMock()
+        fake_store.full_graph.return_value = {
+            "nodes": [
+                {
+                    "id": "file::m.py",
+                    "kind": "file",
+                    "label": "m.py",
+                    "rel_path": "m.py",
+                    "language": "python",
+                },
+                {
+                    "id": "sym::m.py::hello::1",
+                    "kind": "symbol",
+                    "label": "hello",
+                    "rel_path": "m.py",
+                    "category": "function",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "parent": None,
+                    "pagerank": 0.42,
+                },
+            ],
+            "links": [
+                {
+                    "source": "file::m.py",
+                    "target": "sym::m.py::hello::1",
+                    "type": "CONTAINS",
+                },
+                {
+                    "source": "file::m.py",
+                    "target": "sym::m.py::hello::1",
+                    "type": "CALLS",
+                    "line": 42,
+                },
+            ],
+            "stats": {"nodes": 2, "symbols": 1, "files": 1, "edges": 2},
+        }
+
+        with (
+            patch("bff.routers.repograph.get_settings") as gs,
+            patch("bff.routers.repograph._get_store", return_value=fake_store),
+        ):
+            gs.return_value = Settings(repograph_enabled=True, neo4j_password="secret")
+            r = client.get("/api/repograph/graph?repo_key=abc&limit=100")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["repo_key"] == "abc"
+        assert body["stats"] == {"nodes": 2, "symbols": 1, "files": 1, "edges": 2}
+        assert len(body["nodes"]) == 2
+        assert body["links"][1]["type"] == "CALLS"
+        fake_store.full_graph.assert_called_once_with("abc", limit=100)
+
+    def test_graph_rejects_limit_out_of_range(self, client: TestClient) -> None:
+        with patch("bff.routers.repograph.get_settings") as gs:
+            gs.return_value = Settings(repograph_enabled=True, neo4j_password="secret")
+            r = client.get("/api/repograph/graph?repo_key=abc&limit=99999")
+        assert r.status_code == 422
 
 
 class TestRegistry:
