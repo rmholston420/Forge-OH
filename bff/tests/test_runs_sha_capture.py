@@ -78,15 +78,25 @@ class _FakeUpstream:
     def _match(
         self, url: str, table: list[tuple[str, httpx.Response]]
     ) -> httpx.Response:
-        # Sort by suffix length descending so the most specific pattern
-        # wins even when a shorter one is a strict prefix.
-        matches = [
-            (pat, resp) for pat, resp in table if pat in url
-        ]
-        if not matches:
-            return _mk_response(404, {"detail": f"unmocked {url}"})
-        matches.sort(key=lambda pair: len(pair[0]), reverse=True)
-        return matches[0][1]
+        # Two-tier match:
+        #   1) longest suffix match wins (endswith path is unambiguous —
+        #      /events/search beats /api/conversations/run-1 for the URL
+        #      /api/conversations/run-1/events/search because the former
+        #      is a suffix, the latter isn't).
+        #   2) fall back to longest substring match for patterns that
+        #      are neither suffix nor prefix (e.g. bare /events).
+        # Strip trailing '?' + query if present (httpx.AsyncClient.get
+        # passes params separately, but be safe).
+        clean = url.split("?", 1)[0]
+        suffix_matches = [(p, r) for p, r in table if clean.endswith(p)]
+        if suffix_matches:
+            suffix_matches.sort(key=lambda pr: len(pr[0]), reverse=True)
+            return suffix_matches[0][1]
+        substring_matches = [(p, r) for p, r in table if p in clean]
+        if substring_matches:
+            substring_matches.sort(key=lambda pr: len(pr[0]), reverse=True)
+            return substring_matches[0][1]
+        return _mk_response(404, {"detail": f"unmocked {url}"})
 
     async def get(
         self, url: str, *, params: dict[str, Any] | None = None, **_: Any
