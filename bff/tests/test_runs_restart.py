@@ -465,6 +465,83 @@ class TestRestartFromHereService:
 
 
 # =========================================================================
+# TestFetchEventPagination — agent-server limit<=100 + next_page_id follow
+# =========================================================================
+
+
+class TestFetchEventPagination:
+    """Step 1e regression: agent-server's ``search_conversation_events``
+    asserts ``limit <= 100`` — exceeding is a HTTP 500 AssertionError.
+    _fetch_event must page via ``next_page_id`` instead of asking for a
+    single window >100.  Verified live on Colossus 2026-08-06."""
+
+    @pytest.mark.asyncio
+    async def test_never_requests_limit_over_100(self) -> None:
+        from bff.services.restart import _fetch_event
+
+        upstream = _FakeUpstream()
+        upstream.on_get(
+            "/events/search",
+            _mk_response(200, {"items": [_USER_EV]}),
+        )
+        # Even if the caller asks for a huge page, we must clamp to 100.
+        with patch("bff.services.restart.get_client", return_value=upstream):
+            found = await _fetch_event(
+                upstream, "run-source-1", "ev-user-1", page_size=500
+            )
+        assert found is not None
+        # Every events/search call must have limit <= 100.
+        search_calls = [
+            call for call in upstream.calls
+            if call[0] == "GET" and "/events/search" in call[1]
+        ]
+        assert search_calls, "expected at least one events/search call"
+        for _method, _url, params in search_calls:
+            assert params.get("limit", 0) <= 100, params
+
+    @pytest.mark.asyncio
+    async def test_follows_next_page_id(self) -> None:
+        """Anchor lives on page 2 — fetch must page past page 1."""
+        from bff.services.restart import _fetch_event
+
+        upstream = _FakeUpstream()
+
+        # Two responses: first without our target + next_page_id set;
+        # second with our target.  _FakeUpstream returns the LONGEST
+        # matching suffix, so both share the same suffix and we need to
+        # sequence them by side-effect.  Easiest: swap the handler.
+        page1 = _mk_response(
+            200,
+            {
+                "items": [_ASSISTANT_EV],
+                "next_page_id": "cursor-2",
+            },
+        )
+        page2 = _mk_response(200, {"items": [_USER_EV]})
+
+        state = {"page": 0}
+
+        async def fake_get(url: str, *, params: dict[str, Any] | None = None, **_: Any) -> httpx.Response:
+            upstream.calls.append(("GET", url, params or {}))
+            state["page"] += 1
+            return page2 if state["page"] > 1 else page1
+
+        upstream.get = fake_get  # type: ignore[method-assign]
+
+        found = await _fetch_event(upstream, "run-source-1", "ev-user-1")
+        assert found is not None
+        assert (found.get("id") or found.get("event_id")) == "ev-user-1"
+
+        # Second call must have carried page_id=cursor-2
+        search_calls = [
+            call for call in upstream.calls
+            if call[0] == "GET" and "/events/search" in call[1]
+        ]
+        assert len(search_calls) == 2
+        assert search_calls[1][2].get("page_id") == "cursor-2"
+
+
+# =========================================================================
 # TestRestartEndpoint — full HTTP path through TestClient
 # =========================================================================
 

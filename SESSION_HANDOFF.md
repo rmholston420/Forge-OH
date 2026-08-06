@@ -1,22 +1,18 @@
 # Forge-OH — Session Handoff
 
 ## Current stage/plugin/port
-**Stage 6.4c step 1e** — P1 Restart-from-here · BFF sha-capture scan fix.
+**Stage 6.4c step 1e follow-up** — Restart 502 fix (agent-server limit≤100).
 
 ## Completed this session
-1. Diagnosed via live Colossus probe: `events/search?limit=20` returns a 13-event initial page with user MessageEvent at INDEX 3 (not 0).  Step 1d's `limit=1` never captured sha in reality.
-2. Fixed both capture points in `bff/routers/runs.py`:
-   - create_run §3b — scan `limit=20` TIMESTAMP-asc for first user MessageEvent.
-   - send_run_message §3b — scan `limit=20` CREATED_AT_DESC for first user MessageEvent.
-3. Rewrote `test_assistant_first_event_skips_record` → `test_no_user_message_in_page_skips_record` (semantic).
-4. Added 3 new regression tests covering: user at later index, first-user-wins, DESC-interleaved status.
-5. Fixed `scripts/stage-6.4c-verify.sh` envelope key (`items` → `data`).
-6. Verify script bash syntax check green; both Python files parse.
-7. Committed + pushed as `Stage 6.4c step 1e`.
+1. Step 1e scan fix in `bff/routers/runs.py` §3b — sha capture now works against real agent-server 1.40.  Verified on Colossus (`anchor_sha=cda0098...` matches HEAD).
+2. Follow-up: diagnosed happy-path restart 502 → agent-server AssertionError (`limit <= 100`) triggered by `_fetch_event`'s `page_limit=500`.
+3. Rewrote `_fetch_event` to page via `next_page_id`, clamped page size at 100.
+4. Added 2 regression tests (`TestFetchEventPagination`) covering the clamp + pagination.
+5. All 18 sha-capture tests green on Colossus.
 
 ## Remaining before DoD
-- Run `.oh-venv/bin/pytest bff/tests/test_runs_sha_capture.py -x` on Colossus (expected: 15 passed, up from 12).
-- Rerun `bash scripts/stage-6.4c-verify.sh` on Colossus (Ollama must be up with a `qwen3-coder` tag).  Expected: PASSED with all four checks green.
+- Run `.oh-venv/bin/pytest bff/tests/test_runs_restart.py -x -q` on Colossus (expect existing tests + 2 new pagination tests green).
+- Rerun `bash scripts/stage-6.4c-verify.sh` on Colossus.  Expected: PASSED — happy-path restart 200, negative case A 404 (unknown from_event_id).
 
 ## Open questions
 None.
@@ -25,8 +21,7 @@ None.
 On Colossus:
 ```bash
 cd ~/dev/forge-oh && git pull --ff-only
-.oh-venv/bin/pytest bff/tests/test_runs_sha_capture.py -x -q
-# then restart BFF so the new §3b code is live:
+.oh-venv/bin/pytest bff/tests/test_runs_restart.py -x -q 2>&1 | tail -20
 bash scripts/forge-restart.sh --bff-only
 sleep 3
 bash scripts/stage-6.4c-verify.sh

@@ -360,46 +360,83 @@ async def restart_from_here(
 # ---------------------------------------------------------------------------
 
 
+# agent-server ``event_router.search_conversation_events`` asserts
+# ``limit <= 100`` — anything larger returns HTTP 500 AssertionError
+# (verified live on Colossus 2026-08-06 with agent-server 1.40).
+_AGENT_SERVER_MAX_PAGE_LIMIT = 100
+
+
 async def _fetch_event(
-    client: Any, run_id: str, event_id: str, *, page_limit: int = 500
+    client: Any,
+    run_id: str,
+    event_id: str,
+    *,
+    page_size: int = _AGENT_SERVER_MAX_PAGE_LIMIT,
+    max_pages: int = 10,
 ) -> dict[str, Any] | None:
     """Fetch an event by id from the source conversation.
 
     Uses ``GET /api/conversations/{run_id}/events/search?limit={N}`` and
-    scans for a matching ``id`` field.  ``page_limit`` bounds the scan to
-    prevent OOM on very long runs.
+    scans for a matching ``id`` field.  Follows ``next_page_id`` up to
+    ``max_pages`` (default 10 × 100 = 1000 events) so we don't OOM on
+    very long runs.
 
-    Returns ``None`` if the id isn't in the first ``page_limit`` events.
+    agent-server enforces ``limit <= 100`` — exceeding it is a hard 500,
+    so we page instead of asking for a single large window.
+
+    Returns ``None`` if the id isn't in the scanned pages.
     """
-    try:
-        resp = await client.get(
-            f"/api/conversations/{run_id}/events/search",
-            params={"limit": page_limit, "sort_order": "TIMESTAMP"},
+    page_size = min(page_size, _AGENT_SERVER_MAX_PAGE_LIMIT)
+    page_id: str | None = None
+    for _ in range(max_pages):
+        params: dict[str, Any] = {
+            "limit": page_size,
+            "sort_order": "TIMESTAMP",
+        }
+        if page_id:
+            params["page_id"] = page_id
+        try:
+            resp = await client.get(
+                f"/api/conversations/{run_id}/events/search",
+                params=params,
+            )
+        except Exception as exc:
+            raise RestartError(
+                "upstream_error",
+                f"agent-server unreachable during event fetch: {exc}",
+            ) from exc
+        if resp.status_code == 404:
+            raise RestartError("source_not_found", f"run {run_id!r} not found")
+        if resp.status_code >= 400:
+            raise RestartError(
+                "upstream_error",
+                f"agent-server {resp.status_code}: {resp.text[:200]}",
+            )
+        payload = resp.json() or {}
+        items = (
+            payload if isinstance(payload, list)
+            else (
+                payload.get("items")
+                or payload.get("data")
+                or payload.get("events")
+                or []
+            )
         )
-    except Exception as exc:
-        raise RestartError(
-            "upstream_error", f"agent-server unreachable during event fetch: {exc}"
-        ) from exc
-    if resp.status_code == 404:
-        raise RestartError("source_not_found", f"run {run_id!r} not found")
-    if resp.status_code >= 400:
-        raise RestartError(
-            "upstream_error",
-            f"agent-server {resp.status_code}: {resp.text[:200]}",
-        )
-    payload = resp.json() or {}
-    items = (
-        payload if isinstance(payload, list)
-        else (
-            payload.get("items")
-            or payload.get("data")
-            or payload.get("events")
-            or []
-        )
-    )
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        if (it.get("id") or it.get("event_id")) == event_id:
-            return it
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            if (it.get("id") or it.get("event_id")) == event_id:
+                return it
+        # Advance to next page — agent-server envelope uses
+        # ``next_page_id``; BFF's own ``get_run_events`` normalizes to
+        # ``nextPageId``.  Accept both.
+        if isinstance(payload, dict):
+            page_id = (
+                payload.get("next_page_id")
+                or payload.get("nextPageId")
+            )
+        else:
+            page_id = None
+        if not page_id:
+            break
     return None

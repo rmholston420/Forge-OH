@@ -6546,3 +6546,14 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   - `bff/routers/runs.py`
   - `bff/tests/test_runs_sha_capture.py`
   - `scripts/stage-6.4c-verify.sh`
+
+## 2026-08-06 09:05 EDT — Stage 6.4c step 1e follow-up: fix restart 502 (agent-server limit≤100)
+
+- **Stage/plugin/port**: Stage 6.4c · P1 Restart-from-here · BFF `bff/services/restart.py::_fetch_event`
+- **Trigger**: Colossus run of stage-6.4c-verify.sh (post-step-1e) confirmed sha capture now works (anchor_sha matches HEAD), then happy-path restart 502'd with agent-server 500 (AssertionError on `limit <= 100`).  See DEBUG_LOG entry same timestamp.
+- **Fix**: `_fetch_event` now pages via `next_page_id` with `page_size` clamped to 100 (`_AGENT_SERVER_MAX_PAGE_LIMIT`) and `max_pages=10` (1000-event scan budget vs the old single 500-page request).
+- **New regression tests**: `bff/tests/test_runs_restart.py::TestFetchEventPagination` (2 tests) — proves no call ever exceeds limit=100 and that page_id follows next_page_id.
+- **DoD status**: BFF change lands; awaiting Colossus rerun of verify script — expect happy-path 200 + negative-case 404 to succeed now that the upstream 500 is eliminated.
+- **Files touched**:
+  - `bff/services/restart.py`
+  - `bff/tests/test_runs_restart.py`

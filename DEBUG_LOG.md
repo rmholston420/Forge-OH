@@ -1845,3 +1845,14 @@ Two independent problems this caused:
 - **Fix:** commit `ce15d6b` — assert on `'gpt-4o'` (matches fixture and
   component behaviour). Other four tests in the file already pass.
 - **Files:** `src/tests/unit/AgentPresetCard.test.tsx`
+
+## 2026-08-06 09:05 EDT — restart 502: agent-server AssertionError on limit>100
+
+- **Symptom**: `POST /api/runs/{id}/restart` returned HTTP 502 with body `{"detail":"agent-server 500: {\"detail\":\"Internal Server Error\",\"exception\":\"\",\"error_id\":\"...\"}"}`.  Reproduced twice during stage-6.4c-verify.sh (happy-path restart + negative case A on unknown from_event_id).
+- **Affected**: Stage 6.4c step 1e · BFF `bff/services/restart.py::_fetch_event` · agent-server `openhands.agent_server.event_router.search_conversation_events`.
+- **Root cause**: `_fetch_event` called `GET /api/conversations/{id}/events/search?limit=500` in a single request.  Agent-server enforces `assert limit <= 100` (see `openhands/agent_server/event_router.py:105`), which raises `AssertionError` and returns HTTP 500 with an empty exception body.  BFF wraps the 500 as 502 upstream_error.  Traceback found at ~/dev/forge-oh/.forge-logs/agent-server.log:211527 and :211739.
+- **Fix applied**: Cap page size at `_AGENT_SERVER_MAX_PAGE_LIMIT = 100` and page via `next_page_id` up to `max_pages=10` (10 × 100 = 1000 events scanned).  Preserved existing None-result-on-miss contract.
+- **Files changed**:
+  - `bff/services/restart.py` — new pagination loop in `_fetch_event`
+  - `bff/tests/test_runs_restart.py` — added `TestFetchEventPagination` with `test_never_requests_limit_over_100` + `test_follows_next_page_id`
+- **Reference**: no prior DEBUG_LOG entry mentioned this limit; agent-server's 100-cap was undocumented on our side.
