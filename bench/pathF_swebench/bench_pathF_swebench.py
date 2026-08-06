@@ -66,9 +66,26 @@ THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 # Model cells recognized by this harness. F.3 Path A tests c01 only.
 # c11 and c03b are included as optional comparators for ADR-013 amendment #2
 # defensibility (same shortlist as F.1b).
+# Endpoint & context defaults follow the canonical Slice 8.0 serving path:
+#   ops/vllm_launch_coder.sh publishes host :8501 -> container :8000 and
+#   launches with --max-model-len 65536, --kv-cache-dtype fp8, chunked
+#   prefill, and speculative n-gram decode.
+#
+# Environment overrides (set BOTH together when reproducing an older run):
+#   FORGE_BENCH_CODER_URL      OpenAI-compatible base incl. /v1 suffix
+#                              (default: http://localhost:8501/v1)
+#   FORGE_BENCH_MAX_MODEL_LEN  context ceiling for budget math
+#                              (default: 65536)
+#
+# Example — reproduce pre-Slice-8.0 baseline against a :8000-bound vLLM at 32k:
+#   FORGE_BENCH_CODER_URL=http://localhost:8000/v1 \
+#   FORGE_BENCH_MAX_MODEL_LEN=32768 \
+#     python -m bench.pathF_swebench.bench_pathF_swebench --smoke --model c01
+_CODER_URL = os.getenv("FORGE_BENCH_CODER_URL", "http://localhost:8501/v1")
+
 CELLS: dict[str, dict] = {
     "c01": {
-        "endpoint": "http://localhost:8000/v1",
+        "endpoint": _CODER_URL,
         "model_id": "c01_coder_vllm_qwen36_27b_int4",
         "sampling": {
             "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0,
@@ -77,7 +94,7 @@ CELLS: dict[str, dict] = {
         "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
     },
     "c11": {
-        "endpoint": "http://localhost:8000/v1",
+        "endpoint": _CODER_URL,
         "model_id": "c11_coder_vllm_devstral24b_awq",
         "sampling": {
             "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0,
@@ -86,7 +103,7 @@ CELLS: dict[str, dict] = {
         "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
     },
     "c03b": {
-        "endpoint": "http://localhost:8000/v1",
+        "endpoint": _CODER_URL,
         "model_id": "c03b_coder_vllm_qwen3coder_awq",
         "sampling": {
             "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0,
@@ -96,10 +113,11 @@ CELLS: dict[str, dict] = {
     },
 }
 
-# Context budgeting. vLLM launches c01 with --max-model-len 32768.
-# We must satisfy: prompt_tokens + max_tokens <= MAX_MODEL_LEN.
+# Context budgeting. Slice 8.0 raised the coder launcher to --max-model-len 65536
+# (fp8 KV cache keeps the VRAM math identical to the previous 32k*fp16 footprint
+# at concurrency=1). We must still satisfy: prompt_tokens + max_tokens <= MAX_MODEL_LEN.
 # We dynamically cap max_tokens per request using a live /tokenize probe.
-MAX_MODEL_LEN = 32768
+MAX_MODEL_LEN = int(os.getenv("FORGE_BENCH_MAX_MODEL_LEN", "65536"))
 MAX_TOKENS_CEILING = 4096   # cap for coder diffs; won't grow past this even if room allows
 MAX_TOKENS_FLOOR = 512      # if we can't guarantee at least this much room, skip the task
 CONTEXT_SAFETY_MARGIN = 64  # tokenizer + chat-template can add a few tokens; keep some slack
@@ -620,6 +638,11 @@ def main(argv: list[str]) -> int:
         "cell": args.model,
         "model_id": CELLS[args.model]["model_id"],
         "endpoint": CELLS[args.model]["endpoint"],
+        "max_model_len": MAX_MODEL_LEN,
+        "env_overrides": {
+            "FORGE_BENCH_CODER_URL": os.environ.get("FORGE_BENCH_CODER_URL"),
+            "FORGE_BENCH_MAX_MODEL_LEN": os.environ.get("FORGE_BENCH_MAX_MODEL_LEN"),
+        },
         "mode": "oracle-retrieval",
         "task_count": len(tasks),
         "task_ids": [t["instance_id"] for t in tasks],

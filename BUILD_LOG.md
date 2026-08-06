@@ -7213,3 +7213,19 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
 - **Ports / adapters affected:** coder role on :8501; :8511 planner deferred to §8.0b (same bundle, mechanical copy).
 - **PORTING_LEDGER / ADR updated:** ADR-029 D4 amendment (in-doc, not a new ADR).
 - **Stop-condition status:** code change complete + pushed. **Next**: user restarts coder container + re-runs smoke-30 to attest DoD items 1–5.
+
+## 2026-08-06 15:45 EDT — Slice 8.0 bench alignment (port + max-model-len env override)
+
+- **Stage / plugin / port:** Stage 8 · Slice 8.0 · bench_pathF_swebench harness
+- **What changed:** Aligned bench harness with canonical Slice 8.0 serving path.
+  - `CELLS[*].endpoint` now defaults to `http://localhost:8501/v1` (was `:8000` — never matched the Docker launcher's host-port publish).
+  - `MAX_MODEL_LEN` now defaults to `65536` (was hardcoded `32768`).
+  - Both settable via `FORGE_BENCH_CODER_URL` / `FORGE_BENCH_MAX_MODEL_LEN` env vars for reproducing the pre-Slice-8.0 baseline.
+  - Run manifest now records resolved `max_model_len` + env overrides.
+- **Files touched:** `bench/pathF_swebench/bench_pathF_swebench.py`.
+- **Ports / adapters affected:** none (bench-only; no serving-infra change).
+- **PORTING_LEDGER / ADR updated:** none (bench-only alignment; no port contract).
+- **Stop-condition status:** in-progress. Attestation is now a two-step run:
+    1. Matched-context (32k) vs 33.3% baseline — proves flag bundle doesn't regress.
+    2. New-context (65k) — exercises DoD item 3 (4 previously-skipped tasks load).
+- **Related DEBUG_LOG:** 2026-08-06 15:41 EDT + 15:45 EDT.

@@ -1,79 +1,57 @@
-# Forge-OH Session Handoff — 2026-08-06 15:30 EDT
+# Forge-OH Session Handoff — 2026-08-06 15:45 EDT
 
 ## Current build-sequencing position
 
-- **Stage / phase:** Stage 8 · Slice 8.0 (vLLM serving-infra config bundle)
-- **Plugin / kernel component:** coder role · vLLM launcher · Docker path (canonical per ADR-013 amendment #1)
-- **Ports / adapters in progress:** `ops/vllm_launch_coder.sh` on :8501 — flag bundle applied, awaiting Colossus-side restart + smoke re-baseline for DoD attestation.
+- **Stage / phase:** Stage 8 · Slice 8.0 (SDK-native vLLM serving-infra config)
+- **Plugin / kernel component:** vLLM coder serving-infra config bundle + bench alignment
+- **Ports in progress:** none (Slice 8.0 is a launcher + bench config-only slice; no port contract touched)
 
 ## Completed this session
 
-- Read Council-Synthesis §8.0 slice contract, KNOWN_ISSUES §68, `bench/pathE_qwen36_27b/vllm_launch.sh:195`, DEBUG_LOG 2026-08-03 18:34 EDT, ADR-013 amendment #1, ADR-029 D4.
-- Drafted `docs/reconciliation-plan-stage-8.md` §8.0 (initial draft targeted the wrong launcher `scripts/vllm_start.sh`; corrected within the session to `ops/vllm_launch_coder.sh`).
-- **Verified vLLM 0.26.0** in `vllm/vllm-openai:latest` via `docker run --rm --entrypoint python3 vllm/vllm-openai:latest -c 'import vllm; print(vllm.__version__)'`. Well above 0.10 threshold.
-- **Filed KNOWN_ISSUES entry** for `~/venv/vllm-new` HF Hub 1.26 vs transformers <1.0 conflict (deferred to F.19.5; not on any live Slice 8.0 path).
-- **Filed DEBUG_LOG entry** for the malformed `vllm --version` probe (missing `--gpus all` + wrong entrypoint semantics).
-- **Discovered BFF has no agent-compose site**: BFF forwards runs to OpenHands agent-server on :8090; `LLMSummarizingCondenser` lives inside that process. DoD item 6 (condenser alignment) moved to Slice 8.6. ADR-029 D4 amended inline.
-- **Executed Slice 8.0 flag bundle** on `ops/vllm_launch_coder.sh`: 4 flags added (`--kv-cache-dtype fp8`, `--enable-chunked-prefill`, `--long-prefill-token-threshold 4096`, `--speculative-config` n-gram), 1 flag modified (`--max-model-len 32768 → 65536`), 0 flags removed. `bash -n` clean. Zero code touched outside the launcher.
-- Committed and pushed all changes.
+- Applied Slice 8.0 vLLM flag bundle to `ops/vllm_launch_coder.sh` (commit `56bb2e3`):
+  - Added: `--kv-cache-dtype fp8`, `--enable-chunked-prefill`, `--long-prefill-token-threshold 4096`, `--speculative-config ngram`
+  - Modified: `--max-model-len 32768 -> 65536`
+- Verified live on Colossus: coder container READY on `:8501` in 190s; `/v1/models` reports `max_model_len: 65536`.
+- Fixed three agent-side handoff mistakes (all documented in DEBUG_LOG):
+  - Script vs module invocation (commit `3954ad2`)
+  - `--concurrency` dead flag + `--tasks all` != smoke-30 (commit `3d0f59a`)
+- Discovered bench harness port drift (bench dialed `:8000`, canonical serves `:8501`) + hardcoded 32k context ceiling. Fixed both with env overrides.
+  - Default endpoint: `http://localhost:8501/v1` (canonical)
+  - Default `MAX_MODEL_LEN`: `65536` (canonical)
+  - `FORGE_BENCH_CODER_URL` + `FORGE_BENCH_MAX_MODEL_LEN` env vars for reproducing prior baseline.
+  - Manifest now records resolved values.
 
-## Remaining before Slice 8.0 Definition of Done
+## Remaining before current DoD is met
 
-1. User restarts coder container:
-   ```bash
-   ~/dev/forge-oh/ops/vllm_supervisor.sh down coder
-   ~/dev/forge-oh/ops/vllm_supervisor.sh up coder
-   ```
-   Wait up to 900s for container health. Verify:
-   ```bash
-   curl -sf http://127.0.0.1:8501/v1/models | python3 -m json.tool
-   ```
-   Should list `qwen3.6-27b-int4-autoround`. DoD items 1 + 2.
-2. User re-runs smoke-30 at concurrency=1 against the same 30 tasks that produced Path A pass@1 = 33.3% baseline at `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/`:
-   ```bash
-   cd ~/dev/forge-oh && \
-     python3 bench/pathF_swebench/bench_pathF_swebench.py \
-       --tasks all --model c01 --concurrency 1
-   ```
-3. DoD attestation (agent side, once results returned):
-   - **DoD 4**: pass@1 ≥ 32.0% (regression ≤ 1 task from 33.3% baseline). If worse, agent walks the §Rollback strategy bisect.
-   - **DoD 5**: `django-15629`, `matplotlib-26208`, `sphinx-7590`, `sympy-14248` no longer show `context-budget-skip` — they load and either pass or fail through the model.
-4. Agent appends BUILD_LOG attestation entry + overwrites SESSION_HANDOFF pointing to Slice 8.0b (planner-side mechanical copy). Commits and pushes.
+Two-step attestation (in this order — matched-context first prevents conflating flag-bundle effect with context-window effect):
 
-## Open questions / awaiting user answer
+1. **Step 1 — matched-context comparison** (proves flag bundle doesn't regress at 32k). Compare against 12:11 baseline pass@1 = 33.3%. Pass if >= 32.0% (regression tolerance 1/30).
+2. **Step 2 — new-context exercise** (proves DoD item 3, context ceiling now used). Confirm the 4 previously-context-budget-skipped tasks (django-15629, matplotlib-26208, sphinx-7590, sympy-14248) now execute instead of skip. Report pass@1 delta.
 
-None blocking. All draft-time questions (Q1 vLLM version resolved 0.26.0, Q2 spec-decode acceptance deferred to §8.0.5, Q3 APC block-size deferred to §8.6) are handled.
+If Step 1 fails (< 32.0%): bisect flag bundle per §Rollback strategy — start by removing `--speculative-config` and re-running Step 1. Step 2 blocked until Step 1 passes.
+
+## Open questions / awaiting answer
+
+- None. All decisions to date have been made under standing "make optimal choice" delegation.
 
 ## Exact next action
 
-Paste on Colossus:
+Coder container is already up on `:8501` with the Slice 8.0 config live. No restart needed.
 
 ```bash
 cd ~/dev/forge-oh && git pull
 
-# Restart coder with the Slice 8.0 flag bundle.
-./ops/vllm_supervisor.sh down coder
-./ops/vllm_supervisor.sh up coder
-
-# Wait for it to warm up (cold start ~2–3 min; up to 900s tolerated).
-# Poll until /v1/models responds:
-for i in $(seq 1 90); do
-  if curl -sf http://127.0.0.1:8501/v1/models > /dev/null; then
-    echo "coder ready after ${i}0s"
-    curl -s http://127.0.0.1:8501/v1/models | python3 -m json.tool
-    break
-  fi
-  sleep 10
-done
-
-# Re-run smoke-30 (F.3.0 calibrated 30-task stratified sample = --smoke flag,
-# NOT --tasks all which is the full 500-task F.3.1 run). See DEBUG_LOG
-# 2026-08-06 15:39 EDT for why. Harness is serial (no --concurrency flag).
-cd ~/dev/forge-oh && \
+# Step 1 — matched-context smoke (compares directly against 33.3% baseline).
+FORGE_BENCH_MAX_MODEL_LEN=32768 \
   python -m bench.pathF_swebench.bench_pathF_swebench \
-    --smoke --model c01 2>&1 | tee ~/.forge-oh/bench_pathF_smoke30_slice8.0.log
+    --smoke --model c01 2>&1 | tee ~/.forge-oh/bench_pathF_smoke30_slice8.0_step1_ctx32k.log
+
+# Step 2 — new-context smoke (default 65536; exercises DoD item 3).
+python -m bench.pathF_swebench.bench_pathF_swebench \
+  --smoke --model c01 2>&1 | tee ~/.forge-oh/bench_pathF_smoke30_slice8.0_step2_ctx65k.log
 ```
 
-Return: (a) the `/v1/models` JSON, (b) the final pass@1 line from the smoke-30 run, (c) whether the 4 previously-context-skipped tasks now show a real pass/fail instead of `context-budget-skip`.
-
-If pass@1 < 32.0%, I execute the §Rollback strategy bisect from `docs/reconciliation-plan-stage-8.md`.
+Return for each run:
+- (a) Final pass@1 summary line
+- (b) For Step 2 only: whether django-15629, matplotlib-26208, sphinx-7590, sympy-14248 show a real pass/fail (not `context-budget-skip`)
+- (c) Any task that flipped pass→fail vs 12:11 baseline

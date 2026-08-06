@@ -2209,3 +2209,34 @@ Need to inspect `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/manifest.jso
 **Not a Slice 8.0 regression:** the vLLM flag bundle (fp8 KV, chunked prefill, spec decode, max-model-len 65536) is verified live via `/v1/models` on :8501. This is bench harness / launcher drift that pre-existed Slice 8.0.
 
 **Related BUILD_LOG entry:** 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED.
+
+## 2026-08-06 15:45 EDT — Slice 8.0 bench port drift: FIX APPLIED
+
+**Continues:** 2026-08-06 15:41 EDT entry above.
+
+**Baseline manifest inspection** (`~/.forge-oh/bench_pathF_swebench/20260806_1211_run/manifest.json` on Colossus):
+```json
+{
+  "endpoint": "http://localhost:8000/v1",
+  "smoke": true,
+  "smoke_task_count": 30,
+  "git_sha": "58097cb1813b68fba1f6facade878968168e2af3"
+}
+```
+
+Confirmed: baseline was launched against a `:8000`-bound vLLM (NOT the canonical `ops/vllm_launch_coder.sh` which publishes `:8501`). The baseline manifest does not stamp `max_model_len`, but pre-Slice-8.0 code hardcoded `MAX_MODEL_LEN = 32768`, so the baseline is a 32k-context, no-fp8-KV, no-chunked-prefill, no-speculative-decode measurement.
+
+**Fix (bench_pathF_swebench.py):**
+
+1. Added `FORGE_BENCH_CODER_URL` env override (default `http://localhost:8501/v1` — canonical Slice 8.0). All 3 CELLS ("c01", "c11", "c03b") now use the shared `_CODER_URL` variable so a single env var swaps them together.
+2. Added `FORGE_BENCH_MAX_MODEL_LEN` env override (default `65536` — canonical Slice 8.0).
+3. Manifest now records resolved `max_model_len` and the two env overrides — future forensics won't have to re-derive them from code archaeology.
+
+**Attestation strategy (two-step, avoids conflating flag-bundle effect with context-window effect):**
+
+- Step 1: `FORGE_BENCH_MAX_MODEL_LEN=32768` — matched-context comparison. Pass if pass@1 >= 32.0% (regression tolerance 1/30). Confirms flag bundle doesn't regress at matched context.
+- Step 2: default `FORGE_BENCH_MAX_MODEL_LEN=65536` — 4 previously-context-skipped tasks (django-15629, matplotlib-26208, sphinx-7590, sympy-14248) now load. Report pass@1 delta.
+
+**Files changed:** `bench/pathF_swebench/bench_pathF_swebench.py`.
+
+**Related BUILD_LOG entry:** 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED. Also appending 2026-08-06 15:45 EDT progress entry for the bench alignment.
