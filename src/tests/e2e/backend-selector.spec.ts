@@ -15,6 +15,10 @@
 import { test, expect, Page } from '@playwright/test';
 
 const BFF_URL = process.env.PLAYWRIGHT_BFF_URL || 'http://127.0.0.1:8081';
+const FRONTEND_URL =
+  process.env.PLAYWRIGHT_BASE_URL ||
+  process.env.PLAYWRIGHT_FRONTEND_URL ||
+  'http://127.0.0.1:3000';
 
 async function bffReachable(): Promise<boolean> {
   try {
@@ -37,7 +41,7 @@ test.describe('Stage 2.2 BackendSelector + preset badges', () => {
   });
 
   test('preset cards render backend chip for each Stage 2.1 seed', async ({ page }) => {
-    await page.goto('/agents');
+    await page.goto(`${FRONTEND_URL}/agents`);
 
     // Wait for card grid to hydrate (skeleton → cards).
     await expect(page.getByRole('heading', { name: 'Agent Presets' })).toBeVisible({ timeout: 15_000 });
@@ -62,7 +66,7 @@ test.describe('Stage 2.2 BackendSelector + preset badges', () => {
   });
 
   test('BackendSelector in NewRunComposer lists the 6 canonical backends', async ({ page }) => {
-    await page.goto('/runs');
+    await page.goto(`${FRONTEND_URL}/runs`);
 
     // NewRunComposer trigger — the /runs page exposes it via a button
     // or renders it inline. Guard both by looking for the field group.
