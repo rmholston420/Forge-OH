@@ -31,6 +31,7 @@ from bff.routers import (
     debug,
     git,
     gpu,
+    idempotency,
     inference_backends,
     mcp,
     memory,
@@ -51,6 +52,7 @@ from bff.services import (
     episodic_memory,
     event_relay,
     gpu_monitor,
+    idempotency_ledger,
     mcp_bootstrap,
     trajectory_drain,
 )
@@ -62,6 +64,10 @@ async def lifespan(app: FastAPI):
     await oh_startup()
     # Initialise shared aiosqlite connection for episodic memory.
     await episodic_memory.init_db(app)
+    # Stage 6.3: Idempotency ledger — durable exactly-once record for
+    # state-changing tool calls.  Uses its own aiosqlite connection on
+    # app.state.idempotency_db.
+    await idempotency_ledger.init_db(app)
     # Slice F.13: start the trajectory drain scheduler so records
     # written by the trajectory STOP hook (without inline indexing)
     # get embedded in the background. Best-effort: an import failure
@@ -106,6 +112,7 @@ async def lifespan(app: FastAPI):
     await event_relay.shutdown_all()
     await oh_shutdown()
     await episodic_memory.close_db(app)
+    await idempotency_ledger.close_db(app)
     # Stage 5.6a (ADR-024): close the shared MemoryPort adapter, if it
     # was composed. Idempotent; no-op when NEO4J_PASSWORD was unset.
     await close_memory_port()
@@ -144,6 +151,7 @@ app.include_router(plugins.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(debug.router, prefix="/api")
+app.include_router(idempotency.router, prefix="/api")
 app.include_router(bash.router, prefix="/api")
 app.include_router(git.router, prefix="/api")
 app.include_router(gpu.router)  # already prefixed /api/gpu inside the router

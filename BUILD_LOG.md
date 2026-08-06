@@ -6041,3 +6041,68 @@ PLAYWRIGHT_START_PROD=1 PLAYWRIGHT_GPU_STRIP_PUSH=1 \
 **Stop-condition status:** ✅ Stage 6.2 complete.
 
 **Next stage:** 6.3 — Idempotency ledger.
+
+
+## 2026-08-06 05:35 EDT — Stage 6.3 opened: Idempotency ledger
+
+**Scope:** Stage 6.3 per `docs/reconciliation-plan-stage-6.md` §6.3 — durable exactly-once record keyed by `conversation_id + leaf_event_id + tool_name + argument_hash` so replayed state-changing tool calls are skipped.
+
+**Ground-truth divergence from spec (verified via live SDK probe on Colossus 2026-08-06):**
+- Spec keys the ledger on `task_id + step_index`. **Neither exists in `openhands.sdk.tool.tool.ToolExecutor.__call__(self, action, conversation=None)`** — only `action` + `conversation` are passed.
+- Spec puts SQLite modules under `bff/db/`. **`bff/db/` does not exist** — the existing convention is `bff/services/episodic_memory.py` and `bff/services/run_metadata_store.py`.
+- Spec references a `bff/services/tool_dispatcher.py`. **No dispatcher exists** — the SDK invokes each tool's own `ToolExecutor.__call__` directly inside agent-server; BFF is not on the execution path.
+- **What IS available for the key:** `conversation.id` (via `_resolve_conversation_id` from `search_web`), `conversation.state.leaf_event_id` (SDK v1.40.0 native), the executor's own `TOOL_NAME`, and the `Action` model's `.model_dump()`.
+
+**Locked decisions:**
+- **D1 = b** — ledger at `bff/services/idempotency_ledger.py` (matches existing convention; no new `bff/db/` package).
+- **D4 = b** — shared `IdempotentToolExecutor` mixin at `openhands_tools_ext/common/idempotent_executor.py`. Every future state-changing tool inherits.
+- **D5 hybrid** — primary key = `sha256(conversation_id | leaf_event_id | tool_name | sha256(args_json))`. `leaf_event_id=None` normalizes to the `"root"` sentinel. Deterministic across replay because the same LLM decision re-emerges at the same leaf.
+- **D6 = a** — added a synthetic `write_note` tool (`openhands_tools_ext/write/tools/write_note.py`) to exercise the ledger + provide a real state-changing path for future stages (checkpoint revert, code-exec MCP).
+- **D7 crash-and-resume strict** — plan checklist mandates it. `scripts/test-crash-resume.sh` performs a real SIGKILL of a minimal FastAPI harness and verifies the on-disk SQLite DB survives.
+
+**Files added:**
+- `bff/services/idempotency_ledger.py` — aiosqlite service; table `completed_side_effects (idempotency_key PK, conversation_id, leaf_event_id, tool_name, argument_hash, result_summary, result_json, completed_at)`. Uses `INSERT OR IGNORE` on mark; `sort_keys=True` on JSON hashing for order-independence; belt-and-braces sentinel for None leaf.
+- `bff/routers/idempotency.py` — production surface `POST /api/idempotency/check` + `POST /api/idempotency/mark`. Not env-gated.
+- `openhands_tools_ext/common/__init__.py` + `openhands_tools_ext/common/idempotent_executor.py` — `IdempotentToolExecutor` abstract mixin. Subclasses implement `_execute`, `_observation_from_cached`, `_observation_to_cached_json`, `_result_summary`. Fail-open on BFF network failure (best-effort ledger; execution never blocked). Bypasses ledger when `conversation` is None (SDK unit-test invocation path).
+- `openhands_tools_ext/write/__init__.py` + `openhands_tools_ext/write/tools/__init__.py` + `openhands_tools_ext/write/tools/write_note.py` — synthetic `write_note` tool. Deterministic filename via `sha256(title)[:16] + '.txt'`. Atomic write via tempfile + `os.replace`. Registers itself at import time.
+- `bff/tests/test_idempotency_ledger.py` (~20 tests) — key stability, argument-order invariance, sentinel handling, CRUD, INSERT OR IGNORE, result_summary truncation, clear_conversation scope, cross-process durability.
+- `bff/tests/test_idempotency_endpoints.py` (~10 tests) — /check + /mark round-trip via FastAPI TestClient, 422 validation, leaf-event non-collision.
+- `openhands_tools_ext/tests/write/__init__.py` + `openhands_tools_ext/tests/write/test_write_note_idempotent.py` (~7 tests) — stubbed httpx client exercises the mixin's ledger-hit / ledger-miss / bypass / fail-open paths.
+- `scripts/test-crash-resume.sh` — end-to-end crash-and-resume harness: boots a minimal uvicorn app pointing at a temp SQLite DB, marks a key, `kill -9`s the process, restarts a fresh process on the same DB, verifies `completed=true` + cached payload survives + replay mark returns `recorded=false`.
+
+**Files modified:**
+- `bff/main.py` — imported `idempotency` router + `idempotency_ledger` service. Added `init_db(app)` + `close_db(app)` calls to the lifespan handler. Mounted router at `/api`.
+- `scripts/forge-up.sh` — added `--import-modules openhands_tools_ext.write.tools.write_note` so `write_note` is registered when agent-server starts.
+
+**Ports/adapters affected:** none new. The ledger is an internal BFF concern. The mixin talks to BFF over HTTP mirroring ADR-024 D6.
+
+**PORTING_LEDGER:** no entry (hand-authored; no upstream donor for the ledger design).
+
+**Stop-condition status:**
+- Ledger + endpoints + mixin + synthetic tool: ✅ written.
+- Unit tests (all three suites): ✅ written locally.
+- Crash-and-resume harness: ✅ written locally.
+- DoD verification on Colossus: ⏳ pending user pull + restart + test run.
+
+**Verification block for Colossus:**
+```bash
+cd ~/dev/forge-oh && git pull origin main
+source .oh-venv/bin/activate
+
+# Backend unit tests
+pytest bff/tests/test_idempotency_ledger.py \
+       bff/tests/test_idempotency_endpoints.py \
+       openhands_tools_ext/tests/write/test_write_note_idempotent.py -q
+
+# Restart Forge-OH (BFF needs the new lifespan startup; agent-server needs the new tool import)
+export FORGE_TIMELINE_DEBUG_INJECT=1
+export FORGE_SEARXNG_BASE_URL=http://127.0.0.1:18888
+./scripts/forge-restart.sh
+
+# End-to-end crash-and-resume proof
+./scripts/test-crash-resume.sh
+```
+
+Expected: ~37 tests pass; crash-and-resume script exits 0 with "PASS".
+
+**Next up (after DoD verified):** Stage 6.4 — checkpoint-to-disk revert.
