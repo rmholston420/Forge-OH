@@ -61,7 +61,18 @@ async def test_relay_emits_normalized_wire_shape(relay_module: Any) -> None:
 
     # Patch the internal helpers so _run_loop reaches the emit block on the
     # first iteration, then hits a terminal status and returns.
-    call_counter = {"status": 0}
+    #
+    # _run_loop control flow per iteration (see bff/services/event_relay.py):
+    #   1. status = _fetch_status(cid)
+    #   2. if status changed: emit 'status' (and maybe 'approval_required')
+    #   3. events, next_page = _fetch_page(cid, page_id)
+    #   4. for ev in events: emit 'event'  <-- our tripwire target
+    #   5. if status in _TERMINAL_STATUSES: return
+    #
+    # The terminal check is AFTER the event emissions, so we need
+    # _fetch_page to return the raw events on the first call and an
+    # empty page on the second — otherwise the same events emit twice.
+    call_counter = {"status": 0, "page": 0}
 
     async def fake_fetch_conversation(_cid: str) -> dict[str, Any]:
         return {"execution_status": "running", "workspace": {}}
@@ -75,7 +86,13 @@ async def test_relay_emits_normalized_wire_shape(relay_module: Any) -> None:
     async def fake_fetch_page(
         _cid: str, _page_id: str | None
     ) -> tuple[list[dict[str, Any]], str | None]:
-        return events_page, None
+        call_counter["page"] += 1
+        # Only the first fetch returns real events. Second fetch is
+        # empty so the terminal-status check on iteration 2 can return
+        # without re-emitting the same page.
+        if call_counter["page"] == 1:
+            return events_page, None
+        return [], None
 
     with (
         patch.object(relay_module, "_fetch_conversation", fake_fetch_conversation),

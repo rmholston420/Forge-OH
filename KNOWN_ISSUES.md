@@ -9,6 +9,17 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
+## 2026-08-06 00:02 EDT — test_event_relay_yield hazard-demonstration test cannot fail
+
+- **Blocks:** none. The G.1 event-loop-yield fix in `bff/services/event_relay.py` is still in place (verified via source read); this issue is a defect in its *regression test*, not the code.
+- **Symptom:** `bff/tests/test_event_relay_yield.py::test_direct_sync_call_would_block_confirms_the_hazard` produced `latencies[0] = 8.22e-7`, failing `>= 0.15`. The sibling `test_slow_producer_does_not_block_event_loop` passes only because its assertion `< 0.10` is trivially satisfied by ~0.
+- **Root cause:** both tests call `_simulate_incoming_request(time.perf_counter(), latencies)` with `started_at` evaluated in the CALLER frame. The delta then measures argument-evaluation to coroutine-body-entry (~0 in a healthy loop), not event-loop scheduling delay. The tests can't detect the hazard they claim to.
+- **Attempted fixes:** none this session. Logged in DEBUG_LOG 2026-08-06 00:02 EDT.
+- **Next investigation:** rewrite both tests to timestamp inside the coroutine relative to a `create_task` timestamp captured outside. Consider using `asyncio.get_running_loop().time()` deltas. See G.1 DEBUG_LOG 2026-08-03 23:40 EDT for the original hazard the test was meant to guard.
+- **Impact:** real runtime protection (asyncio.to_thread + asyncio.sleep(0)) is intact. The only detection surface for a regression would be the self-eval harness ReadTimeout behavior, which is not a fast-feedback signal.
+
+---
+
 ## 2026-08-05 — pnpm workspace CI check fails on every PR (Node 20 + workspace config)
 
 - **Blocks:** none. `mergeable: true` on all merged PRs (#5, #6, #7, closeout).

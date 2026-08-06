@@ -1474,3 +1474,47 @@ ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than
 - **Fix applied:** Scope the banner locator with `.filter({ hasText: /awaiting your approval/i })`. For the click-flow tests, wait for the labeled Approve/Reject button instead of role=alert since that's what the test actually acts on.
 - **Files changed:** `src/tests/e2e/hitl-approval.spec.ts`.
 - **Search keys:** `strict mode violation`, `role="alert"`, `__next-route-announcer__`, `getByRole alert`, `Next.js announcer`, `Playwright filter hasText`.
+
+## 2026-08-06 00:02 EDT — test_event_relay_normalize double-emit
+
+**Symptom**:
+```
+AssertionError: expected 2 'event' emissions, got 4
+```
+`bff/tests/test_event_relay_normalize.py::test_relay_emits_normalized_wire_shape`
+
+**Affected**: post-Stage-3 hygiene Slice B · event_relay tripwire test only. The relay code is correct — this is a test-double bug.
+
+**Root cause**: `_run_loop` checks terminal status AFTER emitting events. Control flow per iteration:
+
+1. `status = _fetch_status(cid)`
+2. `events, next_page = _fetch_page(cid, page_id)`
+3. `for ev in events: emit 'event'`
+4. `if status in _TERMINAL_STATUSES: return`
+
+My `fake_fetch_page` returned the same 2-event page on both iterations. Iteration 1 (`status=running`): emitted 2. Iteration 2 (`status=finished`): emitted 2 more, THEN hit the terminal check and returned. Total = 4.
+
+**Fix applied**: `fake_fetch_page` now returns the events on the first call and an empty list on the second. Added a comment block explaining the `_run_loop` control-flow ordering so the next test author doesn't hit the same trap.
+
+**Files changed**: `bff/tests/test_event_relay_normalize.py`
+
+## 2026-08-06 00:02 EDT — test_direct_sync_call_would_block_confirms_the_hazard flake
+
+**Symptom**:
+```
+AssertionError: Direct sync call did not block the event loop in this test env
+assert 8.220085874199867e-07 >= 0.15
+```
+`bff/tests/test_event_relay_yield.py::test_direct_sync_call_would_block_confirms_the_hazard`
+
+**Affected**: G.1 (2026-08-03) yield-fix regression suite. Not caused by any code change in this session — flaked in isolation during Slice A+B verification.
+
+**Root cause**: pre-existing measurement bug. The test uses `_simulate_incoming_request(time.perf_counter(), latencies)` where `started_at` is evaluated in the CALLER's frame at call time, not when the coroutine body finally gets to run. So the delta measures nothing about event-loop scheduling delay — it measures argument-evaluation-to-body-entry, which is ~0 either way. The test as written cannot detect the hazard it claims to demonstrate.
+
+The sibling `test_slow_producer_does_not_block_event_loop` uses the same measurement pattern; it passes only because its assertion is `< 0.10` and ~0 trivially satisfies it. Its passing tells us nothing either.
+
+**Fix applied**: NONE this session. Logged as a debt item — a real event-loop-hog assertion needs to measure the delay INSIDE the coroutine relative to `create_task` timestamp, not from a caller-frame `perf_counter()` capture. Deferred to a future session (out of Slice A/B scope).
+
+**Files changed**: none. Added to KNOWN_ISSUES.
+
+**Impact assessment**: the G.1 fix itself (asyncio.to_thread + await asyncio.sleep(0) in event_relay._run_loop) is still in place at `bff/services/event_relay.py`; verified via source inspection. The runtime protection is intact. Only the two regression tests attempting to prove it are structurally unable to fail on regression. Self-eval harness ReadTimeout behavior would be the real detection surface if the fix were reverted.
