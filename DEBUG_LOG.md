@@ -1899,3 +1899,26 @@ at `src/tests/e2e/run-restart-from-here.spec.ts:404`.  Vitest for the same compo
 **Files changed**: `src/app/(dashboard)/runs/[runId]/page.tsx`.
 
 **Reference**: this is scope-preserving under ADR-026 §Lock-in single-slice rule — amending closure commit `9eb10ce`.
+
+## 2026-08-06 09:43 EDT — SDK gap check: runtime model switching REST surface
+
+**Symptom (probe context)**: Stage 6.5 §6.5.1 asks whether openhands-sdk==1.40.0 exposes a runtime model-switch capability as an agent-server REST route (not just an SDK-internal method).
+
+**Affected stage**: Stage 6.5 Runtime model switching · §6.5.1 gap check.
+
+**Finding**: **PRESENT as REST endpoint** — three variants exposed by agent-server on :8090 (verified via /openapi.json fetch, 591 702 bytes):
+- `POST /api/conversations/{conversation_id}/switch_profile` — body `{profile_name: str}` — profile swap (model + system prompt + tools + guardrails)
+- `POST /api/conversations/{conversation_id}/switch_llm` — body `{llm: LLM-Input}` (full LLM config: model, api_key, auth_type, subscription_vendor, base_url) — LLM adapter only
+- `POST /api/conversations/{conversation_id}/switch_acp_model` — body `{model: str}` — ACP-model swap only (does not change primary LLM)
+
+Related read routes:
+- `GET /api/llm/models` → `{models: [str]}`
+- `GET /api/llm/models/verified` → `{models: {provider: [str]}}`
+- `GET /api/llm/subscription/openai/models`
+- `GET /v1/models`
+
+`dir(openhands.sdk)` filtered for model|switch returned only `['ACPModelOption', 'build_session_model_meta']` — no top-level `switch_model` symbol. A recursive grep for `switch_model`/`switch-model` under both `openhands/sdk` and `openhands/agent_server` package roots returned zero matches, which is expected: the routes are wired via FastAPI decorators using function names `switch_profile` / `switch_llm` / `switch_acp_model` rather than a shared `switch_model` symbol. The reconciliation-plan-stage-6.md §6.5.2 speculative path `/switch-model` (hyphenated) does NOT exist; canonical paths use underscores and are variant-specific.
+
+**Fix applied**: none — read-only inspection. Stage 6.5 §6.5.2 authorized to proceed under ADR-027 (Proposed 2026-08-06 09:47 EDT) which locks BFF forwarding to `switch_llm` only, preset-driven, credentials server-side.
+
+**Files changed**: DEBUG_LOG.md.

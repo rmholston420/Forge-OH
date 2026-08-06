@@ -26,7 +26,8 @@ Index of ADRs under `docs/adr/`. Numbering is sequential.
 | [023](./023-ace-curation-cycle.md) | ACE-style memory curation cycle: triple-shaped, deterministic string-overlap first pass, library-only until a caller exists (Stage 5.5) | Ratified | Plan §5.5.1 + §5.5.2 free-string sketches (superseded — ADR-021 D1 pins `:MemoryEvent` as triple-shaped) | — |
 | [024](./024-memory-frontend-plumbing.md) | Memory frontend plumbing: `MemoryConsultationEvent` + `memory_consultation` event type + `list_recent_writes` port + inspector page + lazy BFF MemoryPort singleton (Stage 5.6a) | Ratified | — | — |
 | [025](./025-restore-via-fork.md) | Restore via fork, not in-place `git reset` + conversation-state rewind (Stage 6.4b enables · Stage 6.4c consumes) | Superseded by ADR-026 (2026-08-06 07:55 EDT) | Reconciliation-plan-v1 §6.4 + stage-6 §6.4.1–6.4.5 (design layer only) | [ADR-026](./026-restart-from-here.md) |
-| [026](./026-restart-from-here.md) | Restart-from-here (fresh run at target file state, not fork-and-reset) — Stage 6.4c | Proposed | [ADR-025](./025-restore-via-fork.md) (design premise invalidated by evidence probes) | — |
+| [026](./026-restart-from-here.md) | Restart-from-here (fresh run at target file state, not fork-and-reset) — Stage 6.4c | Ratified (2026-08-06) · Amended (frontend gate uses `commit_sha_at_time_of_event`) | [ADR-025](./025-restore-via-fork.md) (design premise invalidated by evidence probes) | — |
+| [027](./027-runtime-model-switching-forwards-switch-llm.md) | Runtime model switching — BFF forwards only `switch_llm`, blast-radius-minimized (Stage 6.5.2) | Proposed | — | — |
 
 ## Authoring workflow
 

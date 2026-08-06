@@ -6676,3 +6676,28 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   - `docs/kosmos-plugin-analysis.md` (new)
   - `docs/adr/README.md` (ADR-010 row added; stale note removed)
   - `BUILD_LOG.md`
+
+## 2026-08-06 09:47 EDT — Stage 6.5 §6.5.1 CLOSED · ADR-027 Proposed (switch_llm)
+
+**Stage/plugin/port**: Stage 6.5 Runtime model switching · §6.5.1 SDK gap check · BFF↔agent-server model-switching port contract.
+
+**What changed**:
+- §6.5.1 SDK gap check executed on Colossus against openhands-sdk==1.40.0. **Verdict: PRESENT as REST endpoint** (three variants, none matching the plan's speculative `/switch-model` path).
+- Full request/response schemas captured for all three switch variants + `/api/llm/models[/verified]` read routes.
+- ADR-027 authored (Proposed) locking Forge-OH's BFF forwarding contract to **`switch_llm` only**, driven by `agentPresetId` with server-side credential hydration. Rejects `switch_profile` (wrong UX semantic) and `switch_acp_model` (wrong layer).
+- ADR-027 defers to ADR-012 §1/§3 for role↔model compatibility enforcement.
+- ADR index updated: ADR-026 corrected to Ratified (was still Proposed in the index despite header amendment); ADR-027 added as Proposed.
+
+**Files touched**:
+- `docs/adr/027-runtime-model-switching-forwards-switch-llm.md` (new, 114 lines)
+- `docs/adr/README.md` (2 rows edited/added)
+- `DEBUG_LOG.md` (SDK gap check finding, appended 09:43 EDT)
+- `BUILD_LOG.md` (this entry)
+
+**Ports/adapters affected**: none yet — this stage is decision + spec only. §6.5.2 will land the BFF endpoint code.
+
+**Stop-condition status**:
+- §6.5.1 stop-condition: "SDK gap classified with verdict PRESENT/ABSENT and documented." → **MET.**
+- §6.5.2 stop-condition: unchanged — awaits code landing.
+
+**Next action**: Stage 6.5.2 backend forwarding endpoint `POST /api/runs/{run_id}/model` per ADR-027 contract.
