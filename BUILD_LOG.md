@@ -6931,3 +6931,38 @@ Next: Stage 7.1 begins after the queued 30-test benchmark confirms Stage 6 gains
 **Ledger**: n/a.
 
 **Stop condition**: Full backend + FE exit gate green.  This is expected to be the last flake.
+
+## 2026-08-06 12:12 EDT — Post-Stage-6 · Path B harness + token-comparison harness shipped
+
+**Stage/plugin/port**: Post-Stage-6 validation · `bench/pathF_swebench/` · no code paths changed · bench-only.
+
+**What was built**:
+- `bench/pathF_swebench/bench_pathB.py` — SWE-bench Verified 30-task pass@1 through Forge-OH stack (BFF → agent-server → c01 vLLM). Fresh workspace + fresh run per task; 3600s wall cap; 30 tool-call cap. Reconstructs patch from `GET /api/runs/{id}/files/*` diffs. Same `apply_and_test` docker path as Path A. Mirrors Path A JSON layout under `~/.forge-oh/bench_pathB_swebench/<TS>_run/` with extra fields: `run_id`, `workspace_id`, `poll_count`, `terminal_status`, `terminal_reason`, `tool_call_count`, `metrics`, `patch_diagnostics`.
+- `bench/pathF_swebench/compare_tokens.py` — reads a Path A run dir + a Path B run dir, emits markdown per-task delta table + aggregate B/A ratios for tokens, wall, and tool calls. Flags regressions (A passed, B failed) and improvements (B passed, A failed).
+- README amended with Path B usage + comparison usage.
+
+**Files touched**:
+- `bench/pathF_swebench/bench_pathB.py` (new)
+- `bench/pathF_swebench/compare_tokens.py` (new)
+- `bench/pathF_swebench/README.md` (Path B + comparison sections)
+
+**Env knobs** (bench_pathB.py):
+- `PATHB_BFF_URL` (default `http://127.0.0.1:8081`)
+- `PATHB_WALL_CAP_S` (default 3600)
+- `PATHB_TOOL_CALL_CAP` (default 30)
+- `PATHB_POLL_INTERVAL_S` (default 3.0)
+
+**Design decisions locked**:
+- Fresh workspace + fresh run per task (matches Path A isolation; eliminates cross-task memory contamination as a confound).
+- Wall cap 3600s + tool cap 30. Rationale: oracle-retrieval means files are pre-loaded; >30 tool calls is thrashing. 1h catches runaway loops without cutting off legitimate multi-turn work.
+- Same 30 calibrated smoke tasks as Path A (apples-to-apples; any Δ = middleware attribution).
+- Path B patch reconstruction: union of agent-touched files (`GET /api/runs/{id}/files`) and oracle files, pulled per-path via `GET /api/runs/{id}/files/{encoded_path}`.
+
+**Not-yet-verified against live runs**:
+- BFF response shapes assumed from source-read (`bff/routers/runs.py`, `bff/routers/workspaces.py`, `bff/services/run_metrics.py`). Shakeout run against a single task will confirm.
+- `apply_and_test.py` is reused unchanged; no risk there.
+
+**Stop condition status**: Path A c01 baseline smoke run launched at 12:11 EDT (log `~/.forge-oh/pathF_smoke_20260806_1211.log`); ETA ~27min. Path B run gated on:
+  1. Path A baseline complete (need pass@1 number to compare against).
+  2. Path B shakeout on one task (`--tasks django__django-11099 --dry-plan-only`) to verify BFF response shapes match assumptions.
+  3. Full Path B smoke run once shakeout passes.

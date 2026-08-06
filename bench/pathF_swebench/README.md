@@ -123,6 +123,64 @@ Each task JSON:
 }
 ```
 
+## Path B — through the Forge-OH stack
+
+`bench_pathB.py` runs the same 30-task calibrated smoke set through the full Forge-OH BFF → agent-server → c01 vLLM path. Purpose: attribute the score / token / wall / tool-call delta caused by Stage 3-6 middleware (approval gates, RepoGraph/Serena LSP, four-tier memory, SearXNG, idempotency ledger, skills, code_execute + progressive disclosure).
+
+Per task: creates a fresh agent-server workspace via `POST /api/workspaces`, creates a run via `POST /api/runs` pinned to `role=coder` + `backendId=vllm-coder`, polls `GET /api/runs/{id}` to terminal (or 3600s wall cap / 30 tool-call cap), reconstructs the patch from `GET /api/runs/{id}/files/*` diffs, runs the same `apply_and_test` docker path.
+
+```bash
+cd ~/dev/forge-oh
+source .oh-venv/bin/activate
+
+# Prerequisites: BFF up on :8081, agent-server up on :8090, vLLM c01 on :8000.
+# forge-status.sh should show all three green.
+
+# Dry-run (one task, no docker):
+python -m bench.pathF_swebench.bench_pathB \
+    --tasks django__django-11099 --dry-plan-only
+
+# Full 30-task smoke through the Forge-OH stack:
+nohup python -m bench.pathF_swebench.bench_pathB --smoke \
+    > ~/.forge-oh/pathB_smoke_$(date +%Y%m%d_%H%M).log 2>&1 &
+```
+
+Outputs land under `~/.forge-oh/bench_pathB_swebench/<TS>_run/` mirroring the Path A layout, with these extra per-task fields:
+
+- `run_id`, `workspace_id`, `workspace_path`
+- `poll_count`, `terminal_status`, `terminal_reason` (`terminal` / `tool_cap` / `wall_cap`)
+- `tool_call_count`
+- `metrics` — full per-run metrics blob from `GET /api/runs/{id}/metrics`
+- `patch_diagnostics` — which files were touched by the agent, per-file pull status codes
+
+Env knobs:
+
+- `PATHB_BFF_URL` (default `http://127.0.0.1:8081`)
+- `PATHB_WALL_CAP_S` (default 3600)
+- `PATHB_TOOL_CALL_CAP` (default 30)
+- `PATHB_POLL_INTERVAL_S` (default 3.0)
+
+## Path A vs Path B — token & cost comparison
+
+`compare_tokens.py` reads two run directories and emits a markdown table + optional JSON of per-task deltas and aggregate stats.
+
+```bash
+python -m bench.pathF_swebench.compare_tokens \
+    --path-a ~/.forge-oh/bench_pathF_swebench/<pathA_run> \
+    --path-b ~/.forge-oh/bench_pathB_swebench/<pathB_run> \
+    --out ~/.forge-oh/bench_compare/compare_$(date +%Y%m%d_%H%M).md \
+    --json ~/.forge-oh/bench_compare/compare_$(date +%Y%m%d_%H%M).json
+```
+
+Comparison intentionally treats:
+
+- Path A wall = single vLLM completion time
+- Path B wall = full agent trajectory (all tool calls + all LLM calls)
+- Path A tokens = single completion prompt+completion
+- Path B tokens = sum across every LLM call in the trajectory
+
+The B/A ratio is the raw cost multiplier of the Forge-OH stack for equal work.
+
 ## Scope reminder
 
-F.3 = raw c01 vs SWE-bench Verified in oracle-retrieval mode. NOT the production sandbox. NOT the UI. Those come later (Stage-1H Track 2/3).
+F.3 Path A = raw c01 vs SWE-bench Verified in oracle-retrieval mode. Path B = same task set, same c01 backend, run through the Forge-OH stack for stack-cost attribution. NOT the production sandbox. NOT the UI. Those come later (Stage-1H Track 2/3).
