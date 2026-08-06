@@ -7239,3 +7239,13 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
 - **PORTING_LEDGER / ADR updated:** none.
 - **Stop-condition status:** in-progress. Both smoke steps still pending real attestation runs.
 - **Related DEBUG_LOG:** 2026-08-06 15:52 EDT.
+
+## 2026-08-06 16:32 EDT — Slice 8.0 spec-decode ablation (Step 1 pass@1 recovery)
+
+- **Stage / plugin / port:** Stage 8 · Slice 8.0 · vLLM coder launcher
+- **What changed:** Removed `--speculative-config ngram` from coder launcher. Retained fp8 kv-cache, chunked prefill, long-prefill threshold 4096, and 65k max-model-len (all pay for DoD item 3). Spec-decode was Slice 8.0's throughput lever and is the highest prior-probability culprit for the Step 1 pass@1 0/26 vs 33.3% baseline collapse — malformed `+++` headers on the same tasks (filenames truncated) point at n-gram draft mis-acceptance on low-entropy structural tokens.
+- **Files touched:** `ops/vllm_launch_coder.sh`.
+- **Ports / adapters affected:** none.
+- **PORTING_LEDGER / ADR updated:** none — spec-decode was not the load-bearing decision in Slice 8.0. If pass@1 does not recover after ablation, ADR-013 amendment or a follow-up ADR will be required.
+- **Stop-condition status:** in-progress. Attestation blocked until Step 1 re-run confirms pass@1 recovery to ≥ 30%.
+- **Related DEBUG_LOG:** 2026-08-06 16:32 EDT.

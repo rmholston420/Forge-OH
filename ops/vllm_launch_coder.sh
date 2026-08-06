@@ -13,7 +13,14 @@
 #                                     KNOWN_ISSUES §68)
 #   * --enable-chunked-prefill        (long-prompt / decode co-scheduling)
 #   * --long-prefill-token-threshold 4096 (chunk prompts > 4k)
-#   * --speculative-config n-gram     (zero-VRAM spec-decode)
+#
+# Ablated 2026-08-06 (Slice 8.0 DoD regression triage):
+#   * --speculative-config ngram was removed after Step 1 smoke went
+#     pass@1 33.3% -> 0/26. Malformed diff headers on the same tasks
+#     (e.g. "+++ b/django/contrib/auth/" - filename truncated).
+#     N-gram draft mis-acceptance on low-entropy structural tokens is
+#     the working hypothesis. Re-enable only after a smoke matches
+#     baseline pass@1 with the flag re-added. See DEBUG_LOG 2026-08-06.
 # VRAM math: F.3 peak = 32,599 MiB @ concurrency=1. fp8 KV halves per-token
 # to 80 KiB; 65536 * 80 KiB = 5.0 GiB per active seq — identical footprint
 # to prior 32k*fp16 config. Raised ceiling is VRAM-neutral at concurrency=1.
@@ -83,7 +90,6 @@ docker run -d --name "$CONTAINER" --gpus all \
   --kv-cache-dtype fp8 \
   --enable-chunked-prefill \
   --long-prefill-token-threshold 4096 \
-  --speculative-config '{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}' \
   "$@"
 RC=$?
 if [ $RC -ne 0 ]; then

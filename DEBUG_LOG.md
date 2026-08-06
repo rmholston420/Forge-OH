@@ -2266,3 +2266,34 @@ The 12:11 baseline must have been paired with a launcher that used the bench cel
 **Files changed:** `bench/pathF_swebench/bench_pathF_swebench.py`.
 
 **Related BUILD_LOG:** 2026-08-06 15:30 EDT (Slice 8.0 executed), 2026-08-06 15:45 EDT (port + max-model-len alignment). Appending 2026-08-06 15:52 EDT entry for the served-name alignment.
+
+## 2026-08-06 16:32 EDT — Slice 8.0 Step 1 pass@1 collapse (0/26 vs 33.3% baseline)
+
+**Symptom:** Step 1 smoke (`FORGE_BENCH_MAX_MODEL_LEN=32768`) on canonical `:8501` coder returned `pass_at_1=0.0` across 26 executed tasks (4 context-skipped as expected). Baseline `20260806_1211_run` = 10/30. Same 30-task set, same prompt tokens, same model, same generation ceiling.
+
+**Affected:** Slice 8.0 attestation · c01 coder generation · SWE-bench Path A.
+
+**Root cause:** The bench harness itself was untouched between baseline `58097cb1` and current — real Docker apply-and-test ran on both runs (phase `swebench-harness`, non-null harness_stdout_tail, real SWE-bench evaluation output). The difference is **generation quality**: on the same task (`django-11099`), the baseline emitted a valid unified diff:
+```
++++ b/django/contrib/auth/validators.py
+-    regex = r'^[\w.@+-]+$'
++    regex = r'\A[\w.@+-]+\Z'
+```
+while the NEW run emitted a malformed diff on hunk 1:
+```
++++ b/django/contrib/auth/          <-- filename truncated
+-    regex = r'^[\w.@+-]+$'
++                                   <-- replacement line dropped
+```
+`git apply` output confirmed: `File django/contrib/auth/ is not a regular file -- refusing to patch` + `patch unexpectedly ends in middle of line`. `patch_raw` field shows the truncation is present in the raw model output, before any normalizer touches it.
+
+Structural quality summary across all 26 executed tasks: baseline (25 well-formed, 4 empty, 1 bad-header), new (25 well-formed, 4 empty, 1 bad-header) — identical count, but the *content* of the well-formed patches degraded. `django-11099` new run: `completion_tokens 233 → 212`, `tok/s 82 → 101` — consistent with speculative decoding accepting more drafted tokens (faster, fewer overall tokens) at the cost of correctness on low-entropy structural tokens like filepath tails.
+
+**Fix applied:** Removed `--speculative-config '{"method":"ngram",...}'` from `ops/vllm_launch_coder.sh`. Ablation-only choice: fp8 kv-cache, chunked prefill, long-prefill threshold, and 65k max-model-len all retained (they pay for DoD item 3 = 65k context). Spec-decode was throughput-only and is the highest prior-probability culprit for structural regression. Re-verification requires:
+  1. Restart coder container to pick up new flag bundle.
+  2. Re-run Step 1 smoke; expect pass@1 ≥ 30% (baseline 33.3%, ±1 task tolerance).
+  3. If Step 1 recovers → run Step 2 (65k) → attestation complete.
+  4. If Step 1 still 0/26 → widen ablation (drop fp8 kv-cache next).
+
+**Files changed:** `ops/vllm_launch_coder.sh`.
+**Related BUILD_LOG:** 2026-08-06 15:30 EDT (Slice 8.0 executed), 2026-08-06 16:32 EDT (spec-decode ablation).
