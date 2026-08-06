@@ -191,6 +191,7 @@ class TestCreateRunCapturesSha:
             r = cli.post(
                 "/api/runs",
                 json={
+                    "title": "t",
                     "taskPrompt": "hi",
                     "workspaceId": "ws-1",
                     "agentPresetId": "ap-1",
@@ -239,6 +240,7 @@ class TestCreateRunCapturesSha:
             r = cli.post(
                 "/api/runs",
                 json={
+                    "title": "t",
                     "taskPrompt": "hi",
                     "workspaceId": "ws-1",
                     "agentPresetId": "ap-1",
@@ -280,6 +282,7 @@ class TestCreateRunCapturesSha:
             r = cli.post(
                 "/api/runs",
                 json={
+                    "title": "t",
                     "taskPrompt": "hi",
                     "workspaceId": "ws-1",
                     "agentPresetId": "ap-1",
@@ -321,6 +324,7 @@ class TestCreateRunCapturesSha:
             r = cli.post(
                 "/api/runs",
                 json={
+                    "title": "t",
                     "taskPrompt": "hi",
                     "workspaceId": "ws-1",
                     "agentPresetId": "ap-1",
@@ -363,6 +367,7 @@ class TestCreateRunCapturesSha:
             r = cli.post(
                 "/api/runs",
                 json={
+                    "title": "t",
                     "taskPrompt": "hi",
                     "workspaceId": "ws-1",
                     "agentPresetId": "ap-1",
@@ -405,6 +410,7 @@ class TestCreateRunCapturesSha:
             r = cli.post(
                 "/api/runs",
                 json={
+                    "title": "t",
                     "taskPrompt": "hi",
                     "workspaceId": "ws-1",
                     "agentPresetId": "ap-1",
