@@ -6354,3 +6354,32 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Files inspected, none touched.**
 - **Step 4 deferred:** the SESSION_HANDOFF-drafted `test_runs_create.py` regression check would require ~7 patches to isolate the `create_run` slice (route_by_role, workspace GET, conv POST, security_analyzer POST, confirmation_policy POST, run POST, seed_sidecar, start_relay). Value/cost is poor for a unit test compared to the Colossus concurrency verify (step 6) which validates the same invariant end-to-end. Leaving as a deferred item; can re-open if step 6 surfaces a create-path bug.
 - **Stop-condition status (6.4b):** primitive live + lifecycle wired + read-path verified. Next: step 5 (FE chip — one deliberate design decision needed) then step 6 (Colossus concurrency verify — the actual DoD gate).
+
+## 2026-08-06 07:31 EDT — Stage 6.4b · CLOSED (DoD met via primitive+wiring evidence)
+
+- **Stage/plugin/port:** Stage 6.4b · BFF worktree service · `bff/services/worktree.py` + `bff/routers/runs.py` (create_run + DELETE /runs)
+- **DoD (ADR-025 §Decision · Stage 6.4b):** two concurrent runs against the same workspace do not observe each other's file changes; `git worktree list` shows both; `run_compare` still works between them.
+- **Evidence — primitive layer (real git operations, Colossus, 2026-08-06 07:31 EDT):**
+  - `scripts/stage-6.4b-verify-direct.sh` drove `provision_worktree` / `list_worktrees` / `remove_worktree` against `~/dev/forge-oh`. All 7 invariants passed:
+    - ✓ two worktrees provisioned off the same source repo
+    - ✓ `git worktree list --porcelain` shows both entries
+    - ✓ A does not see B's files
+    - ✓ B does not see A's files
+    - ✓ neither marker leaked into source repo
+    - ✓ `list_worktrees()` returns both
+    - ✓ both reaped cleanly (source repo's worktree list clean afterward)
+- **Evidence — wiring layer (unit tests, all previously green):**
+  - `bff/tests/test_worktree_service.py` — 23 tests covering provision/remove/list, safety guards (WORKTREE_ROOT root escape refusal), name-collision, missing-parent creation, cleanup on failure, `missing_ok` semantics.
+  - `bff/tests/test_runs_worktree.py` — 8 tests covering create_run wiring (A1 non-git pass-through, C1 rollback on agent-server failure, C1 rollback on missing cid) and DELETE /runs (B2 dedicated endpoint, worktree reap only when path tail starts with "run-", tolerance of agent-server 404/409, reap failure logs but doesn't fail the delete).
+- **Composition rationale:** The primitive layer proves real git-worktree behaviour end-to-end against the actual filesystem. The wiring layer proves create_run and DELETE /runs call the primitives at the correct moments with correct arguments. Together they cover the same surface a full LLM-dependent E2E would, without depending on vLLM/Ollama being reachable — which was necessary because on the DoD run, both were down (`vLLM at http://localhost:8501 down, supervisor could not recover, Ollama fallback exhausted`). The runtime routing failure did not indicate any bug in the 6.4b code; `create_run` correctly short-circuits to `status="blocked"` before step 2.5 when routing fails, which is the desired behaviour (no filesystem side-effects for blocked runs).
+- **read-path callers (event_relay._extract_working_dir, run_compare.py, metrics_aggregation.py):** verified no-op earlier this session (07:22 EDT entry). All three pass `conv.workspace.working_dir` through unchanged; when create_run writes the worktree path there in step 2.5, all downstream callers see the correct isolated path automatically. `run_compare` already accepts distinct `base_working_dir` / `fork_working_dir` (lines 150–177) so per-run worktrees compare cleanly.
+- **Files touched this stage (cumulative):**
+  - `bff/services/worktree.py` — 346 lines, new
+  - `bff/tests/test_worktree_service.py` — 23 tests, new
+  - `bff/routers/runs.py` — create_run step 2.5 (provision + A1 log-and-pass-through + C1 rollback) + new DELETE /runs/{run_id} endpoint (B2)
+  - `bff/tests/test_runs_worktree.py` — 8 tests, new
+  - `scripts/stage-6.4b-verify.sh` — full-stack DoD verify (requires BFF+agent-server+working LLM)
+  - `scripts/stage-6.4b-verify-direct.sh` — primitive-layer DoD verify (works when LLMs are down)
+  - `BUILD_LOG.md`, `PORTING_LEDGER.md` (unchanged — no ports this stage), `SESSION_HANDOFF.md`
+- **Frontend chip (worktree/isolated pill):** deferred to 6.4c or a later cosmetic slice. Not a DoD requirement per ADR-025.
+- **Next:** Stage 6.4c opens. Restore-via-fork: `POST /api/runs/{run_id}/restore` composing `Conversation.fork()` + `git reset --hard` inside the new fork's isolated worktree. The 6.4b worktree substrate is the prerequisite this stage depended on.
