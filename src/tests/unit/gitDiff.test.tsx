@@ -99,6 +99,16 @@ describe('FilesTab — Real git diff toggle', () => {
             id: 'r1',
             title: 'Run r1',
             status: 'queued',
+            // Fields required by RunSummarySchema (src/lib/schemas/run.ts).
+            // Added by Stage 7-C.2-hotfix (2026-08-06) — Stage-3 hygiene
+            // tightened the schema after slice C.2 landed, and the fixture
+            // never caught up. Without these the RunSummarySchema.parse
+            // tripwire in fetchRun throws → useRunDetail errors →
+            // workspacePath is null → the diff-source-toggle never renders.
+            agentPresetName: 'ap-1',
+            activeTool: null,
+            elapsedMs: null,
+            estimatedCostUsd: null,
             workspaceId: '/workspace/runs/pending',
             workspaceType: 'local',
             createdAt: '2026-08-03T10:00:00Z',
@@ -145,6 +155,11 @@ describe('FilesTab — Real git diff toggle', () => {
             id: 'r2',
             title: 'Run r2',
             status: 'queued',
+            // See r1 fixture above for the Stage 7-C.2-hotfix rationale.
+            agentPresetName: 'ap-1',
+            activeTool: null,
+            elapsedMs: null,
+            estimatedCostUsd: null,
             workspaceId: 'local',
             workspaceType: 'local',
             createdAt: '2026-08-03T10:00:00Z',
