@@ -34,6 +34,7 @@ from typing import Any
 
 from bff.openhands_client import get_client
 from bff.services import sidecar_producers
+from bff.services.event_normalize import normalize_event
 
 log = logging.getLogger(__name__)
 
@@ -206,7 +207,23 @@ async def _run_loop(cid: str) -> None:
                 # without needing to parse the room name.
                 if isinstance(ev, dict) and "runId" not in ev:
                     ev["runId"] = cid
-                await _emit(room, "event", ev)
+                # Post-Stage-3 hygiene (2026-08-05): route WebSocket-delivered
+                # events through the same normalizer used by the bootstrap
+                # path (see bff/routers/runs.py::list_events, which calls
+                # normalize_events). Prior to this fix, the wire event was
+                # the raw agent-server payload (kind + camelCase mix),
+                # while the bootstrap HTTP fetch returned the projected
+                # ToolEvent shape (type + summary + securityRisk). The
+                # frontend's client-side normalizeEvent handled both, but
+                # only accidentally, and any new field added to the BFF
+                # projection would not reach the socket clients. Emit the
+                # normalized shape so bootstrap and stream produce
+                # byte-identical events.
+                if isinstance(ev, dict):
+                    wire_event = normalize_event(ev)
+                else:
+                    wire_event = ev
+                await _emit(room, "event", wire_event)
                 # F.15: feed the event into sidecar producers so
                 # plan/symptom/diffs/repograph_symbols stay current
                 # for the STOP hook to consume. Failure is

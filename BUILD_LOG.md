@@ -5097,3 +5097,33 @@ Five commits (`5d6f779`..`be6f006`), 79 vitest, 30 pytest (Stage 3 tests), 5 Pla
   - `npx playwright test tests/e2e/{risk-badge,hitl-approval}.spec.ts`: 5/5 pass in 1.5s.
 - **Iteration:** zero. The `RunSummarySchema.parse(json.data)` tripwire in `fetchRun` was silent on the live BFF payload — schema and wire format are aligned.
 - **Stop-condition status:** hygiene slice COMPLETE. Status enum drift resolved everywhere; boundary tripwire live.
+
+## 2026-08-05 23:59 EDT — Hygiene slice: delete dead-code StatusBadge files (Slice A)
+
+- **What:** Removed two dead-code `StatusBadge` component families. Runtime `StatusBadge` lives in `src/components/core/Badge.tsx` (imported by `RunDetailHeader`, `RunCard`, `core-Badge.test.tsx`). The deleted files were only imported by their own colocated `.stories.tsx` companions.
+- **Scope:** post-Stage-3 hygiene. Follow-up called out in BUILD_LOG 2026-08-05 23:49 EDT and KNOWN_ISSUES.
+- **Files removed (6):**
+  - `src/components/core/StatusBadge.tsx`
+  - `src/components/core/StatusBadge.module.css`
+  - `src/components/core/StatusBadge.stories.tsx`
+  - `src/components/core/StatusBadge/StatusBadge.tsx`
+  - `src/components/core/StatusBadge/StatusBadge.module.css`
+  - `src/components/core/StatusBadge/StatusBadge.stories.tsx`
+  - `src/components/core/StatusBadge/` (empty dir after)
+- **Verification (pre-commit):** `grep -rn "StatusBadge" src/ --include='*.ts*'` shows every remaining import is from `@/components/core/Badge` (the live one). No orphan imports.
+- **Ports/adapters affected:** none.
+- **ADR/ledger updates:** none required.
+- **Stop-condition status:** Slice A COMPLETE on disk pending Colossus typecheck + vitest + Playwright verification.
+
+## 2026-08-05 23:59 EDT — Hygiene slice: route event_relay through normalize_event (Slice B)
+
+- **What:** `event_relay._run_loop` now passes each fetched event through `bff.services.event_normalize.normalize_event` before `sio.emit("event", ...)`. Prior to this, WebSocket-delivered events were the raw agent-server payload (`kind`, camelCase mix) while the HTTP bootstrap path (`bff/routers/runs.py::list_events`) emitted the projected ToolEvent shape (`type`, `summary`, `securityRisk`, `raw`). The frontend's client-side `normalizeEvent` handled both by accident; any new field added to the BFF projection would silently fail to reach live socket clients.
+- **Scope:** post-Stage-3 hygiene. Resolves KNOWN_ISSUES 2026-08-05 23:15 EDT.
+- **Files touched:**
+  - `bff/services/event_relay.py` — imported `normalize_event`; wire emission now uses `normalize_event(ev)` for dict events (non-dict payloads pass through untouched, matching prior behavior).
+  - `bff/tests/test_event_relay_normalize.py` — NEW. Asserts every 'event' emission is the projected shape (has `type`/`summary`/`raw`/`eventId`; does not have raw `kind` at the top level). Second event exercises MessageEvent branch. Also asserts Stage 3.1's `securityRisk` projection survives the wire.
+- **Contract preserved:** the relay still injects `runId` into the raw event dict before normalization, so `normalize_event`'s output carries the runId inside `raw.runId`. The frontend `useRunStream.normalizeEvent` falls back to the hook's `runId` param (line 39) when the wire event lacks a top-level runId — this was always the case for the HTTP bootstrap path, so no client change is needed.
+- **Sidecar contract preserved:** `sidecar_producers.update_from_event` still receives the RAW event dict, not the normalized projection. Sidecar parses agent-server-native shape (kind/etc); breaking that would regress F.15/G.1.
+- **Ports/adapters affected:** WebSocket wire event shape (BFF → frontend) — now byte-identical to the HTTP bootstrap shape.
+- **ADR/ledger updates:** none required.
+- **Stop-condition status:** Slice B COMPLETE on disk pending Colossus pytest verification of the new tripwire test.

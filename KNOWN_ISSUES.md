@@ -48,7 +48,9 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
-## 2026-08-05 23:15 EDT — Stream events not normalized on BFF (Stage 3.1 follow-up)
+## 2026-08-05 23:15 EDT — Stream events not normalized on BFF (Stage 3.1 follow-up)  [RESOLVED 2026-08-05 23:59 EDT]
+
+Resolved in Slice B of the post-Stage-3 hygiene batch. `event_relay._run_loop` now routes every fetched event through `bff.services.event_normalize.normalize_event` before `sio.emit("event", ...)`. Wire event shape is now byte-identical to the HTTP bootstrap path emitted by `list_events`. New tripwire test at `bff/tests/test_event_relay_normalize.py` asserts the contract, including that Stage 3.1's `securityRisk` projection survives the wire. See BUILD_LOG 2026-08-05 23:59 EDT.
 
 - **Blocks:** none. RiskBadge renders correctly on stream events via a snake/camel fallback in `toDisplayEvent`. Auto-collapse filter behaves fail-open on stream ActionEvents (leaks them past the filter when the toggle is on), which is safe — the user just sees the extra event rather than losing a real risk annotation.
 - **Symptom:** `bff/services/event_relay.py:209` emits raw agent-server `ev` dicts on the `event` socket channel without passing them through `normalize_event`. Bootstrap events (`GET /api/runs/{id}/events`) call `normalize_events(items)` at `bff/routers/runs.py:568-571`, so they arrive as `type: 'action'` with `securityRisk` camel-case. Stream events arrive as raw `kind: 'ActionEvent'` dicts and the frontend `normalizeEvent()` in `src/lib/streaming/useRunStream.ts` falls back to `type: 'message'`.
