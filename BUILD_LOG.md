@@ -5700,3 +5700,36 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
     npx playwright test tests/e2e/memory-inspector.spec.ts --reporter=list
   ```
   Expect: `screenshots/memory-inspector-page.png` + `screenshots/memory-inspector-sidebar.png` committed and pushed. Spec skips with a NEO4J_PASSWORD hint if the BFF returned 503.
+
+## 2026-08-06 03:30 EDT — Stage 5.6a: forge-up.sh sources .env.neo4j; visual spec uses .oh-venv python
+- **Purpose:** unblock live-DozerDB Playwright pass. First attempt on Colossus 2026-08-06 03:29 EDT skipped with `memory=503` because forge-up.sh launched uvicorn without `NEO4J_PASSWORD`.
+- **What shipped:**
+  1. `scripts/forge-up.sh` — auto-source `.env.neo4j` (when present) into the BFF process env immediately before uvicorn spawn. Guarded (`[ -f ... ]`); warns and continues if absent. Aligns with ADR-024 K1 "lazy composition, non-fatal if unavailable" — the BFF still boots, but now visual specs see a real MemoryPort.
+  2. `src/tests/e2e/memory-inspector.spec.ts` — resolve `.oh-venv/bin/python` for the seed step, falling back to PATH `python`. Makes the spec robust when Playwright is invoked from a non-activated shell.
+- **Not shipped:** timeline brain-marker screenshot still deferred to 5.6b.
+- **Files touched:** `scripts/forge-up.sh`, `src/tests/e2e/memory-inspector.spec.ts`, `BUILD_LOG.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`.
+- **Rerun path (user, on Colossus):**
+  ```
+  cd ~/dev/forge-oh && git pull
+  bash scripts/forge-restart.sh --bff-only    # picks up .env.neo4j
+  # verify MemoryPort composed:
+  curl -s -o /dev/null -w "memory=%{http_code}\n" \
+    http://127.0.0.1:8081/api/memory/recent-writes?limit=1
+  # expect 200. If still 503: check ~/dev/forge-oh/.env.neo4j exists and
+  # exports NEO4J_PASSWORD; check .forge-logs/bff.log for the "sourcing
+  # .env.neo4j" line.
+
+  # Prod frontend already at :3100 from prior step (prod=200 confirmed);
+  # if it's dead, rebuild from repo root (NOT src/):
+  #   cd ~/dev/forge-oh && npm run build
+  #   NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \
+  #     nohup npx next start -H 127.0.0.1 -p 3100 \
+  #     >~/.forge-oh/next-prod.log 2>&1 &
+
+  # Visual pass:
+  cd ~/dev/forge-oh/src
+  PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
+  PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+    npx playwright test tests/e2e/memory-inspector.spec.ts --reporter=list
+  ```
+- **Expected outcome:** two screenshots (`screenshots/memory-inspector-page.png`, `screenshots/memory-inspector-sidebar.png`) auto-committed and pushed to `origin/main` by the spec.

@@ -1570,3 +1570,14 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
   - Canned-response test now passes `default_model="qwen3-embedding:0.6b"` explicitly to the ctor so its literal assertion is stable regardless of ambient `OLLAMA_EMBED_MODEL`.
 - **Files changed:** `bff/tests/memory/test_ollama_embeddings_adapter_contract.py`.
 - **Verified:** 43/43 memory contract tests pass with no env override AND with `OLLAMA_EMBED_MODEL=qwen3-embedding:4b` set (live tier still skipped in CI sandbox without `FORGE_MEMORY_LIVE=1`).
+
+## 2026-08-06 03:29 EDT — memory=503 during Stage 5.6a Playwright pass; forge-up.sh missing .env.neo4j sourcing
+- **Symptom:** `curl http://127.0.0.1:8081/api/memory/recent-writes?limit=1` → `503`. Playwright `memory-inspector.spec.ts` correctly skipped with `preconditions unmet: BFF MemoryPort unavailable (503)`.
+- **Affected:** Stage 5.6a visual verify. Non-blocking for backend/frontend unit tests (already green — see BUILD_LOG 2026-08-06 03:15 EDT).
+- **Root cause:** `scripts/forge-up.sh` launches uvicorn without sourcing `.env.neo4j`, so `NEO4J_PASSWORD` was absent from the BFF process env. `bff/deps/memory_port.get_memory_port()` correctly detected the missing env, refused to compose, and returned `None`; the router 503'd exactly as ADR-024 K1 specifies (non-fatal degradation). But this made every Playwright visual pass skip until the operator manually restarts the BFF with the env sourced.
+- **Secondary symptom from prior instruction:** `npm --prefix src run build` ENOENT — `package.json` lives at repo root, not under `src/`. The prior BFF/Next build had already been produced by an earlier session, so `next start` from repo root still returned 200 for `/runs`; only the redundant build step failed. Canonical recipe is in `forge-oh-colossus-ops`: `cd ~/dev/forge-oh && npm run build` (no `--prefix src`).
+- **Fix applied:**
+  1. `scripts/forge-up.sh` — added `set -a; . "$REPO_ROOT/.env.neo4j"; set +a` guarded by `[ -f ... ]` immediately before the BFF `nohup uvicorn ...` line. Silent when the file is absent (`warn` line only); no impact on other services.
+  2. `src/tests/e2e/memory-inspector.spec.ts` — prefer `.oh-venv/bin/python` for the seed helper (falls back to `python` on PATH). Keeps the seed working when Playwright is invoked from a shell without `.oh-venv` activated.
+- **Files changed:** `scripts/forge-up.sh`, `src/tests/e2e/memory-inspector.spec.ts`.
+- **Verified:** sandbox-only edits (Colossus verify pending user pull). Rerun path documented in SESSION_HANDOFF and in BUILD_LOG 2026-08-06 03:30 EDT entry below.

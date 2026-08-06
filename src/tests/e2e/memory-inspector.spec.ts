@@ -124,9 +124,14 @@ test.describe('Memory inspector — visual capture (live DozerDB)', () => {
     // (scripts/seed_memory_event.py); on Colossus it POSTs directly
     // through the composed MemoryPort. Failure is non-fatal for the
     // screenshot but flagged in the console.
+    // Prefer the repo's own venv Python so composition imports resolve
+    // even when Playwright is spawned from a shell without .oh-venv
+    // activated. Falls back to PATH `python` if the venv is absent.
+    const venvPython = join(REPO_ROOT, '.oh-venv', 'bin', 'python');
+    const pythonBin = existsSync(venvPython) ? venvPython : 'python';
     try {
       execFileSync(
-        'python',
+        pythonBin,
         ['scripts/seed_memory_event.py'],
         { cwd: REPO_ROOT, stdio: 'inherit', env: { ...process.env } },
       );

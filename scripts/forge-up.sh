@@ -151,6 +151,16 @@ if port_in_use "$BFF_PORT"; then
 fi
 if ! port_in_use "$BFF_PORT"; then
   log "starting BFF on :${BFF_PORT} (with --reload)"
+  # Stage 5.6a (ADR-024 K1): source .env.neo4j when present so the lazy
+  # MemoryPort singleton composes on first request. Missing password is
+  # non-fatal — the memory router 503s and the frontend renders a
+  # warning banner — but visual specs require this env to be set.
+  if [ -f "$REPO_ROOT/.env.neo4j" ]; then
+    log "sourcing .env.neo4j for BFF memory composition"
+    set -a; . "$REPO_ROOT/.env.neo4j"; set +a
+  else
+    warn ".env.neo4j not found; BFF will boot without MemoryPort"
+  fi
   nohup uvicorn bff.main:app_with_sio \
     --host 127.0.0.1 --port "$BFF_PORT" \
     --reload --reload-dir bff \
