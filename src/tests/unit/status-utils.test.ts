@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 
 type RunStatus =
   | 'idle' | 'running' | 'streaming' | 'queued'
-  | 'paused' | 'awaiting-approval' | 'succeeded'
+  | 'paused' | 'awaiting_approval' | 'succeeded'
   | 'failed' | 'blocked' | 'disconnected';
 
 const STATUS_TOKEN: Record<RunStatus, string> = {
@@ -15,7 +15,7 @@ const STATUS_TOKEN: Record<RunStatus, string> = {
   streaming: '--color-accent-primary',
   queued: '--color-state-paused',
   paused: '--color-state-paused',
-  'awaiting-approval': '--color-state-warning',
+  'awaiting_approval': '--color-state-warning',
   succeeded: '--color-state-success',
   failed: '--color-state-error',
   blocked: '--color-state-error',
@@ -28,7 +28,7 @@ const STATUS_LABEL: Record<RunStatus, string> = {
   streaming: 'Streaming',
   queued: 'Queued',
   paused: 'Paused',
-  'awaiting-approval': 'Awaiting Approval',
+  'awaiting_approval': 'Awaiting Approval',
   succeeded: 'Succeeded',
   failed: 'Failed',
   blocked: 'Blocked',
@@ -37,7 +37,7 @@ const STATUS_LABEL: Record<RunStatus, string> = {
 
 const ALL_STATUSES: RunStatus[] = [
   'idle', 'running', 'streaming', 'queued', 'paused',
-  'awaiting-approval', 'succeeded', 'failed', 'blocked', 'disconnected',
+  'awaiting_approval', 'succeeded', 'failed', 'blocked', 'disconnected',
 ];
 
 describe('status token mapping', () => {
@@ -48,8 +48,8 @@ describe('status token mapping', () => {
     }
   });
 
-  it('awaiting-approval maps to warning token', () => {
-    expect(STATUS_TOKEN['awaiting-approval']).toBe('--color-state-warning');
+  it('awaiting_approval maps to warning token', () => {
+    expect(STATUS_TOKEN['awaiting_approval']).toBe('--color-state-warning');
   });
 
   it('succeeded maps to success token', () => {
@@ -71,7 +71,7 @@ describe('status label mapping', () => {
     }
   });
 
-  it('awaiting-approval label is "Awaiting Approval"', () => {
-    expect(STATUS_LABEL['awaiting-approval']).toBe('Awaiting Approval');
+  it('awaiting_approval label is "Awaiting Approval"', () => {
+    expect(STATUS_LABEL['awaiting_approval']).toBe('Awaiting Approval');
   });
 });

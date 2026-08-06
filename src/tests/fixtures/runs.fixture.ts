@@ -30,8 +30,9 @@ export const mockRuns: RunSummary[] = [
   {
     id: 'run-003',
     title: 'Fix merge conflict in BFF router stubs',
-    // awaiting-approval (hyphenated) — matches DOMAIN_MODEL.md and RunStatusSchema
-    status: 'awaiting-approval',
+    // awaiting_approval (underscore) — canonical form matching the BFF
+    // _STATUS_MAP and RunStatusSchema (unified via post-Stage-3 hygiene commit).
+    status: 'awaiting_approval',
     agentPresetName: 'DevstralAgentic',
     workspaceId: 'ws-local-001',
     workspaceType: 'local',

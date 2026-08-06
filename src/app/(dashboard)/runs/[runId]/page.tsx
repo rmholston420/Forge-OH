@@ -258,7 +258,7 @@ export default function RunDetailPage({
         />
       )}
 
-      {run && (run.status === 'awaiting-approval' || pendingApprovalBanner) && (
+      {run && (run.status === 'awaiting_approval' || pendingApprovalBanner) && (
         <ApprovalBanner
           context="The agent has paused on a risk-flagged action."
           loading={approveMut.isPending || rejectMut.isPending}

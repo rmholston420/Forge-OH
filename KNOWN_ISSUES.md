@@ -59,7 +59,7 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
-## 2026-08-05 23:34 EDT — Status enum drift: `awaiting_approval` vs `awaiting-approval`
+## 2026-08-05 23:34 EDT — Status enum drift: `awaiting_approval` vs `awaiting-approval` [RESOLVED 2026-08-05 23:49 EDT]
 
 - **Symptom:** `bff/routers/runs.py:97` maps agent-server `waiting_for_confirmation` to `awaiting_approval` (underscore). `src/lib/schemas/run.ts:19` declares `awaiting-approval` (dash) for the same status. `src/features/run-detail/api.ts::fetchRun` casts `json.data` to `RunSummary` without calling `.parse()`, so the drift silently ships underscore to the frontend. Every frontend `run.status === 'awaiting-approval'` comparison is dead code today; multiple non-schema files also use underscore (Badge.tsx, PlanNode.tsx, StatusBadge stories).
 - **Root cause:** BFF status vocabulary (underscore) and schema declaration (dash) drifted at some earlier commit; no boundary validation caught it because Zod parse is never invoked.
@@ -68,3 +68,4 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
   1. Pick one canonical form (recommend underscore — it matches the BFF wire and the majority of frontend consumers). Flip the schema, `StatusBadge` component, `RunDetailHeader`, and all tests/fixtures to underscore. Drop the boundary normalizer.
   2. Add `RunSummarySchema.parse(json.data)` in `fetchRun` + `RunSummarySchema.parse` in the runs list to catch future drift at the boundary.
 - **Related BUILD_LOG entry:** 2026-08-05 23:34 EDT — Stage 3.2.
+- **RESOLVED 2026-08-05 23:49 EDT:** Canonical form chosen (`awaiting_approval` underscore). Schema flipped, every consumer + test + fixture flipped, `_normalizeRunStatus` deleted, `RunSummarySchema.parse` now called at the `fetchRun` boundary as the tripwire against future drift. See BUILD_LOG 2026-08-05 23:49 EDT for the full 12-file diff. Only follow-up: two dead-code `StatusBadge` component files (`src/components/core/StatusBadge.tsx` + `src/components/core/StatusBadge/StatusBadge.tsx`) could be deleted; the real runtime `StatusBadge` lives in `src/components/core/Badge.tsx`.

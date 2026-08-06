@@ -3,7 +3,7 @@
  *
  * Verifies:
  *   1. ApprovalBanner renders when the run status is `awaiting_approval`
- *      (BFF wire format; normalized to `awaiting-approval` at fetch boundary).
+ *      (canonical form used everywhere post-hygiene-unification).
  *   2. Approve button POSTs /api/runs/:id/approve.
  *   3. Reject button POSTs /api/runs/:id/reject.
  *
@@ -22,9 +22,9 @@ const BFF_URL = process.env.PLAYWRIGHT_BFF_URL || 'http://127.0.0.1:8081';
 const FAKE_RUN_ID = 'stage3-hitl-fixture';
 
 // Envelope MUST match fetchRun: json.data is unwrapped. Fields mirror
-// RunSummarySchema (src/lib/schemas/run.ts). Note the status is
-// `awaiting_approval` (underscore) as emitted by the BFF _STATUS_MAP;
-// the fetchRun boundary normalizes it to `awaiting-approval` (dash).
+// RunSummarySchema (src/lib/schemas/run.ts). Status is `awaiting_approval`
+// (underscore) — the canonical form emitted by the BFF _STATUS_MAP and
+// declared in RunStatusSchema after post-Stage-3 hygiene unification.
 const FAKE_RUN_AWAITING = {
   data: {
     id: FAKE_RUN_ID,

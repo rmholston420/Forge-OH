@@ -1,30 +1,21 @@
-import type { RunSummary } from '@/lib/schemas/run';
+import { RunSummarySchema, type RunSummary } from '@/lib/schemas/run';
 import type { ToolEvent } from '@/lib/schemas/event';
 
 const BFF = process.env.NEXT_PUBLIC_BFF_URL ?? 'http://localhost:8081';
 
-// Stage 3.2 — normalize BFF wire status (`awaiting_approval` underscore)
-// into the schema's kebab-case (`awaiting-approval`). The BFF _STATUS_MAP
-// at bff/routers/runs.py:97 and the RunStatusSchema at
-// src/lib/schemas/run.ts:13 have drifted; unifying them is a separate
-// hygiene commit. Until then, translate at the boundary so
-// `run.status === 'awaiting-approval'` in page.tsx actually fires when
-// ConfirmRisky pauses the agent.
-function _normalizeRunStatus<T extends { status?: unknown } | null | undefined>(run: T): T {
-  if (run && typeof (run as { status?: unknown }).status === 'string') {
-    const s = (run as { status: string }).status;
-    if (s === 'awaiting_approval') {
-      return { ...(run as object), status: 'awaiting-approval' } as T;
-    }
-  }
-  return run;
-}
+// Post-Stage-3 hygiene unification (2026-08-05): the BFF _STATUS_MAP at
+// bff/routers/runs.py:101 and the RunStatusSchema at src/lib/schemas/run.ts
+// now share the canonical underscore form (`awaiting_approval`), so the
+// legacy boundary normalizer has been removed. `RunSummarySchema.parse`
+// below is the tripwire that will fail loudly on any future drift.
 
 export async function fetchRun(runId: string): Promise<RunSummary> {
   const res = await fetch(`${BFF}/api/runs/${runId}`);
   if (!res.ok) throw new Error(`Run not found: ${res.status}`);
   const json = await res.json();
-  return _normalizeRunStatus(json.data) as RunSummary;
+  // Validate at the boundary. Zod default strips unknown keys (like the
+  // BFF's `executionStatus`), so this only asserts on shape + enum drift.
+  return RunSummarySchema.parse(json.data);
 }
 
 export async function fetchRunEvents(runId: string): Promise<ToolEvent[]> {

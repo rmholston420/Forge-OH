@@ -13,7 +13,7 @@ export const STATUS_LABELS: Record<RunStatus, string> = {
   streaming:         'Streaming',
   queued:            'Queued',
   paused:            'Paused',
-  'awaiting-approval': 'Awaiting Approval',
+  awaiting_approval: 'Awaiting Approval',
   disconnected:      'Disconnected',
   succeeded:         'Succeeded',
   failed:            'Failed',

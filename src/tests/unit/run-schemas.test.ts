@@ -8,7 +8,7 @@ import { RunStatusSchema, RunSummarySchema, RunDetailUIStateSchema } from '@/lib
 
 const ALL_STATUSES = [
   'idle', 'running', 'streaming', 'queued', 'paused',
-  'awaiting-approval', 'disconnected', 'succeeded', 'failed', 'blocked',
+  'awaiting_approval', 'disconnected', 'succeeded', 'failed', 'blocked',
 ] as const;
 
 describe('RunStatusSchema', () => {

@@ -16,7 +16,11 @@ export const RunStatusSchema = z.enum([
   'streaming',
   'queued',
   'paused',
-  'awaiting-approval',
+  // Canonical form: `awaiting_approval` (underscore) — matches BFF _STATUS_MAP
+  // at bff/routers/runs.py:101 and Python/openhands-sdk convention. The
+  // legacy dash spelling has been retired (see BUILD_LOG 2026-08-05
+  // 23:5x EDT hygiene commit).
+  'awaiting_approval',
   'disconnected',
   'succeeded',
   'failed',

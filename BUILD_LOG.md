@@ -5055,3 +5055,32 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **§ 3.4 + 3.5** compare-endpoint query-key contract fix — DONE (`be6f006`; DoD 2026-08-05 23:43 EDT).
 
 Five commits (`5d6f779`..`be6f006`), 79 vitest, 30 pytest (Stage 3 tests), 5 Playwright specs. Ready to start Stage 4.
+
+## 2026-08-05 23:49 EDT — Post-Stage-3 hygiene: status enum drift unification
+
+- **Stage/plugin/port:** Post-Stage-3 hygiene · frontend schemas · no new ports.
+- **Trigger:** KNOWN_ISSUES 2026-08-05 23:34 EDT — BFF `_STATUS_MAP` emitted `awaiting_approval` (underscore); frontend `RunStatusSchema` declared `awaiting-approval` (dash). `fetchRun` never called `.parse()`, so drift shipped silently until Stage 3.2 needed the status to line up with the ApprovalBanner render guard.
+- **What:**
+  - Canonical form chosen: **`awaiting_approval` (underscore)**. Matches BFF (source of truth), Python convention, openhands-sdk 1.40.0 `ConversationExecutionStatus`, and the pre-existing `.status-awaiting_approval` CSS class. Smaller edit (21 underscore sites already vs 15 dash sites).
+  - `RunStatusSchema` at `src/lib/schemas/run.ts:19` flipped: `'awaiting-approval'` → `'awaiting_approval'`, with a canonical-form comment.
+  - Every consumer flipped: `src/components/core/StatusBadge.tsx` (unused-but-drift-removed), `src/components/core/StatusBadge/StatusBadge.tsx` (unused-but-drift-removed), `src/components/domain/RunDetailHeader.tsx`, `src/app/(dashboard)/runs/[runId]/page.tsx:261`.
+  - Tests + fixtures flipped: `domain-RunDetailHeader.test.tsx`, `status-utils.test.ts` (6 occurrences), `domain-schemas.test.ts`, `run-schemas.test.ts`, `runs.fixture.ts`, `hitl-approval.spec.ts` comments.
+  - `_normalizeRunStatus` in `src/features/run-detail/api.ts` DELETED — no longer needed. `fetchRun` now calls `RunSummarySchema.parse(json.data)` as a boundary tripwire against any future drift.
+  - Note: two dead-code `StatusBadge` component files under `src/components/core/StatusBadge.tsx` and `src/components/core/StatusBadge/StatusBadge.tsx` were both updated. Real runtime `StatusBadge` lives in `src/components/core/Badge.tsx` (imported by `RunDetailHeader`, `RunCard`); the two dedicated files are only referenced by their own `.stories.tsx` companions. **Follow-up hygiene candidate:** delete the two dead `StatusBadge` files and their stories (out of scope for this slice).
+- **Files touched (12):**
+  - `src/lib/schemas/run.ts`
+  - `src/features/run-detail/api.ts`
+  - `src/components/core/StatusBadge.tsx`
+  - `src/components/core/StatusBadge/StatusBadge.tsx`
+  - `src/components/domain/RunDetailHeader.tsx`
+  - `src/app/(dashboard)/runs/[runId]/page.tsx`
+  - `src/tests/unit/domain-RunDetailHeader.test.tsx`
+  - `src/tests/unit/status-utils.test.ts`
+  - `src/tests/unit/domain-schemas.test.ts`
+  - `src/tests/unit/run-schemas.test.ts`
+  - `src/tests/fixtures/runs.fixture.ts`
+  - `src/tests/e2e/hitl-approval.spec.ts`
+- **Ports / adapters:** none new. `fetchRun` now enforces `RunSummarySchema` at the boundary.
+- **PORTING_LEDGER:** unchanged. No external code vendored.
+- **KNOWN_ISSUES:** resolves 2026-08-05 23:34 EDT (status enum drift). Opens follow-up: two dead-code `StatusBadge` component files could be deleted.
+- **Stop-condition status:** hygiene slice DoD met — one canonical form used everywhere; `.parse()` guards future drift. Pending Colossus verification.

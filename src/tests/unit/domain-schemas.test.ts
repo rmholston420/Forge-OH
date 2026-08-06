@@ -47,7 +47,7 @@ describe('RunSummarySchema', () => {
   });
 
   it('accepts all defined RunStatus values', () => {
-    for (const status of ['idle', 'running', 'streaming', 'queued', 'paused', 'awaiting-approval', 'disconnected', 'succeeded', 'failed', 'blocked']) {
+    for (const status of ['idle', 'running', 'streaming', 'queued', 'paused', 'awaiting_approval', 'disconnected', 'succeeded', 'failed', 'blocked']) {
       expect(() => RunSummarySchema.parse({ ...VALID_RUN, status })).not.toThrow();
     }
   });
@@ -59,7 +59,7 @@ describe('RunSummarySchema', () => {
 
 describe('RunStatusSchema', () => {
   it('accepts every valid status value', () => {
-    for (const s of ['idle', 'running', 'streaming', 'queued', 'paused', 'awaiting-approval', 'disconnected', 'succeeded', 'failed', 'blocked']) {
+    for (const s of ['idle', 'running', 'streaming', 'queued', 'paused', 'awaiting_approval', 'disconnected', 'succeeded', 'failed', 'blocked']) {
       expect(() => RunStatusSchema.parse(s)).not.toThrow();
     }
   });
