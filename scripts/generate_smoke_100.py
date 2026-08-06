@@ -4,22 +4,50 @@ stratified from the F.3 full-500 ground-truth run.
 Slice 8.0.5 (measurement hardening). Council-Synthesis line 117:
 "expand smoke set toward ≥100 tasks."
 
-Reproduces the same stratification recipe used for the original 30-task set
-(described in bench/pathF_swebench/bench_pathF_swebench.py lines 163-176):
+### Recipe used (deterministic, seed=42)
 
   1. Load the full-500 ground-truth outcomes from a completed F.3 run.
   2. Bucket tasks by repo × outcome (resolved / unresolved / context-budget-skip).
   3. For each repo, allocate a quota proportional to that repo's share of the
-     full-500 (rounded); within each repo, keep the ratio of outcome buckets.
-  4. Sample within each (repo, outcome) bucket with random.seed(42), the same
-     seed the 30-task set used, so the first 30 IDs come out identical to the
-     existing SMOKE_TASK_IDS.
+     full-500 (rounded, min 1); within each repo, keep the ratio of outcome
+     buckets (min 1 per present outcome).
+  4. Sample within each (repo, outcome) bucket with random.seed(42).
 
-Design constraints:
+### Recipe divergence caveat (2026-08-06)
+
+This recipe was reconstructed from the *description* of how the original 30-task
+set was chosen (see `bench/pathF_swebench/bench_pathF_swebench.py` lines
+163-176), but running it against the F.3 full-500 log with seed=42 does NOT
+reproduce the exact same 30 IDs. It produces a comparable stratified sample of
+size 30, but with different specific IDs (~15 differ). The original 30's exact
+provenance is unrecovered.
+
+What this means:
+  - The first 30 IDs of the output are PRESERVED VERBATIM from the current
+    `SMOKE_TASK_IDS`, not regenerated. This keeps the strict-prefix invariant
+    so every prior Slice 8.0 attestation stays directly comparable to any
+    100-task prefix.
+  - The extension 70 IDs are sampled from the F.3 full-500 pool MINUS the
+    original 30. They follow this file's recipe (repo × outcome stratification,
+    seed=42), which is a valid stratified sample but NOT provably identical to
+    whatever originally chose the 30.
+  - Practical impact: fine for pass@1 measurement over the 100-task set as a
+    whole. Do NOT interpret an outcome-rate difference between the 30-prefix
+    and the 70-extension as a meaningful signal — they were drawn under related
+    but not identical procedures.
+
+### Deterministic tail-trim to exactly 100
+
+Step 3 above uses a min-1-per-bucket rebalance loop that can over-allocate by
+a few tasks when there are many small (repo, outcome) buckets. After sampling
+the extension we sort it deterministically (by instance_id) and truncate to
+exactly `TARGET_TOTAL - len(CURRENT_SMOKE_30) = 70` entries.
+
+### Design constraints
   - The first 30 IDs of the output MUST equal the current SMOKE_TASK_IDS in the
     same order (regression: attestations against the original 30-task set stay
     directly comparable to the smoke-100 prefix).
-  - Extension of 70 tasks brings the total to 100.
+  - Extension of exactly 70 tasks brings the total to exactly 100.
 
 Usage (on Colossus):
   cd ~/dev/forge-oh
@@ -218,9 +246,24 @@ def main() -> int:
     # 70 more from the pool of full-500 tasks EXCLUDING those 30. Use the same
     # stratification recipe on the remaining pool.
     remaining_records = [r for r in records if r["instance_id"] not in current_set]
-    extension = _stratified_sample(remaining_records, TARGET_TOTAL - len(CURRENT_SMOKE_30))
-    # Sort extension by repo + instance_id for readability
+    n_extension = TARGET_TOTAL - len(CURRENT_SMOKE_30)
+    extension = _stratified_sample(remaining_records, n_extension)
+    # Sort extension by instance_id for reproducibility.
     extension.sort()
+    # Deterministic tail-trim: the min-1-per-bucket rebalance can over-allocate
+    # by a few tasks when many small buckets are present. Truncate to exactly
+    # n_extension so the total is exactly TARGET_TOTAL. Truncation is by
+    # sorted-instance-id tail drop — deterministic given seed=42.
+    if len(extension) > n_extension:
+        dropped = extension[n_extension:]
+        extension = extension[:n_extension]
+        print(f"# tail-trimmed {len(dropped)} over-allocated task(s) to hit "
+              f"exactly {n_extension} extension IDs: {dropped}",
+              file=sys.stderr)
+    elif len(extension) < n_extension:
+        print(f"# WARNING: sample under-allocated ({len(extension)} of {n_extension} "
+              f"requested). Output will be short of TARGET_TOTAL.",
+              file=sys.stderr)
 
     combined = list(CURRENT_SMOKE_30) + extension
     print(f"# generated {len(combined)} instance IDs "
@@ -229,11 +272,18 @@ def main() -> int:
 
     # Emit as a paste-able Python literal
     print("SMOKE_100_TASK_IDS = [")
-    print("    # First 30: verbatim from SMOKE_TASK_IDS (Slice 8.0 baseline)")
+    print("    # First 30: verbatim from SMOKE_TASK_IDS (Slice 8.0 baseline).")
+    print("    # Provenance unrecovered; kept as-is to preserve the strict-prefix")
+    print("    # invariant so Slice 8.0 attestations stay directly comparable.")
     for iid in CURRENT_SMOKE_30:
         print(f'    "{iid}",')
-    print("    # Extension (70 tasks) — Slice 8.0.5, seed=42 stratified from")
-    print("    # F.3 full-500 minus the 30 above.")
+    print(f"    # Extension ({len(extension)} tasks) — Slice 8.0.5, seed=42")
+    print("    # stratified sample from the F.3 full-500 pool MINUS the 30")
+    print("    # above. Recipe: repo × outcome buckets, proportional quotas,")
+    print("    # min 1 per (repo, outcome), sorted-tail-trimmed to exactly 70.")
+    print("    # Recipe is deterministic given seed=42 but NOT provably identical")
+    print("    # to whatever chose the original 30; do not treat rate differences")
+    print("    # between the prefix and the extension as meaningful signal.")
     for iid in extension:
         print(f'    "{iid}",')
     print("]")

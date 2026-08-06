@@ -213,7 +213,7 @@ Same flag matrix, applied to `ops/vllm_launch_planner.sh`, with these difference
 2. `bench/pathF_swebench/bench_pathF_swebench.py` — CLI additions:
    - `--task-count {30,100}` (mutually exclusive with `--tasks`, `--smoke`).
      - `30` runs `SMOKE_30_TASK_IDS` (alias of existing `SMOKE_TASK_IDS`).
-     - `100` runs `SMOKE_100_TASK_IDS` (strict-prefix extension: first 30 IDs verbatim; extension of 70 stratified from F.3 full-500 under same `seed=42` recipe).
+     - `100` runs `SMOKE_100_TASK_IDS` (strict-prefix extension: first 30 IDs verbatim from `SMOKE_TASK_IDS`; extension of 70 IDs stratified from F.3 full-500 minus those 30 under a reconstructed `seed=42` recipe — see caveat below and generator docstring).
      - `--task-count 100` errors out with a helpful message if `SMOKE_100_TASK_IDS` is empty; user runs `scripts/generate_smoke_100.py` on Colossus once to populate it.
    - `--pair-with BASELINE_RUN_DIR` — after run completes, load baseline outcomes, emit `pair_comparison.json` with McNemar result, and print a one-line verdict.
    - `--usd-per-gpu-hour <float>` (default `0.60`, `≤0` disables) — knob for the derived `usd_per_solved_task` field. Colossus is single-user so this is a knob, not a market rate; documented as `usd_per_gpu_hour_assumed` in every summary and manifest for auditability.
@@ -228,9 +228,11 @@ Same flag matrix, applied to `ops/vllm_launch_planner.sh`, with these difference
 
 4. `scripts/generate_smoke_100.py` — populates `SMOKE_100_TASK_IDS`.
    - Reads a completed F.3 full-500 run dir (`~/.forge-oh/bench_pathF_swebench/20260805_1025_run/` on Colossus).
-   - Buckets tasks by `repo × outcome`, allocates proportional quotas, samples under `random.seed(42)`.
+   - Buckets tasks by `repo × outcome`, allocates proportional quotas (min 1 per present bucket), samples under `random.seed(42)`.
    - Keeps the first 30 IDs verbatim (union approach): `CURRENT_SMOKE_30 || stratified_sample(remaining_pool, 70)`.
    - Emits a paste-able Python literal to stdout. User runs it once on Colossus and pastes between the `<SMOKE_100_START>/<SMOKE_100_END>` markers.
+
+   **Recipe divergence caveat (2026-08-06):** the reconstructed recipe does NOT reproduce the original 30-task set when run against the F.3 full-500 log with `seed=42` (verified on Colossus: ~15 of 30 IDs differ). The original 30's exact provenance is unrecovered. Consequence: the 30-prefix and the 70-extension are drawn under related but not identical procedures. The prefix invariant is preserved (attestations against the original 30 remain directly comparable to any 100-task prefix), and the 100-task set as a whole is a valid stratified sample of the F.3 full-500. Do NOT interpret pass@1 differences between the prefix and the extension as a meaningful signal. Documented in the generator docstring.
 
 **Definition of Done:**
 
