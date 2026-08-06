@@ -6392,3 +6392,17 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Q3 — `git reset --hard` target: HEAD at fork time.** Composition of `Conversation.fork()` + `git reset --hard HEAD` + `git clean -fd` inside the newly provisioned worktree. `provision_worktree` already checks out HEAD at fork time (6.4b behaviour, unchanged). The reset+clean blows away uncommitted files an agent staged mid-conversation — the actual "restore" semantic ADR-025 promised. Option (b) (HEAD-at-event) rejected: requires per-event workspace snapshots deliberately deferred. Option (c) (HEAD-at-restore-time) rejected: mutates source, not fork — that's destructive edit, not restore.
 - **Files touched:** SESSION_HANDOFF.md (design section rewritten from "Open questions" → "Decisions locked").
 - **Stop-condition status:** 6.4c planning complete; implementation starts next session with no design ambiguity.
+
+## 2026-08-06 07:43 EDT — Ops · vLLM coder backend brought back up via .env
+
+- **Stage/plugin/port:** runtime ops (not a build slice). Preparation for Stage 6.4c integration testing.
+- **Symptom:** BFF router returned `role='coder' pinned to backend_id='vllm-coder' unavailable: vLLM at http://localhost:8501 down` on every run creation. Blocked both the Stage 6.4b full-stack verify script and any real coder-role runs.
+- **Root cause (dual):** (1) The `vllm-bench` Docker container was already UP for 25 hours on port `:8000` (not `:8501`) with served-model-name `c01_coder_vllm_qwen36_27b_int4` (not `qwen3.6-27b-int4-autoround`, which is the BFF default in `bff/services/model_router.py:107`). (2) The container's port and served-name diverged from the BFF defaults, so the router's `/v1/models` probe against `:8501` failed and no fallback kicked in.
+- **Fix:** appended two overrides to `~/dev/forge-oh/.env` (the canonical dotenv path that `model_router.py:61` loads at import time via `load_dotenv(dotenv_path='.env', override=False)`):
+  - `LLM_CODER_URL=http://localhost:8000`
+  - `LLM_CODER_MODEL=c01_coder_vllm_qwen36_27b_int4`
+  - Prior `.env` backed up as `.env.bak.<timestamp>`.
+- **Verification (07:43 EDT):** `POST /api/runs` with `agentPresetId=ap-1` returned `status=queued` with `routing.selected="vllm/c01_coder_vllm_qwen36_27b_int4"` and `routing.baseUrl="http://localhost:8000/v1"`. Cleanup `DELETE /api/runs/{id}` returned 204 as expected (worktree reap tolerant of pre-agent-server-cid state).
+- **Files touched:** `.env` (added two keys), `scripts/vllm-coder-status.sh`, `scripts/vllm-coder-inspect.sh`, `scripts/vllm-coder-bringup.sh` (superseded by fix-env.sh), `scripts/vllm-coder-env-probe.sh`, `scripts/vllm-coder-fix-env.sh` (final working recipe).
+- **Follow-up (non-blocking, not this slice):** reconcile the running container's port + served-name with BFF defaults so operators don't need `.env` overrides. Options: (a) restart `vllm-bench` on :8501 with the canonical served-name; or (b) update `model_router.py` defaults to :8000 and the observed served-name; or (c) have the router auto-discover served-name via `/v1/models` on startup. Pick during 6.4c planning.
+- **Stop-condition status:** runtime prerequisite for Stage 6.4c integration testing is met. Backend unit tests never needed this; they can proceed independently.

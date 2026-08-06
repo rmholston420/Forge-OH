@@ -86,13 +86,22 @@ All three carry-over questions resolved. No open questions blocking 6.4c.
 - `0f52b34` · Stage 6.4b: primitive-layer DoD verify script
 - (this commit) · Stage 6.4b CLOSED · BUILD_LOG + SESSION_HANDOFF
 
-## Colossus runtime state (informational, not blocking 6.4c planning)
+## Colossus runtime state (07:43 EDT: coder backend LIVE)
 
-At 07:30 EDT during DoD verify: `role='coder' unavailable: vLLM at http://localhost:8501 down, supervisor could not recover, Ollama fallback exhausted`. This is a runtime-ops concern, not a 6.4b regression. First step of the next session should be to bring vLLM back up (or confirm Ollama serving `qwen3-coder:32k`) so full-stack `stage-6.4b-verify.sh` can also be run for belt-and-suspenders.
+**Resolved.** vLLM coder is serving on :8000 via container `vllm-bench` (up 25+ hours). BFF was dialing :8501 with the wrong served-name — added two overrides to `~/dev/forge-oh/.env`:
+
+```
+LLM_CODER_URL=http://localhost:8000
+LLM_CODER_MODEL=c01_coder_vllm_qwen36_27b_int4
+```
+
+Verified via `POST /api/runs` (ap-1) → `status=queued`, `routing.selected="vllm/c01_coder_vllm_qwen36_27b_int4"`, `routing.baseUrl="http://localhost:8000/v1"`. Cleanup `DELETE /api/runs/{id}` → 204. Both create and delete paths work end-to-end. See BUILD_LOG.md 2026-08-06 07:43 EDT for full triage + a follow-up item to reconcile the container's port/served-name with BFF defaults so operators don't need `.env` overrides.
+
+**Nothing blocking 6.4c.** Backend unit tests + full-stack integration tests can both proceed.
 
 ## Next sub-session's first act
 
 1. Read this file.
 2. Q1/Q2/Q3 already locked — skip to implementation.
-3. Bring at least one coder backend online (vLLM :8501 or Ollama `qwen3-coder:32k`). Needed for 6.4c integration testing but NOT for backend unit tests, so step 1 can proceed in parallel.
+3. Confirm coder backend is still up: `bash scripts/vllm-coder-status.sh` (should show `vllm-bench` container up on :8000 with `c01_coder_vllm_qwen36_27b_int4`). If not, `bash scripts/vllm-coder-fix-env.sh` re-verifies + re-persists.
 4. Implement Stage 6.4c step 1 (backend `POST /api/runs/{run_id}/restore` endpoint).
