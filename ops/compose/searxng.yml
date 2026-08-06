@@ -1,0 +1,42 @@
+# ops/compose/searxng.yml — local SearXNG for Forge-OH (Stage 6.1).
+#
+# Single-user, local-first. Loopback-bound on 127.0.0.1:18888 so no other
+# host on the LAN can reach it. Deliberately NOT on the default 8888 to
+# avoid collision with Kosmos ADR-010's SearXNG on the same workstation.
+#
+# Bring up:
+#   cd ~/dev/forge-oh
+#   docker compose -f ops/compose/searxng.yml up -d
+#
+# Verify:
+#   curl -s "http://127.0.0.1:18888/search?q=probe&format=json" | jq '.query'
+#
+# Tear down:
+#   docker compose -f ops/compose/searxng.yml down
+#
+# Image pinned by digest — see PORTING_LEDGER.md for the tag/digest source.
+
+services:
+  searxng:
+    image: searxng/searxng:2026.8.4-c63835bd2@sha256:dc5c10fda6818dfef7abfdf9f451b898242c3321514a9524af215cbedc79c89b
+    container_name: forge-oh-searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18888:8080"
+    volumes:
+      - ./searxng.settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BASE_URL=http://127.0.0.1:18888/
+      - INSTANCE_NAME=forge-oh-search
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

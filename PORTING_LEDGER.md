@@ -287,3 +287,39 @@ Amendment to the Stage 5.2 Kosmos port (2026-08-06 01:44 EDT entry above): Forge
   - `openhands_tools_ext/tests/memory/test_consult_memory_tool.py` — happy path, unsupported tiers, empty results, emit-on-success + emit-on-failure + missing-conversation-id, registration lookup via `resolve_tool`.
   - `bff/tests/test_memory_emit_endpoint.py` — 503 gate, 200 wire shape, 422 validation cases, Socket.IO-failure resilience.
   - `src/tests/e2e/memory-timeline-marker.spec.ts` — creates a real run via ap-1 preset, POSTs the emit endpoint, asserts the 🧠 EventCard appears with the expected summary on the run-detail timeline, auto-pushes `screenshots/memory-timeline-marker.png`.
+
+
+## 2026-08-06 04:44 EDT — Kosmos SearchPort + SearXNG adapter → openhands_tools_ext/search/ (Stage 6.1)
+
+- **Source URL:** https://github.com/rmholston420/kosmos
+- **Commit hash:** `c455165bca0d645f0d43572d0c286dca7033d31d`
+- **SPDX license:** Apache-2.0 (same-owner: rmholston420)
+- **Stage/plugin/port:** Stage 6.1 · openhands_tools_ext · SearchPort (12th formal port for Forge-OH; 11th in Kosmos as ADR-021)
+- **Ported files (SHA-256 equality proof of donor bytes at pinned SHA):**
+  - `ports/search.py` → `openhands_tools_ext/search/ports/search.py`
+    - donor sha256: `f09f37f6b7c7063dd6947c1805670a3d3d2196f25dbe9f24e6967288f455acf4` (2692 bytes)
+  - `adapters/search/searxng/__init__.py` → `openhands_tools_ext/search/adapters/searxng/__init__.py`
+    - donor sha256: `7ac3001dc4f4860802612aa00fd73a9447c6c24f53975dd247c153da1897094e` (209 bytes)
+  - `adapters/search/searxng/adapter.py` → `openhands_tools_ext/search/adapters/searxng/adapter.py`
+    - donor sha256: `f0ea8df7c756052f2ae5de1278da6c0482bd5839de9c78b16e637c497c1c3707` (8061 bytes)
+  - `adapters/search/searxng/test_contract.py` → `openhands_tools_ext/tests/search/test_searxng_contract.py`
+    - donor sha256: `9ba905daae81e7b77083d3f7e42dd9972139a278de38aa6fa84d15203fb3fa63` (2158 bytes)
+  - `ops/benchmarks/adr_010/fixtures/searxng_settings.yml` → `ops/compose/searxng.settings.yml`
+    - donor sha256: `6b97f9bd3b6f57fdcbe09ce372eb13790aaa94b3e01fa1f3516a6f5d6958a6d0` (1104 bytes)
+- **Modifications (mechanical only — semantic contract preserved):**
+  1. Import paths rewritten: `ports.search` → `openhands_tools_ext.search.ports.search`; `adapters.search.searxng` → `openhands_tools_ext.search.adapters.searxng`.
+  2. Env var renamed: `KOSMOS_SEARXNG_BASE_URL` → `FORGE_SEARXNG_BASE_URL`. Adapter default base URL: `http://127.0.0.1:8888` → `http://127.0.0.1:18888` (Forge-OH-owned loopback port, avoids Kosmos ADR-010 collision on the same workstation).
+  3. User-Agent rewritten: `KosmosSearchAdapter/0.1 (+local; rmholston420/kosmos)` → `ForgeOHSearchAdapter/0.1 (+local; rmholston420/Forge-OH)`.
+  4. `settings.yml`: `general.instance_name` `kosmos-adr010` → `forge-oh-search`; `server.secret_key` regenerated (single-user local eval; not sensitive). Engine list, formats, limiter=false all identical.
+  5. `test_contract.py` provenance-string test URL adjusted to `http://localhost:18888` to match new Forge-OH default port; engine parametrization set changed from `["google"]` → `["duckduckgo"]` for parity with the ported settings.yml (Google is not in the enabled engine list).
+- **Companion files (new, hand-authored — not vendored):**
+  - `openhands_tools_ext/search/tools/search_web.py` — OpenHands SDK tool wrapping SearchPort (mirrors `consult_memory` pattern).
+  - `bff/services/search_events.py` — WebSearchEvent producer (sibling of `memory_events.py`).
+  - `bff/routers/search.py` — `POST /api/search/emit` bridge endpoint.
+  - `ops/compose/searxng.yml` — Docker Compose file pinning `searxng/searxng:2026.8.4-c63835bd2@sha256:dc5c10fda6818dfef7abfdf9f451b898242c3321514a9524af215cbedc79c89b` on `127.0.0.1:18888`.
+- **Verification:**
+  - `openhands_tools_ext/tests/search/test_searxng_contract.py` — donor's 6 contract tests, all rewritten import paths, provenance assertion matched to Forge-OH port.
+  - `openhands_tools_ext/tests/search/test_search_web_tool.py` — happy path, empty results, emit-on-success/failure/missing-conversation-id, registration probe.
+  - `bff/tests/test_search_emit_endpoint.py` — 503 gate, 200 wire shape (both `FORGE_SEARCH_EMIT_ENABLED` and `FORGE_SEARXNG_BASE_URL` variants), 422 validation cases, Socket.IO-failure resilience.
+  - `src/tests/unit/EventCard-web-search.test.tsx` — 🔍 icon + summary text.
+  - `src/tests/e2e/search-timeline-marker.spec.ts` — live emit + screenshot to `screenshots/search-timeline-marker.png`.

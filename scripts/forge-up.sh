@@ -100,6 +100,7 @@ else
     nohup python -m openhands.agent_server \
       --host 127.0.0.1 --port "$AGENT_PORT" \
       --import-modules openhands_tools_ext.memory.tools.consult_memory \
+      --import-modules openhands_tools_ext.search.tools.search_web \
       >>"$LOG_DIR/agent-server.log" 2>&1 &
   echo $! > "$AGENT_PID_FILE"
   wait_for_port "$AGENT_PORT" "agent-server" 60 || true

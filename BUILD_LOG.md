@@ -5877,3 +5877,54 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   3. **Port binding.** Kosmos default `8888` — is that free on Colossus? Or bind to a Forge-OH-owned port (recommend `18888` to avoid collision risk with other local search UIs).
   4. **SearXNG config.** Copy Kosmos's `settings.yml` verbatim, or start with a minimal Forge-OH-specific one? Impacts which engines (google/duckduckgo/brave) are enabled by default.
 - **Awaiting user answers on the four open decisions before touching any file.**
+
+
+## 2026-08-06 04:44 EDT — Stage 6.1: SearXNG web-research tool ported and wired
+
+**Scope:** Stage 6.1 per `docs/reconciliation-plan-stage-6.md` §6.1 — port Kosmos `SearchPort` + SearXNG adapter into Forge-OH, deploy local SearXNG via Docker Compose, wrap as `search_web` OpenHands tool with distinct frontend timeline marker.
+
+**Open-decision resolutions locked (see previous handoff § "Blocked"):**
+1. **Image pin:** 1c — `searxng/searxng:2026.8.4-c63835bd2@sha256:dc5c10fda6818dfef7abfdf9f451b898242c3321514a9524af215cbedc79c89b`.
+2. **Compose placement:** 2a — new `ops/compose/searxng.yml`.
+3. **Host port:** 3b — `127.0.0.1:18888` (loopback, avoids Kosmos ADR-010's 8888).
+4. **Settings.yml:** 4a — Kosmos verbatim minus mechanical rewrites (`instance_name` + `secret_key`).
+5. **Destination path:** `openhands_tools_ext/search/` (singular, matches Stage 5's `memory/`).
+6. **Tool name:** `search_web` (verb-object, mirrors `consult_memory`).
+7. **A1:** env var renamed `KOSMOS_SEARXNG_BASE_URL` → `FORGE_SEARXNG_BASE_URL`; User-Agent rewritten to ForgeOH.
+8. **B1a:** cheap sync emit gate (`FORGE_SEARCH_EMIT_ENABLED=1` OR `FORGE_SEARXNG_BASE_URL` set); no async I/O in hot path.
+
+**Files added:**
+- `openhands_tools_ext/search/__init__.py`
+- `openhands_tools_ext/search/ports/{__init__.py, search.py}` (ported)
+- `openhands_tools_ext/search/adapters/__init__.py`
+- `openhands_tools_ext/search/adapters/searxng/{__init__.py, adapter.py}` (ported)
+- `openhands_tools_ext/search/tools/{__init__.py, search_web.py}` (hand-authored)
+- `openhands_tools_ext/tests/search/{__init__.py, test_searxng_contract.py, test_search_web_tool.py}`
+- `bff/services/search_events.py` (hand-authored, sibling of `memory_events.py`)
+- `bff/routers/search.py` (hand-authored, mirrors `bff/routers/memory.py` emit-consultation)
+- `bff/tests/test_search_emit_endpoint.py`
+- `ops/compose/{README.md, searxng.yml, searxng.settings.yml}` (first user of `ops/compose/`)
+- `src/tests/unit/EventCard-web-search.test.tsx`
+- `src/tests/e2e/search-timeline-marker.spec.ts`
+
+**Files modified:**
+- `bff/services/event_normalize.py` — added `WebSearchEvent → web_search` to `_KIND_TO_TYPE`, added `_web_search_summary`, added dispatch branch in `normalize_event`.
+- `bff/main.py` — added `search` to router imports; added `include_router(search.router, prefix="/api")`.
+- `scripts/forge-up.sh` — extended agent-server launch with `--import-modules openhands_tools_ext.search.tools.search_web`.
+
+**Frontend note:** `EVENT_ICONS['web_search'] = '🔍'` already existed in `src/components/domain/EventCard.tsx` — no component change required. The Stage 5 slot was pre-provisioned for exactly this port.
+
+**Ports/adapters affected:** SearchPort (new, 12th formal port for Forge-OH); SearxngAdapter (new).
+
+**PORTING_LEDGER:** entry appended 2026-08-06 04:44 EDT with SHA-256 equality proof for all five donor files.
+
+**Stop-condition status:**
+- Donor files vendored verbatim: ✅
+- PORTING_LEDGER entry with SHA + SHA-256 proof: ✅
+- SearXNG Docker Compose file present + pinned: ✅ (bring-up + `/search?q=probe&format=json` check pending user on Colossus)
+- `search_web` OpenHands tool + auto-import wiring: ✅
+- BFF `POST /api/search/emit` bridge endpoint + service: ✅
+- Frontend distinct event type via `event_normalize`: ✅
+- Verify end-to-end (agent → SearXNG → provenance visible on timeline): ⏳ pending user pull + `docker compose up` + E2E DoD screenshot on Colossus.
+
+**Next up:** Stage 6.2 — Condensation visibility (per reconciliation-plan-stage-6.md).

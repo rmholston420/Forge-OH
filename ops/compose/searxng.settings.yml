@@ -1,0 +1,52 @@
+# ops/compose/searxng.settings.yml — Forge-OH Stage 6.1 SearXNG config.
+#
+# Ported verbatim from Kosmos @ c455165 (ops/benchmarks/adr_010/fixtures/
+# searxng_settings.yml) with two mechanical rewrites:
+#   * general.instance_name  kosmos-adr010 -> forge-oh-search
+#   * server.secret_key      re-generated (single-user local eval; not sensitive)
+#
+# Engine list is identical: DuckDuckGo, Bing, Brave, Wikipedia, arXiv,
+# Google Scholar, GitHub. Rationale: strong general-web + academic + code
+# coverage, which matches Forge-OH's agent research needs.
+
+use_default_settings: true
+
+general:
+  instance_name: "forge-oh-search"
+  privacypolicy_url: false
+  contact_url: false
+  donation_url: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "forge-oh-local-eval-only-not-a-real-secret-b3f9e2"
+  limiter: false            # single-user local eval; no rate limiting needed
+  image_proxy: false
+  http_protocol_version: "1.1"
+  method: "GET"
+
+ui:
+  static_use_hash: true
+
+engines:
+  - name: duckduckgo
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: brave
+    disabled: false
+  - name: wikipedia
+    disabled: false
+  - name: arxiv
+    disabled: false
+  - name: google scholar
+    disabled: false
+  - name: github
+    disabled: false

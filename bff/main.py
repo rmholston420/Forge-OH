@@ -39,6 +39,7 @@ from bff.routers import (
     plugins,
     repograph,
     runs,
+    search,
     secrets,
     selfeval,
     settings,
@@ -140,6 +141,7 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(observability.router, prefix="/api")
 app.include_router(plugins.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
+app.include_router(search.router, prefix="/api")
 app.include_router(bash.router, prefix="/api")
 app.include_router(git.router, prefix="/api")
 app.include_router(gpu.router)  # already prefixed /api/gpu inside the router
