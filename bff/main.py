@@ -50,6 +50,7 @@ from bff.routers import (
 )
 from bff.services import (
     episodic_memory,
+    event_commit_ledger,
     event_relay,
     gpu_monitor,
     idempotency_ledger,
@@ -68,6 +69,11 @@ async def lifespan(app: FastAPI):
     # state-changing tool calls.  Uses its own aiosqlite connection on
     # app.state.idempotency_db.
     await idempotency_ledger.init_db(app)
+    # Stage 6.4c (ADR-026 §Storage — option W2): per-event commit-sha
+    # sidecar. Populated by create_run and send_run_message; consumed by
+    # event_normalize and the restart endpoint. Uses its own aiosqlite
+    # connection on app.state.event_commit_db.
+    await event_commit_ledger.init_db(app)
     # Slice F.13: start the trajectory drain scheduler so records
     # written by the trajectory STOP hook (without inline indexing)
     # get embedded in the background. Best-effort: an import failure
@@ -113,6 +119,7 @@ async def lifespan(app: FastAPI):
     await oh_shutdown()
     await episodic_memory.close_db(app)
     await idempotency_ledger.close_db(app)
+    await event_commit_ledger.close_db(app)
     # Stage 5.6a (ADR-024): close the shared MemoryPort adapter, if it
     # was composed. Idempotent; no-op when NEO4J_PASSWORD was unset.
     await close_memory_port()
