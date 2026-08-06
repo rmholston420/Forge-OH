@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: '/metrics',       label: 'Metrics',        icon: '📈' },
   { href: '/observability', label: 'Observability',  icon: '📊' },
   { href: '/secrets',       label: 'Secrets',        icon: '🔒' },
+  { href: '/memory-inspector', label: 'Memory',      icon: '🧠' },
   { href: '/selfeval',      label: 'Self-Eval',      icon: '⏰' },
   { href: '/settings',      label: 'Settings',       icon: '⚙️' },
 ];

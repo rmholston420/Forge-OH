@@ -28,6 +28,12 @@ _KIND_TO_TYPE: dict[str, str] = {
     "PauseEvent": "run_paused",
     "SystemPromptEvent": "status",
     "TokenEvent": "status",
+    # Stage 5.6a (ADR-024) — memory-tier consultation. Emitted by
+    # `bff/services/memory_events.py` when a caller performs a semantic
+    # lookup via `MemoryPort.search_semantic`. The raw event carries
+    # `tier` (str), `query` (str), and `result_count` (int) alongside
+    # the usual event fields. Rendered by EventCard as a compact marker.
+    "MemoryConsultationEvent": "memory_consultation",
 }
 
 
@@ -219,6 +225,26 @@ def _generic_summary(ev: dict[str, Any]) -> str:
     return ev.get("kind", "event")
 
 
+def _memory_consultation_summary(ev: dict[str, Any]) -> str:
+    """Stage 5.6a (ADR-024) — render a MemoryConsultationEvent as one line.
+
+    Falls back gracefully when any of the three semantic fields is missing so
+    a partial event never blanks the timeline row.
+    """
+    if ev.get("summary"):
+        return str(ev["summary"])
+    tier = str(ev.get("tier") or "memory")
+    query = ev.get("query")
+    count = ev.get("result_count")
+    query_str = f'"{query}"' if isinstance(query, str) and query else "(query)"
+    count_str = (
+        f"{int(count)} result(s)"
+        if isinstance(count, (int, float)) and not isinstance(count, bool)
+        else "—"
+    )
+    return f"Memory consulted ({tier}): {query_str} — {count_str}"
+
+
 # Valid SecurityRisk enum values from openhands.sdk.security.risk (SDK 1.40.0).
 # We pass these through verbatim to the frontend; anything else is dropped.
 _VALID_SECURITY_RISK = {"UNKNOWN", "LOW", "MEDIUM", "HIGH"}
@@ -258,6 +284,8 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
 
     if kind == "MessageEvent":
         summary = _message_summary(raw)
+    elif kind == "MemoryConsultationEvent":
+        summary = _memory_consultation_summary(raw)
     elif kind == "ActionEvent":
         summary = _action_summary(raw)
         # Stage 4.4: if this ActionEvent invoked a Serena tool, promote the

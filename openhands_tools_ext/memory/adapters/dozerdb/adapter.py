@@ -39,6 +39,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 from openhands_tools_ext.memory.ports.embeddings import EmbeddingsPort
 from openhands_tools_ext.memory.ports.memory import (
     MemoryEventId,
+    MemoryEventRecord,
     MemoryHit,
     MemoryPort,
     MemoryWriteBlocked,
@@ -296,6 +297,84 @@ class InMemoryTemporalIndex:
         return None
 
 
+# ── Stage 5.6a helpers (ADR-024): recent-writes projection ───────────────
+
+# Cypher forms per backend. The in-memory backend honours ``label:<Label>``
+# as a special-case shortcut (see ``InMemoryGraphBackend.query_cypher``);
+# the Bolt-backed backend forwards its argument verbatim to
+# ``session.run`` so needs full Cypher. Both must yield rows whose
+# properties include the fields written by ``write_event``: ``id``,
+# ``subject``, ``predicate``, ``object``, ``provenance``, ``confidence``,
+# ``pii_tier``, ``source_citation``, ``written_at``.
+_RECENT_WRITES_CYPHER: dict[str, str] = {
+    "InMemoryGraphBackend": "label:MemoryEvent",
+    "__default__": (
+        "MATCH (e:MemoryEvent) "
+        "RETURN e.id AS id, e.subject AS subject, e.predicate AS predicate, "
+        "       e.object AS object, e.provenance AS provenance, "
+        "       e.confidence AS confidence, e.pii_tier AS pii_tier, "
+        "       e.source_citation AS source_citation, "
+        "       e.written_at AS written_at "
+        "ORDER BY e.written_at DESC "
+        "LIMIT $limit"
+    ),
+}
+
+
+def _record_from_props(props: dict[str, Any]) -> MemoryEventRecord | None:
+    """Project a MemoryEvent props dict into a ``MemoryEventRecord``.
+
+    Returns ``None`` for rows that don't carry the mandatory triple + zero-trust
+    fields — defensive against schema drift or partial writes surfaced by an
+    older backend. Never raises.
+    """
+    try:
+        event_id = props.get("id")
+        subject = props.get("subject")
+        predicate = props.get("predicate")
+        obj = props.get("object")
+        provenance = props.get("provenance")
+        confidence = props.get("confidence")
+        written_at = props.get("written_at")
+        if not all(
+            isinstance(v, str) and v
+            for v in (event_id, subject, predicate, obj, provenance)
+        ):
+            return None
+        if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
+            return None
+        # written_at is stored as ISO-8601 string; accept datetime pass-through too.
+        if isinstance(written_at, str):
+            try:
+                written_at_dt = datetime.fromisoformat(written_at)
+            except ValueError:
+                return None
+        elif isinstance(written_at, datetime):
+            written_at_dt = written_at
+        else:
+            return None
+        source_citation = props.get("source_citation")
+        if source_citation is not None and not isinstance(source_citation, str):
+            source_citation = None
+        pii_tier = props.get("pii_tier") or "Public"
+        if not isinstance(pii_tier, str):
+            pii_tier = "Public"
+        return MemoryEventRecord(
+            id=event_id,
+            subject=subject,
+            predicate=predicate,
+            object=obj,
+            provenance=provenance,
+            confidence=float(confidence),
+            pii_tier=pii_tier,
+            source_citation=source_citation,
+            written_at=written_at_dt,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("_record_from_props swallowed error: %s", exc)
+        return None
+
+
 # ── DozerDbMemoryAdapter ────────────────────────────────────────────────────
 
 
@@ -514,6 +593,65 @@ class DozerDbMemoryAdapter:
         return await self._temporal.query_temporal(
             cypher_or_query, as_of=as_of, limit=limit
         )
+
+    async def list_recent_writes(
+        self,
+        *,
+        limit: int = 50,
+    ) -> list[MemoryEventRecord]:
+        """Return the ``limit`` most recent ``:MemoryEvent`` writes, newest first.
+
+        Stage 5.6a / ADR-024. Read-only inspection surface for the
+        memory-inspector UI. Sort key is the ``written_at`` ISO-8601 string
+        set by ``write_event``; strings compare correctly because every write
+        stamps ``datetime.now(timezone.utc).isoformat()`` (fixed 26-char UTC).
+
+        Executes a bounded Cypher query against the graph backend. Adapters
+        MUST NOT swallow programmer errors (bad ``limit``) but MAY return an
+        empty list when the backend is closed or the query returns nothing.
+        """
+        if not isinstance(limit, int) or limit <= 0:
+            raise ValueError(
+                f"list_recent_writes: limit must be a positive int, got {limit!r}"
+            )
+        if self._state.closed:
+            return []
+
+        rows = await self._graph.query_cypher(
+            # `label:MemoryEvent` is honoured by both the real Bolt backend
+            # (see DozerDbGraphBackend._run: this string is executed as-is
+            # against a live DozerDB session; we use a normal Cypher form for
+            # production) and by the in-memory backend (special-case shortcut).
+            #
+            # For the in-memory backend the `label:MemoryEvent` prefix returns
+            # all `:MemoryEvent` nodes; for the Bolt backend we need real
+            # Cypher. We branch on backend type via duck-typed detection:
+            # if the backend supports the shortcut form we use it; otherwise
+            # we send full Cypher. The bolt backend's query_cypher passes
+            # the string straight to `session.run`, so a Cypher string works.
+            _RECENT_WRITES_CYPHER.get(
+                type(self._graph).__name__,
+                _RECENT_WRITES_CYPHER["__default__"],
+            ),
+            {"limit": int(limit)},
+        )
+        out: list[MemoryEventRecord] = []
+        for row in rows:
+            # The Bolt backend returns Cypher projections keyed by the
+            # RETURN aliases (`id`, `subject`, ...). The in-memory backend
+            # returns raw node dicts (`{"id": ..., "label": "MemoryEvent",
+            # ...payload}`); we accept either shape.
+            props: dict[str, Any] = dict(row)
+            if props.get("label") == "MemoryEvent":
+                # in-memory backend row — already a payload dict
+                pass
+            record = _record_from_props(props)
+            if record is not None:
+                out.append(record)
+        # In-memory backend has no ORDER BY — sort newest-first here so both
+        # backends satisfy the contract.
+        out.sort(key=lambda r: r.written_at, reverse=True)
+        return out[:limit]
 
     async def search_semantic(
         self,

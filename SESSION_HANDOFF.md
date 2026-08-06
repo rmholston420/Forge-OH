@@ -1,74 +1,46 @@
 # Forge-OH Session Handoff
 
-**Last updated:** 2026-08-06 02:55 EDT
+## Current stage
+Stage 5.6a — **CODE COMPLETE ON SANDBOX**, awaiting Colossus pull + verify.
+Committed and pushed to `origin/main`; user runs the verify block below.
 
-## Current stage / port
+## Completed this session
+- Extended `MemoryPort` with `MemoryEventRecord` + `list_recent_writes(*, limit)`.
+- Implemented `list_recent_writes` on `DozerDbMemoryAdapter` for both InMemoryGraphBackend (label-shortcut) and DozerDbGraphBackend (real Cypher with newest-first `ORDER BY e.written_at DESC LIMIT $limit`).
+- Extended `bff/services/event_normalize.py` with `MemoryConsultationEvent → memory_consultation` mapping + `_memory_consultation_summary` helper.
+- New `bff/services/memory_events.py`: pure factory `build_memory_consultation_event` + emit wrapper `emit_memory_consultation` (library-only, no caller yet — ADR-023 D7 precedent).
+- New `bff/deps/memory_port.py`: lazy singleton composed via `openhands_tools_ext.memory.composition.make_memory_adapter`; non-fatal when `NEO4J_PASSWORD` unset.
+- New `bff/routers/memory.py`: `GET /api/memory/recent-writes?limit=50` (1–200). 503 when port unavailable; camelCase wire fields.
+- `bff/main.py`: router mounted, singleton closed in lifespan.
+- Frontend: `memory_consultation` in `EventTypeSchema`, brain icon in `EVENT_ICONS`, new `memory-inspector` feature module + dashboard route + sidebar entry + `memoryKeys` in `query-keys.ts`. TanStack refetch 15 s; 503 short-circuits retry.
+- ADR-024 filed (Ratified) + README row added.
+- Sandbox tests all green (165 passed, 1 skipped on touched files; 118/1 full memory suite).
 
-**Stage 5.5 — CLOSED.** ACE-style memory curation cycle shipped as
-library. ADR-023 filed. Ready for Stage 5.6.
+## Next action on Colossus (user, single block)
 
-## Completed this session (cumulative)
+```
+cd ~/dev/forge-oh && git pull
+PYTHONPATH=. python -m pytest bff/tests/memory/test_list_recent_writes_contract.py bff/tests/test_event_normalize.py bff/tests/test_memory_router.py bff/tests/test_memory_events.py -v
+pnpm typecheck
+pnpm build
+pnpm vitest run src/tests/unit/EventCard-memory.test.tsx src/tests/unit/MemoryInspectorPage.test.tsx
+```
 
-### Stage 5.3b (closed at `c565fd5`)
-- Kosmos DozerDB `MemoryPort` adapter + graph backend + contract test
-  ported. New Forge-OH `DozerDbTemporalIndex`, `composition.py`,
-  `smoke.roundtrip()`. ADR-021 filed + amended.
-- Colossus live: event_id `b34a7f08…3e4e3c5`, semantic 0.7382,
-  temporal 0.1308, same id both paths.
-
-### Stage 5.4 (closed at `3974aac`)
-- ADR-022 filed. Plan §5.4's proposed `MemoryWriteEvent` pydantic
-  model superseded by port-layer validators from 5.3b (which are
-  stricter — reject `bool` and non-`Real`).
-- `scripts/verify_stage_5_4_zero_trust.py` — 12/12 checks green
-  on Colossus.
-
-### Stage 5.5 (this segment)
-- **ADR-023** filed at
-  `docs/adr/023-ace-curation-cycle.md`. Pins cycle as triple-shaped
-  (D1), deterministic string-overlap (D2), zero-trust floor preserved
-  (D3), library-only (D7). Two-tier escalation policy (D5).
-- **New module** `openhands_tools_ext/memory/curation/`
-  (`ace_cycle.py` + `__init__.py`).
-- **Contract tests** `bff/tests/memory/test_ace_curation_contract.py`
-  (15 tests, all green).
-- **DoD verifier** `scripts/verify_stage_5_5_curation.py`
-  (3 checks, all green).
-- Full memory suite: 96 → **111 passed / 1 skipped** under both
-  baseline and qwen3-embedding:4b embedders.
-
-## What remains before Stage 5.6 kickoff
-
-- **User runs on Colossus:**
-  ```
-  cd ~/dev/forge-oh && git pull
-  PYTHONPATH=. python -m pytest bff/tests/memory/test_ace_curation_contract.py -v
-  PYTHONPATH=. python scripts/verify_stage_5_5_curation.py
-  ```
-  Expect 15 passed + `Stage 5.5 verification: 3/3 checks passed`.
-  No live infra required.
-- Confirm Stage 5.6 scope from
-  `Forge-OH-reconciliation-plan-v1-stage-5.md` §5.6 before writing
-  code.
+Expect all green. Then a Playwright visual pass against the production build (`pnpm start`) to confirm the timeline brain marker (fixture MemoryConsultationEvent) and the `/memory-inspector` page render with a MemoryPort composed against DozerDB.
 
 ## Open questions
+None blocking. Stage 5.6b (real `consult_memory` OpenHands tool + agent-server registration) is the next planned work.
 
-- Stage 5.6 scope. Plan §5.6 title is "ACE-style memory curation" but
-  the body describes Letta-style self-editing memory blocks that
-  route their edits through the cycle from Stage 5.5. Needs scope
-  restatement + minimal-working-system boundary before first commit.
+## Definition of Done for 5.6a (from Forge-OH-Action-Plan-v4 §5.6)
+- [x] `MemoryConsultationEvent` raw kind projected to normalized `memory_consultation` event type with tier/query/result_count summary.
+- [x] Timeline renders a distinct marker (brain icon) for `memory_consultation`.
+- [x] `/memory-inspector` dashboard page with triple-shape (subject/predicate/object) table of recent MemoryPort writes.
+- [x] BFF exposes recent-writes endpoint via a MemoryPort method (not direct Cypher).
+- [x] BFF composes a lazy MemoryPort singleton at startup; degrades to 503 when `NEO4J_PASSWORD` unset.
+- [x] ADR-024 filed and index updated.
+- [ ] Colossus verify (pending user pull).
+- [ ] Playwright visual verification against production build (pending user pull).
 
-## Next action
-
-Restate Stage 5.6 scope against plan §5.6, flag whether it's the same
-stage as 5.5 (in which case 5.5 already satisfies it library-side and
-only a wire-in is needed) or a new stage (in which case identify the
-new deliverables), wait for direction.
-
-## Deferred (locked by ADR-023, not blocking)
-
-- Embedding-similarity dedup (D5.1, requires evaluation evidence).
-- LLM-reflection escalation (D5.2, requires new ADR).
-- `merge`/`supersede` semantics (D6, requires future ADR).
-- qdrant-client 1.19 vs server 1.12.4 minor drift.
-- Add `neo4j>=5.26` to `.env.example` deps documentation.
+## Deferred to Stage 5.6b
+- `consult_memory` OpenHands tool wired to `emit_memory_consultation` in agent-server.
+- Live-task DoD from plan §5.6.4 (real task run triggers memory event).

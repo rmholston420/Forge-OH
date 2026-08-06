@@ -5599,3 +5599,71 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **STAGE 5.5 CLOSED.**
 - **Deferred to future ADRs** (locked by ADR-023 §D5 / §D6 / §D7): embedding-similarity dedup, LLM reflection, `merge`/`supersede` semantics, wire-in to higher-stack callers.
 - **Next stage:** 5.6 per plan — Letta-style memory-block edits routed through `curated_write` once a caller exists. Not part of this stage.
+
+## 2026-08-06 03:15 EDT — Stage 5.6a: Memory frontend plumbing (ADR-024)
+
+- **Stage:** 5.6a per Forge-OH-Action-Plan-v4.md §5.6 (frontend integration — mandatory). 5.6b (live-task consult_memory tool + agent-server wire-up) deferred.
+- **Definition of Done for 5.6a:**
+  1. New `MemoryConsultationEvent` raw kind + normalized `memory_consultation` type render a distinct marker in the timeline (brain icon).
+  2. New `/memory-inspector` dashboard page renders recent MemoryPort writes newest-first (six-column triple table) with a graceful 503 banner when the port is unavailable.
+  3. BFF composes a lazy MemoryPort singleton at startup (K1 in ADR-024) and tears it down in lifespan.
+  4. ADR-024 filed, README updated.
+- **What shipped:**
+  1. **Port + adapter:** `MemoryEventRecord` frozen dataclass and `list_recent_writes(*, limit)` on `MemoryPort`; `DozerDbMemoryAdapter.list_recent_writes` implementation covering both InMemoryGraphBackend and DozerDbGraphBackend (module-level `_RECENT_WRITES_CYPHER` per-backend dispatch + `_record_from_props` projector). Rejects non-positive limit; empty when closed; sorts newest-first in Python for the in-memory backend.
+  2. **BFF projector:** `bff/services/event_normalize.py` adds `MemoryConsultationEvent → memory_consultation` mapping + `_memory_consultation_summary` (`Memory consulted (<tier>): "<query>" — <n> result(s)`).
+  3. **BFF emitter helper (library-only):** `bff/services/memory_events.py` exposes `build_memory_consultation_event` (pure factory) + `emit_memory_consultation` (routes through `event_relay._emit`). No caller yet; ADR-023 D7 precedent.
+  4. **BFF singleton:** `bff/deps/memory_port.py` lazy singleton via `openhands_tools_ext.memory.composition.make_memory_adapter()`. `close_memory_port` idempotent. Non-fatal when `NEO4J_PASSWORD` unset.
+  5. **BFF router:** `GET /api/memory/recent-writes?limit=50` (1–200). 503 when port unavailable; 422 for out-of-range limit; 200 with camelCase wire projection (`piiTier` / `sourceCitation` / `writtenAt`).
+  6. **BFF main.py:** router mount + lifespan close.
+  7. **Frontend event surface:** `memory_consultation` added to `EventTypeSchema`; brain icon `🧠` mapped in `EVENT_ICONS`.
+  8. **Frontend feature:** `src/features/memory-inspector/{schemas.ts, api.ts, hooks.ts, MemoryInspectorPage.tsx}` + `src/app/(dashboard)/memory-inspector/page.tsx` + `Sidebar.tsx` entry + `memoryKeys` in `query-keys.ts`. TanStack refetch every 15 s; 503 short-circuits retry via `code=MEMORY_UNAVAILABLE`.
+  9. **ADR-024** filed under `docs/adr/024-memory-frontend-plumbing.md` (Ratified), row added to `docs/adr/README.md`.
+- **Scope decisions (locked pre-implementation):**
+  - **E=E2** — emitter routes via `event_relay._emit` (same wire path as agent-server events); pure factory + emit are separate entry points.
+  - **F=F1** — recent-writes served by a new port method, not by BFF-side Cypher.
+  - **G=ADR-024-yes** — new ADR filed (this entry).
+  - **I=5.6a only** — plumbing; consult_memory tool + agent-server wire-up deferred to 5.6b.
+  - **K=K1** — MemoryPort composed at BFF startup, singleton, non-fatal on missing NEO4J_PASSWORD.
+- **Files touched:**
+  - `openhands_tools_ext/memory/ports/memory.py`
+  - `openhands_tools_ext/memory/adapters/dozerdb/adapter.py`
+  - `bff/services/event_normalize.py`
+  - `bff/services/memory_events.py` (new)
+  - `bff/deps/memory_port.py` (new)
+  - `bff/routers/memory.py` (new)
+  - `bff/main.py`
+  - `bff/tests/memory/test_list_recent_writes_contract.py` (new)
+  - `bff/tests/test_event_normalize.py` (extended)
+  - `bff/tests/test_memory_events.py` (new)
+  - `bff/tests/test_memory_router.py` (new)
+  - `src/lib/schemas/event.ts`
+  - `src/components/domain/EventCard.tsx`
+  - `src/lib/query/query-keys.ts`
+  - `src/components/navigation/Sidebar.tsx`
+  - `src/features/memory-inspector/{schemas.ts,api.ts,hooks.ts,MemoryInspectorPage.tsx}` (new)
+  - `src/app/(dashboard)/memory-inspector/page.tsx` (new)
+  - `src/tests/unit/EventCard-memory.test.tsx` (new)
+  - `src/tests/unit/MemoryInspectorPage.test.tsx` (new)
+  - `docs/adr/024-memory-frontend-plumbing.md` (new)
+  - `docs/adr/README.md` (ADR-024 row)
+  - `BUILD_LOG.md`, `SESSION_HANDOFF.md`
+- **Ports/adapters affected:** MemoryPort Protocol extended (additive: `list_recent_writes` + `MemoryEventRecord`). Only in-repo implementer is `DozerDbMemoryAdapter`. `bff/deps/neo4j_driver.py` (sync driver used by RepoGraph) untouched.
+- **Verification (sandbox, `/tmp/foh-verify`, Python 3.14, `PYTHONPATH=.`):**
+  - `bff/tests/test_memory_router.py`: **5 passed**.
+  - `bff/tests/test_memory_events.py`: **17 passed**.
+  - `bff/tests/test_event_normalize.py`: **25 passed** (nine new memory-consultation cases).
+  - `bff/tests/memory/test_list_recent_writes_contract.py`: **7 passed**.
+  - Full `bff/tests/memory/`: **118 passed, 1 skipped**.
+  - Combined touched-file run: **165 passed, 1 skipped** in 0.55 s.
+  - `python -c "import bff.main"` clean (router mount + lifespan wired without import errors).
+- **Colossus verification (user, one command block):**
+  ```
+  cd ~/dev/forge-oh && git pull
+  PYTHONPATH=. python -m pytest bff/tests/memory/test_list_recent_writes_contract.py bff/tests/test_event_normalize.py bff/tests/test_memory_router.py bff/tests/test_memory_events.py -v
+  pnpm typecheck
+  pnpm build
+  pnpm vitest run src/tests/unit/EventCard-memory.test.tsx src/tests/unit/MemoryInspectorPage.test.tsx
+  ```
+  Expect: 39 backend tests passing on the touched files (+ full 118/1 memory suite if extended), typecheck + build clean, 7 frontend tests passing.
+- **DoD status:** 5.6a plumbing complete on sandbox. Live Colossus verification (DozerDB Bolt path + Playwright visual pass on production build) pending user pull.
+- **Deferred to Stage 5.6b:** `consult_memory` OpenHands tool implementation and agent-server registration so a real task run drives `emit_memory_consultation` end-to-end.

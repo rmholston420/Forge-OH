@@ -62,6 +62,12 @@ export const trajectoryKeys = {
     ['trajectories', 'search', query] as const,
 };
 
+// Stage 5.6a / ADR-024 — MemoryPort inspector surface.
+export const memoryKeys = {
+  all: ['memory'] as const,
+  recentWrites: (limit: number) => ['memory', 'recent-writes', limit] as const,
+};
+
 export const QUERY_KEYS = {
   runs: runKeys,
   runKeys,
@@ -78,6 +84,8 @@ export const QUERY_KEYS = {
   observabilityKeys,
   trajectories: trajectoryKeys,
   trajectoryKeys,
+  memory: memoryKeys,
+  memoryKeys,
   plugins: {
     all: ['plugins'] as const,
     detail: (id: string) => ['plugins', id] as const,

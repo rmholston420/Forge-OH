@@ -21,6 +21,7 @@ import socketio  # type: ignore[import-untyped]
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from bff.deps.memory_port import close_memory_port
 from bff.deps.neo4j_driver import close_neo4j_driver
 from bff.openhands_client import shutdown as oh_shutdown
 from bff.openhands_client import startup as oh_startup
@@ -31,6 +32,7 @@ from bff.routers import (
     gpu,
     inference_backends,
     mcp,
+    memory,
     metrics,
     notifications,
     observability,
@@ -102,6 +104,9 @@ async def lifespan(app: FastAPI):
     await event_relay.shutdown_all()
     await oh_shutdown()
     await episodic_memory.close_db(app)
+    # Stage 5.6a (ADR-024): close the shared MemoryPort adapter, if it
+    # was composed. Idempotent; no-op when NEO4J_PASSWORD was unset.
+    await close_memory_port()
     # Close the shared Neo4j driver pool if it was opened.
     close_neo4j_driver()
 
@@ -129,6 +134,7 @@ app.include_router(agent_presets.router, prefix="/api")
 app.include_router(secrets.router, prefix="/api")
 app.include_router(secrets.conv_secrets_router, prefix="/api")
 app.include_router(mcp.router, prefix="/api")
+app.include_router(memory.router, prefix="/api")
 app.include_router(metrics.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(observability.router, prefix="/api")

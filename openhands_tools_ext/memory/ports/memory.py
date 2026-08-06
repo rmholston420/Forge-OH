@@ -25,6 +25,7 @@ from typing import Any, Protocol, runtime_checkable
 
 __all__ = [
     "MemoryEventId",
+    "MemoryEventRecord",
     "MemoryHit",
     "MemoryPort",
     "MemoryWriteBlocked",
@@ -60,6 +61,36 @@ class MemoryHit:
     payload: dict[str, Any]
     score: float | None = None
     as_of: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryEventRecord:
+    """One recent-writes row returned by ``MemoryPort.list_recent_writes``.
+
+    Immutable projection of a persisted ``:MemoryEvent`` node, shaped for the
+    memory-inspector UI (Stage 5.6a / ADR-024). Read-only surface — does not
+    expose the underlying graph handle.
+
+    Fields mirror the payload written by ``write_event``:
+        - ``id``              — the UUID assigned at write time (same value as
+          ``MemoryEventId.id``).
+        - ``subject`` / ``predicate`` / ``object`` — the ADR-021 triple.
+        - ``provenance``      — required by spec §7 zero-trust.
+        - ``confidence``      — required by spec §7 zero-trust, ``[0.0, 1.0]``.
+        - ``pii_tier``        — policy tier tag (default ``"Public"``).
+        - ``source_citation`` — optional caller-provided citation string.
+        - ``written_at``      — UTC timestamp assigned at write time.
+    """
+
+    id: str
+    subject: str
+    predicate: str
+    object: str
+    provenance: str
+    confidence: float
+    pii_tier: str
+    source_citation: str | None
+    written_at: datetime
 
 
 class MemoryWriteBlocked(RuntimeError):
@@ -192,6 +223,21 @@ class MemoryPort(Protocol):
 
         Raises:
             ValueError: port-level zero-trust guard failed.
+        """
+        ...
+
+    async def list_recent_writes(
+        self,
+        *,
+        limit: int = 50,
+    ) -> list["MemoryEventRecord"]:
+        """Return the ``limit`` most recent ``:MemoryEvent`` writes, newest first.
+
+        Read-only inspection surface used by the memory-inspector UI
+        (Stage 5.6a / ADR-024). Sort key is the ``written_at`` timestamp set
+        by ``write_event``. Adapters MUST NOT block on this; if the backend
+        is closed or unreachable, they MAY return an empty list rather than
+        raise (the inspector renders an empty state).
         """
         ...
 

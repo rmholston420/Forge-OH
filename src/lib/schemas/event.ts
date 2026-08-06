@@ -21,6 +21,8 @@ export const EventTypeSchema = z.enum([
   'run_succeeded',
   'run_failed',
   'status',
+  // Stage 5.6a / ADR-024 — projected from MemoryConsultationEvent.
+  'memory_consultation',
 ]).or(z.string());
 
 export type EventType = z.infer<typeof EventTypeSchema>;

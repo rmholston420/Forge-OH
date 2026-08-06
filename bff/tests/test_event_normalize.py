@@ -140,3 +140,66 @@ class TestSerenaLSPNormalization:
         out = normalize_event(ev)
         assert out["type"] == "lsp_get_symbols_overview"
         assert out["summary"] == "Serena get_symbols_overview"
+
+
+class TestMemoryConsultationNormalization:
+    """Stage 5.6a / ADR-024 — memory-tier consultation event projection."""
+
+    def _raw(self, **extra):
+        base = {
+            "id": "mem-1",
+            "kind": "MemoryConsultationEvent",
+            "timestamp": "2026-08-06T03:00:00+00:00",
+            "source": "memory",
+            "tier": "semantic",
+            "query": "colossus",
+            "result_count": 3,
+        }
+        base.update(extra)
+        return base
+
+    def test_kind_maps_to_memory_consultation_type(self):
+        assert normalize_event(self._raw())["type"] == "memory_consultation"
+
+    def test_summary_renders_tier_query_and_count(self):
+        out = normalize_event(self._raw())
+        assert out["summary"] == 'Memory consulted (semantic): "colossus" — 3 result(s)'
+
+    def test_source_passes_through(self):
+        assert normalize_event(self._raw())["source"] == "memory"
+
+    def test_raw_preserved(self):
+        out = normalize_event(self._raw())
+        assert out["raw"]["tier"] == "semantic"
+        assert out["raw"]["query"] == "colossus"
+        assert out["raw"]["result_count"] == 3
+
+    def test_missing_query_uses_fallback_text(self):
+        raw = self._raw()
+        del raw["query"]
+        out = normalize_event(raw)
+        assert "(query)" in out["summary"]
+
+    def test_missing_result_count_uses_em_dash(self):
+        raw = self._raw()
+        del raw["result_count"]
+        out = normalize_event(raw)
+        assert "—" in out["summary"]
+
+    def test_bool_result_count_rejected_as_numeric(self):
+        # bool is int subclass in Python — the summary MUST NOT format it
+        # as "1 result(s)"; it should render as em-dash.
+        raw = self._raw(result_count=True)
+        out = normalize_event(raw)
+        assert "1 result(s)" not in out["summary"]
+        assert "—" in out["summary"]
+
+    def test_explicit_summary_overrides_render(self):
+        raw = self._raw(summary="custom marker")
+        out = normalize_event(raw)
+        assert out["summary"] == "custom marker"
+
+    def test_no_security_risk_key_added(self):
+        # securityRisk is ActionEvent-only; MemoryConsultationEvent must not
+        # accidentally acquire it.
+        assert "securityRisk" not in normalize_event(self._raw())
