@@ -23,7 +23,16 @@ from .types import BackendHealth, BackendMeta
 
 
 class VLLMBackend:
-    """Generic vLLM adapter parametrized by id + display_name + env var."""
+    """Generic vLLM adapter parametrized by id + display_name + env var.
+
+    ``base_url`` resolves ``env_var`` at access time (not at ``__init__``
+    time) so tests that set / unset the env with ``monkeypatch.setenv``
+    see the change without needing to rebuild ``BACKEND_REGISTRY``.  This
+    also protects against test-isolation leaks where an env override in
+    one test would otherwise freeze the URL of the module-level registry
+    for the rest of the pytest process.  See DEBUG_LOG 2026-08-06 for the
+    original snapshot-at-init bug.
+    """
 
     supports_streaming = True
 
@@ -39,7 +48,12 @@ class VLLMBackend:
         self.id = id
         self.display_name = display_name
         self.role_hint = role_hint
-        self.base_url = os.getenv(env_var, default_url)
+        self._env_var = env_var
+        self._default_url = default_url
+
+    @property
+    def base_url(self) -> str:
+        return os.getenv(self._env_var, self._default_url)
 
     async def health(self) -> BackendHealth:
         return await probe_openai_v1_models(self.base_url)

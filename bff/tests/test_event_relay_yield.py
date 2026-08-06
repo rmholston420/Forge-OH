@@ -173,9 +173,25 @@ async def test_direct_sync_call_would_block_confirms_the_hazard() -> None:
     async def _http_request() -> None:
         await _simulate_incoming_request(time.perf_counter(), latencies)
 
+    # Order matters and is subtle: `started_at` is captured at *task
+    # creation* time (the caller-frame arg eval), NOT at coroutine-body
+    # entry.  We want:
+    #   1. http_task's started_at = t0 (created first, captured in the arg)
+    #   2. relay_task runs first when the loop yields (FIFO: created 2nd
+    #      but its busy-loop hits the loop first because http_task's body
+    #      does an await too? — NO, both tasks race for the first slot).
+    #
+    # The valid arrangement is: capture started_at BEFORE any create_task,
+    # then create the relay_task first so FIFO runs it first, then
+    # create http_task with the pre-captured started_at.  This mirrors
+    # DEBUG_LOG 2026-08-06 04:17 EDT's recommendation.
+    started_at = time.perf_counter()
+
+    async def _http_request_prebound() -> None:
+        await _simulate_incoming_request(started_at, latencies)
+
     relay_task = asyncio.create_task(_bad_relay_iteration())
-    await asyncio.sleep(0.001)
-    http_task = asyncio.create_task(_http_request())
+    http_task = asyncio.create_task(_http_request_prebound())
 
     await asyncio.gather(relay_task, http_task)
 

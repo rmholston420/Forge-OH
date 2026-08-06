@@ -70,8 +70,18 @@ class TestHealthDisabled:
 
 class TestHealthNoPassword:
     def test_returns_error_when_password_missing(self, client: TestClient) -> None:
-        with patch("bff.routers.repograph.get_settings") as gs:
-            gs.return_value = Settings(repograph_enabled=True, neo4j_password="")
+        # Patch BOTH the router-level get_settings (for the enabled check)
+        # AND the deps.neo4j_driver.get_settings (which is what
+        # get_neo4j_driver() itself calls to read the password).  Without
+        # the second patch, get_neo4j_driver() reads the real env and, on
+        # a workstation with a live DozerDB, returns a live driver — which
+        # makes reachable:true and this assertion fail.  See DEBUG_LOG
+        # 2026-08-06 01:23 EDT.
+        empty_settings = Settings(repograph_enabled=True, neo4j_password="")
+        with (
+            patch("bff.routers.repograph.get_settings", return_value=empty_settings),
+            patch("bff.deps.neo4j_driver.get_settings", return_value=empty_settings),
+        ):
             response = client.get("/api/repograph/health")
 
         assert response.status_code == 200

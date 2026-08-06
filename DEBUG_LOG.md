@@ -1964,3 +1964,70 @@ triggers:
 **Fix**: None needed. This is the intended behavior — `AGENTS.md` was already the mandatory read for every Forge-OH session. The SDK is correctly wiring it up as always-on context.
 
 **Files changed**: none
+
+## 2026-08-06 11:46 EDT — VLLMBackend.base_url snapshot-at-init froze registry across pytest process
+
+**Symptom**: `bff/tests/test_inference_backends.py::test_registry_vllm_ports_match_router_env_defaults` passes in isolation (`.oh-venv/bin/pytest ... -q` → `1 passed`) but fails in the full backend suite. Failure asserts that `BACKEND_REGISTRY["vllm-coder"].base_url.endswith(":8501")` etc.  Env vars `LLM_CODER_URL`, `LLM_PLANNER_URL`, `VLLM_URL` are all unset in the failing shell.
+
+**Affected**: Stage 6 exit gate · `bff.services.inference_backends.adapter_vllm` · `BACKEND_REGISTRY` module-level singleton
+
+**Root cause**: `VLLMBackend.__init__` snapshotted `os.getenv(env_var, default_url)` into `self.base_url`.  `BACKEND_REGISTRY = {...}` in `registry.py` instantiates all three vLLM backends at first import.  Any test that had touched an env var earlier in the pytest process could freeze the URL for the rest of the run.  Even without a direct polluter, the snapshot-at-init pattern is a latent isolation bomb.
+
+**Fix applied**: Convert `base_url` to a `@property` that reads env at access time:
+```python
+def __init__(self, *, ..., env_var: str, default_url: str, ...) -> None:
+    ...
+    self._env_var = env_var
+    self._default_url = default_url
+
+@property
+def base_url(self) -> str:
+    return os.getenv(self._env_var, self._default_url)
+```
+
+**Files changed**: `bff/services/inference_backends/adapter_vllm.py`
+
+## 2026-08-06 11:46 EDT — Direct-sync hazard test still measured backwards after prior create_task swap
+
+**Symptom**: `test_direct_sync_call_would_block_confirms_the_hazard` still failed occasionally after DEBUG_LOG 2026-08-06 04:17 EDT's ordering fix.  `latencies[0]` was near-zero instead of the expected ≥0.15s block.
+
+**Affected**: `bff/tests/test_event_relay_yield.py` · direct-sync hazard demonstration test
+
+**Root cause**: Even with `relay_task` created first for FIFO ordering, `started_at` was captured **inside** `_http_request` via `_simulate_incoming_request(time.perf_counter(), ...)` — which meant `started_at` was recorded AFTER the busy-loop, not before.  Difference `perf_counter() - started_at` was ~0.
+
+**Fix applied**: Capture `started_at = time.perf_counter()` BEFORE any `create_task`, close over it in a `_http_request_prebound` inner coroutine, then FIFO-schedule relay first, http second:
+```python
+started_at = time.perf_counter()
+
+async def _http_request_prebound() -> None:
+    await _simulate_incoming_request(started_at, latencies)
+
+relay_task = asyncio.create_task(_bad_relay_iteration())
+http_task = asyncio.create_task(_http_request_prebound())
+
+await asyncio.gather(relay_task, http_task)
+```
+
+**Files changed**: `bff/tests/test_event_relay_yield.py`
+
+## 2026-08-06 11:46 EDT — TestHealthNoPassword still flakes on live DozerDB after prior autouse-fixture add
+
+**Symptom**: `TestHealthNoPassword::test_returns_error_when_password_missing` returns `reachable:true` on Colossus (live DozerDB on :7687).  The autouse `_reset_driver_singleton` fixture clears `bff.deps.neo4j_driver._driver` but that alone is insufficient.
+
+**Affected**: `bff/tests/test_repograph_router.py` · Neo4j health endpoint negative-path test
+
+**Root cause**: The test patched `bff.routers.repograph.get_settings` to return `Settings(neo4j_password="")` but did NOT patch `bff.deps.neo4j_driver.get_settings`.  The router calls `get_neo4j_driver()` which itself calls `get_settings()` from the deps module — that read the REAL env, which on Colossus has `.env.neo4j` with a valid password, so a live driver was constructed and `reachable:true` was reported.
+
+**Fix applied**: Patch BOTH module-level `get_settings` symbols in the test:
+```python
+empty_settings = Settings(repograph_enabled=True, neo4j_password="")
+with (
+    patch("bff.routers.repograph.get_settings", return_value=empty_settings),
+    patch("bff.deps.neo4j_driver.get_settings", return_value=empty_settings),
+):
+    response = client.get("/api/repograph/health")
+```
+
+**Files changed**: `bff/tests/test_repograph_router.py`
+
+**Prevention**: When a router calls a helper (`get_neo4j_driver`, etc.) that itself reads settings, patching only the router-level `get_settings` is not enough — the helper reads real settings.  Patch both, or refactor the helper to accept an explicit settings arg.

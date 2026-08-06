@@ -6897,3 +6897,21 @@ All Stage 6 sub-stages shipped:
 Exit gate: `pytest openhands_tools_ext/tests/tool_invocation/ -q` on Colossus is the last item — user will run.
 
 Next: Stage 7.1 begins after the queued 30-test benchmark confirms Stage 6 gains, followed by the full 500-test run.
+
+## 2026-08-06 11:46 EDT — Stage 6 exit-gate cleanup: 3 flaky-in-suite tests fixed
+
+**What**: Rather than carve-out the three environment-flaky backend tests from Stage 6 exit gate, fixed the underlying bugs (all three were test-code / test-isolation bugs, not code-under-test bugs).
+
+**Stage/plugin/port**: Stage 6 close · `bff.services.inference_backends` · `bff.tests.test_event_relay_yield` · `bff.tests.test_repograph_router`
+
+**Files touched**:
+- `bff/services/inference_backends/adapter_vllm.py` — `base_url` now a `@property` (was init snapshot).  Eliminates latent test-isolation bomb.
+- `bff/tests/test_event_relay_yield.py` — capture `started_at` before `create_task`, close over it in inner coroutine, FIFO relay-then-http.
+- `bff/tests/test_repograph_router.py` — patch BOTH `bff.routers.repograph.get_settings` AND `bff.deps.neo4j_driver.get_settings` in `TestHealthNoPassword` so `get_neo4j_driver()` sees the empty password.
+- `DEBUG_LOG.md` — 3 new entries.
+
+**Ports/adapters affected**: `VLLMBackend` API surface unchanged (attribute still called `base_url`); only implementation swapped snapshot → property.  No behavioral change for callers.
+
+**Ledger**: n/a (no new port vendored).
+
+**Stop condition**: Full backend + FE exit gate must pass with 0 failures before running the 30-test benchmark.  Now pending re-run.
