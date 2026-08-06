@@ -270,3 +270,20 @@ Amendment to the Stage 5.2 Kosmos port (2026-08-06 01:44 EDT entry above): Forge
 - **Deferred (not blocking 5.3b):**
   - qdrant-client 1.19 vs server 1.12.4 minor drift (from Stage 5.3a) — still open.
   - `neo4j>=5.26` needs adding to `.env.example` and Colossus `.oh-venv` install docs (next slice).
+
+
+## 2026-08-06 — consult_memory OpenHands tool + BFF emit-consultation endpoint (Stage 5.6b)
+- **Source URL:** n/a — hand-authored, no upstream donor.
+- **Kind:** hand-authored (no-port)
+- **Location(s):**
+  - `openhands_tools_ext/memory/tools/__init__.py` (new package marker)
+  - `openhands_tools_ext/memory/tools/consult_memory.py` (~340 lines)
+  - `bff/routers/memory.py` (extended: POST `/api/memory/emit-consultation`)
+  - `scripts/forge-up.sh` (agent-server launched with `--import-modules openhands_tools_ext.memory.tools.consult_memory`)
+- **Why hand-authored (donor check):** OpenHands SDK v1.40.0 ships builtin tools (`FinishTool`, `ThinkTool`) as reference templates. Both were inspected directly at `~/dev/forge-oh/.oh-venv/lib/python3.12/site-packages/openhands/sdk/tool/builtins/` before writing this tool; the file structure and `create()`/`ToolExecutor` idioms mirror those templates deliberately. No OSS component implements a Forge-OH-specific memory-tier query tool wired to the local `MemoryPort` composition, so nothing is vendored — only the SDK API is consumed.
+- **License / ownership:** OpenHands SDK is MIT (transitively consumed as a pip dep). New Forge-OH code is same-owner (rmholston420).
+- **Bridge design (ADR-024 D6 follow-through):** the tool runs inside the agent-server (:8090) which cannot invoke `bff.services.event_relay._emit` in-process, so `consult_memory` best-effort HTTP-POSTs the same wire fields to `POST /api/memory/emit-consultation` on the BFF (:8081), which in turn calls the existing library-only `emit_memory_consultation`. Tool result never fails on emit errors.
+- **Verification:**
+  - `openhands_tools_ext/tests/memory/test_consult_memory_tool.py` — happy path, unsupported tiers, empty results, emit-on-success + emit-on-failure + missing-conversation-id, registration lookup via `resolve_tool`.
+  - `bff/tests/test_memory_emit_endpoint.py` — 503 gate, 200 wire shape, 422 validation cases, Socket.IO-failure resilience.
+  - `src/tests/e2e/memory-timeline-marker.spec.ts` — creates a real run via ap-1 preset, POSTs the emit endpoint, asserts the 🧠 EventCard appears with the expected summary on the run-detail timeline, auto-pushes `screenshots/memory-timeline-marker.png`.

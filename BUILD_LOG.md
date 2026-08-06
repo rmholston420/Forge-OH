@@ -5763,3 +5763,44 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Visual inspection (agent, in workspace):** sidebar highlights 🧠 Memory; H1 "Memory" + description "Recent MemoryPort writes (newest first, up to 50)."; table renders 7 columns (Subject, Predicate, Object, Provenance, Confidence, PII tier, Written) with both rows populated; GPU strip in topbar shows T 33°C · U 1% · V 96% · 21 W. No wrapped/truncated text.
 - **Files touched this closeout entry:** `BUILD_LOG.md`, `SESSION_HANDOFF.md`. Screenshots pushed by the spec's own tail.
 - **Stage 5.6a DoD:** ALL gates met. Stage closed. Stage 5.6b (`consult_memory` OpenHands tool + timeline brain-marker live verification) is the next slice.
+
+## 2026-08-06 03:43 EDT — Stage 5.6b: consult_memory tool + BFF emit endpoint + agent-server auto-import + Playwright live-task DoD (code shipped, verification pending user pull)
+- **Purpose:** implement the deferred Stage 5.6b work — a live caller for `emit_memory_consultation` that surfaces a 🧠 EventCard on the run-detail timeline, and the OpenHands `consult_memory` tool the agent will use to trigger it.
+- **What shipped:**
+  1. `openhands_tools_ext/memory/tools/__init__.py` (new package).
+  2. `openhands_tools_ext/memory/tools/consult_memory.py` — full `ConsultMemoryAction` / `ConsultMemoryObservation` / `ConsultMemoryExecutor` / `ConsultMemoryTool` shape; `register_tool("consult_memory", ConsultMemoryTool)` at import time. Executor is sync (SDK v1.40.0 `ToolExecutor.__call__` is sync); async `MemoryPort.search_semantic` is driven via `asyncio.run`. Best-effort HTTP emit to BFF; failures never break the tool result. Only `semantic` tier is accepted — `temporal`/`episodic` raise `NotImplementedError` before any I/O.
+  3. `bff/routers/memory.py` — new `POST /api/memory/emit-consultation` endpoint. Gated by `FORGE_MEMORY_EMIT_ENABLED=1` OR by a composed MemoryPort (so live Colossus with `.env.neo4j` already opens the surface, and tests can enable it without booting DozerDB). Calls existing `bff.services.memory_events.emit_memory_consultation` and returns the normalized wire event.
+  4. `scripts/forge-up.sh` — agent-server launch line now includes `--import-modules openhands_tools_ext.memory.tools.consult_memory` so `register_tool(...)` runs before any conversation is created.
+  5. `openhands_tools_ext/tests/memory/test_consult_memory_tool.py` — 12 test cases: registration lookup via `resolve_tool`, tool create shape + annotations, factory-param rejection, happy path + emit assertion, empty-result emit path, missing-conversation-id skip, BFF 503 → `emitted=False`, transport-error → `emitted=False`, unsupported-tier `NotImplementedError` (parametrised), conversation-id resolution fallback chain.
+  6. `bff/tests/test_memory_emit_endpoint.py` — 6 endpoint cases: 503 when disabled; 200 wire shape (`type`, `id`, `timestamp`, `summary`, `raw.kind/tier/query/result_count`) when env-gated; 422 on empty runId / negative resultCount / missing field; Socket.IO emit failure never propagates to the response.
+  7. `src/tests/e2e/memory-timeline-marker.spec.ts` — Playwright live-task DoD (§5.6.4): probes BFF emit / agent-server tools / frontend, creates a real run via `POST /api/runs` with `ap-1` preset + workspace `18c99443b23c452899010095abd5f29b`, navigates to `/runs/{id}` first (so `useRunStream` joins the `conversationId={id}` Socket.IO room), then POSTs `/api/memory/emit-consultation` and asserts the 🧠 EventCard with the exact summary text renders. Screenshot auto-pushed as `screenshots/memory-timeline-marker.png` when `PLAYWRIGHT_GPU_STRIP_PUSH=1`.
+- **Files touched:** see PORTING_LEDGER entry above. Plus this BUILD_LOG entry, `SESSION_HANDOFF.md`, `PORTING_LEDGER.md`.
+- **Rerun path (user, on Colossus):**
+  ```bash
+  cd ~/dev/forge-oh && git pull
+
+  # 1. Restart agent-server so --import-modules takes effect.
+  bash scripts/forge-restart.sh
+  bash scripts/forge-status.sh
+
+  # 2. Confirm the tool is registered.
+  curl -s http://127.0.0.1:8090/api/tools/ | grep -o consult_memory
+  # expect: consult_memory
+
+  # 3. Confirm the emit endpoint is live.
+  curl -s -o /dev/null -w "emit=%{http_code}\n" -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"runId":"probe","tier":"semantic","query":"probe","resultCount":0}' \
+    http://127.0.0.1:8081/api/memory/emit-consultation
+  # expect: emit=200 (MemoryPort composed via .env.neo4j)
+
+  # 4. Unit tests.
+  .oh-venv/bin/pytest openhands_tools_ext/tests/memory/test_consult_memory_tool.py bff/tests/test_memory_emit_endpoint.py -q
+
+  # 5. Playwright live DoD (auto-pushes screenshot to origin/main).
+  cd src
+  PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
+  PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+    npx playwright test tests/e2e/memory-timeline-marker.spec.ts --reporter=list
+  ```
+- **Stop condition (from plan §5.6.4):** `screenshots/memory-timeline-marker.png` on `origin/main` showing the 🧠 EventCard on run-detail with the expected summary. Unit tests + endpoint tests green. `pnpm typecheck` + `pnpm build` clean.

@@ -93,9 +93,13 @@ else
   log "starting agent-server on :${AGENT_PORT} (.oh-venv)"
   # OPENHANDS_SUPPRESS_BANNER=1 keeps the startup log clean.
   # Bind to 127.0.0.1 explicitly — this is a single-user local box.
+  # --import-modules preloads Forge-OH-owned tool modules so their
+  # top-level ``register_tool(...)`` calls run before the first
+  # conversation is created (Stage 5.6b: consult_memory).
   OPENHANDS_SUPPRESS_BANNER=1 \
     nohup python -m openhands.agent_server \
       --host 127.0.0.1 --port "$AGENT_PORT" \
+      --import-modules openhands_tools_ext.memory.tools.consult_memory \
       >>"$LOG_DIR/agent-server.log" 2>&1 &
   echo $! > "$AGENT_PID_FILE"
   wait_for_port "$AGENT_PORT" "agent-server" 60 || true

@@ -1,40 +1,46 @@
 # Forge-OH Session Handoff
 
 ## Current stage
-Stage 5.6a — **CLOSED** (all DoD gates green on Colossus 2026-08-06 03:35 EDT).
-Next slice: Stage 5.6b — `consult_memory` OpenHands tool + timeline brain-marker live verification.
+Stage 5.6b — **code shipped, verification pending user pull + local run** (2026-08-06 03:43 EDT).
 
 ## Completed this session
-- Stage 5.6a full plumbing (ADR-024): MemoryConsultationEvent → memory_consultation projector, list_recent_writes port + adapter, BFF singleton (K1), memory router, memory-inspector page + sidebar entry.
-- Unit + contract tests green on Colossus (54 backend + 7 frontend + typecheck + prod build).
-- **Live-DozerDB Playwright visual pass green** — spec `tests/e2e/memory-inspector.spec.ts` renders the sidebar 🧠 Memory entry and the recent-writes table with 2 real rows from DozerDB. Screenshots auto-pushed as commit `2526dc4` on `origin/main`:
-  - `screenshots/memory-inspector-page.png`
-  - `screenshots/memory-inspector-sidebar.png`
-- Infrastructure hardened along the way:
-  - `scripts/forge-up.sh` now sources `.env.neo4j` before uvicorn (BFF composes MemoryPort automatically on restart).
-  - `scripts/seed_memory_event.py` bootstraps `sys.path` for `openhands_tools_ext` (repo-local package, not pip-installed).
-  - `.gitignore` covers `.serena/` (ADR-016 parity for editor tool state).
+- `consult_memory` OpenHands tool (`openhands_tools_ext/memory/tools/consult_memory.py`), registered via `register_tool` at module import time. Semantic tier only; unsupported tiers raise `NotImplementedError` before any I/O. Executor is sync (SDK v1.40.0 contract); async `MemoryPort.search_semantic` driven via `asyncio.run`.
+- Bridge endpoint `POST /api/memory/emit-consultation` on the BFF, gated by `FORGE_MEMORY_EMIT_ENABLED=1` OR by a composed MemoryPort. Best-effort Socket.IO emit; endpoint stays 200 even if `_emit` throws.
+- Agent-server auto-registration: `scripts/forge-up.sh` now launches the agent-server with `--import-modules openhands_tools_ext.memory.tools.consult_memory`.
+- Unit tests: `openhands_tools_ext/tests/memory/test_consult_memory_tool.py` (registration, factory shape, happy path, emit-failure paths, unsupported tiers, conversation-id fallback), `bff/tests/test_memory_emit_endpoint.py` (gate, wire shape, validation, Socket.IO failure resilience).
+- Live DoD spec: `src/tests/e2e/memory-timeline-marker.spec.ts` — creates a real run (ap-1 preset), navigates to run-detail so `useRunStream` joins the room, POSTs the emit endpoint, asserts the 🧠 EventCard with the exact summary, auto-pushes `screenshots/memory-timeline-marker.png`.
+- PORTING_LEDGER "hand-authored, no donor" entry filed (OpenHands SDK v1.40.0 template inspected before writing).
 
 ## Next action on Colossus (user)
-Stage 5.6a is done. Next session opens Stage 5.6b. Recommended kickoff:
-1. Re-read the Stage 5 reconciliation plan at `~/dev/forge-oh/docs/Forge-OH-reconciliation-plan-v1-stage-5.md` §5.6.4 (live-task DoD).
-2. Decide caller for `emit_memory_consultation` — the OpenHands `consult_memory` tool is the canonical shape; ADR-024 §"Deferred to 5.6b" documents the surface.
-3. Open a fresh session and I'll restate scope + stop condition before writing any code.
+Pull and run the rerun path in the latest BUILD_LOG entry:
+```bash
+cd ~/dev/forge-oh && git pull
+bash scripts/forge-restart.sh
+bash scripts/forge-status.sh
+curl -s http://127.0.0.1:8090/api/tools/ | grep -o consult_memory
+curl -s -o /dev/null -w "emit=%{http_code}\n" -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"runId":"probe","tier":"semantic","query":"probe","resultCount":0}' \
+  http://127.0.0.1:8081/api/memory/emit-consultation
+.oh-venv/bin/pytest openhands_tools_ext/tests/memory/test_consult_memory_tool.py bff/tests/test_memory_emit_endpoint.py -q
+cd src
+PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
+PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+  npx playwright test tests/e2e/memory-timeline-marker.spec.ts --reporter=list
+```
+Paste the terminal output and I'll close the stage.
 
 ## Open questions
-None.
+- If `curl /api/tools/` does not include `consult_memory` after restart: the `--import-modules` path may have raised at import time. Check `~/.forge-oh/agent-server.log` for `ImportError`/`ModuleNotFoundError` and paste. First suspect is `openhands_tools_ext.memory.composition` failing to import inside the agent-server venv (make sure `.oh-venv` sees the repo — same fix pattern as `scripts/seed_memory_event.py`'s sys.path bootstrap).
 
-## Definition of Done for 5.6a (final)
-- [x] MemoryConsultationEvent → memory_consultation normalizer + brain-icon marker (unit-tested).
-- [x] `/memory-inspector` dashboard route + triple-shape recent-writes table.
-- [x] MemoryPort recent-writes endpoint (`list_recent_writes` port method).
-- [x] Lazy BFF MemoryPort singleton (K1), non-fatal missing-password path.
-- [x] ADR-024 filed + index updated.
-- [x] Colossus test verify (54 backend + typecheck + build + 7 frontend green).
-- [x] BFF composes MemoryPort automatically via forge-up.sh + .env.neo4j.
-- [x] **Live-DozerDB Playwright visual pass green + screenshots on origin/main.**
+## Definition of Done for 5.6b (final)
+- [ ] `consult_memory` in `GET /api/tools/` after `forge-restart.sh`.
+- [ ] `POST /api/memory/emit-consultation` returns 200 with wire event on Colossus.
+- [ ] `pytest openhands_tools_ext/tests/memory/test_consult_memory_tool.py bff/tests/test_memory_emit_endpoint.py -q` green.
+- [ ] Playwright spec `memory-timeline-marker.spec.ts` passes; `screenshots/memory-timeline-marker.png` on `origin/main` showing the 🧠 EventCard on run-detail.
+- [ ] PORTING_LEDGER + BUILD_LOG + SESSION_HANDOFF entries in place (done this session).
 
-## Deferred to Stage 5.6b
-- `consult_memory` OpenHands tool wired to `emit_memory_consultation`.
-- Timeline brain-marker screenshot (needs a real caller — belongs to 5.6b's live-task DoD).
-- Plan §5.6.4 live-task DoD.
+## Deferred beyond 5.6b
+- `temporal` and `episodic` memory tiers (`ConsultMemoryAction.tier`) — currently raise `NotImplementedError`.
+- `curated_write` emit caller (still library-only, ADR-023 D7).
+- Frontend surface for browsing memory hits inline in the timeline (out of scope; the 🧠 EventCard is the DoD).
