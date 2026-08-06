@@ -6028,3 +6028,16 @@ PLAYWRIGHT_START_PROD=1 PLAYWRIGHT_GPU_STRIP_PUSH=1 \
 ```
 
 **Next up (after DoD verified):** Stage 6.3 — Idempotency ledger.
+
+
+## 2026-08-06 05:20 EDT — Stage 6.2 CLOSED: Condensation visibility DoD met
+
+**Verification results (Colossus, this session):**
+- Backend: 25 tests passed in 0.17s (`test_event_normalize_condensation.py` + `test_debug_inject_endpoint.py`).
+- Frontend unit: 4 tests passed in 20ms (`EventCard-condensation.test.tsx`).
+- E2E DoD: injected `Condensation` via `POST /api/_debug/inject-event`, run `35ca8108-36f1-48ab-8f2b-38bf62d6e70c`, 🗜️ card + summary rendered on `/runs/[runId]`.
+- Screenshot auto-pushed: `screenshots/condensation-timeline-marker.png` at commit `5569490`.
+
+**Stop-condition status:** ✅ Stage 6.2 complete.
+
+**Next stage:** 6.3 — Idempotency ledger.
