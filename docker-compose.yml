@@ -1,10 +1,52 @@
-# Forge-OH docker-compose
-# Canonical ports:
-#   BFF           -> 8081
-#   OpenHands SDK -> 8090
-# OpenHands runtime image tag: 0.60.0
-
-version: '3.9'
+# Forge-OH docker-compose — Stage 7.1 topology reconciliation (ADR-028).
+#
+# Canonical single-host topology on Colossus. Compose owns ONLY:
+#   * bff       -> containerized uvicorn on port 8081 (this file's build)
+#   * qdrant    -> containerized vector store on ports 6333 (REST) / 6334 (gRPC)
+#
+# Everything else runs elsewhere on the same host. See docs/deployment-topology.md
+# for the authoritative host-vs-container split and the exact launch commands
+# for host-side services.
+#
+# Deliberate omissions (documented in docs/deployment-topology.md):
+#
+#   * agent-server (OpenHands SDK, port 8090)
+#         Host process, launched by scripts/forge-up.sh from .oh-venv.
+#         The prior `openhands:` compose service pointed at
+#         ghcr.io/all-hands-ai/openhands:0.60.0 which is not the SDK we
+#         actually consume — removed.
+#
+#   * Next.js frontend (ports 3000 dev / 3100 prod)
+#         Host process, `pnpm dev` (dev) or `npx next start` (Playwright
+#         visual checks). The prior `frontend:` compose service pointed at
+#         a nonexistent `Dockerfile.frontend` — removed.
+#
+#   * SearXNG (port 127.0.0.1:18888)
+#         Standalone compose stack at ops/compose/searxng.yml. Kept
+#         separate on purpose so it can be bounced independently of the
+#         core BFF+Qdrant stack. See ops/compose/README.md.
+#
+#   * DozerDB (ports 7474 / 7687)
+#         Kosmos-owned via kosmos-dozerdb container from the Kosmos
+#         monorepo compose. Per ADR-019 (DozerDB consolidation) Forge-OH
+#         connects to the shared instance rather than running its own.
+#         Connection config in `.env.neo4j` at repo root.
+#
+#   * vLLM planner (port 8511, image vllm/vllm-openai:latest)
+#         Host container launched outside this file. Managed by the vLLM
+#         supervisor scripts (`scripts/vllm_start.sh` / `scripts/vllm_stop.sh`).
+#
+#   * vLLM coder + Ollama (ports 8000 / 11434)
+#         Host processes. Coder launched via `scripts/vllm-coder-bringup.sh`
+#         family. Ollama runs as a system service.
+#
+# Bring the compose stack up:
+#   cd ~/dev/forge-oh
+#   docker compose up -d
+#
+# Bring host-side services up in a coordinated way (best-effort, no-op if
+# already running):
+#   bash scripts/start-host-services.sh
 
 services:
   bff:
@@ -15,36 +57,16 @@ services:
       - "8081:8081"
     environment:
       BFF_PORT: "8081"
-      OPENHANDS_BASE_URL: "http://openhands:8090"
+      # agent-server runs on the host, not in the compose network. host.docker.internal
+      # is Docker's canonical loopback-to-host address; on native Linux Docker
+      # this resolves via the `extra_hosts` entry below.
+      OPENHANDS_BASE_URL: "http://host.docker.internal:8090"
       SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
       TOKEN_TTL_HOURS: "8"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
-    depends_on:
-      - openhands
-    restart: unless-stopped
-
-  openhands:
-    image: ghcr.io/all-hands-ai/openhands:0.60.0
-    ports:
-      - "8090:8090"
-    environment:
-      PORT: "8090"
-      OPENHANDS_API_KEY: "${OPENHANDS_API_KEY:-}"
-    volumes:
-      - openhands-data:/opt/openhands/data
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    ports:
-      - "3000:3000"
-    environment:
-      NEXT_PUBLIC_BFF_URL: "http://localhost:8081"
-    depends_on:
-      - bff
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # Stage 5.2 — VectorPort backend (Kosmos QdrantVectorAdapter → RealQdrantBackend).
@@ -59,5 +81,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  openhands-data:
   qdrant-data:

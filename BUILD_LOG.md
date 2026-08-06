@@ -6990,3 +6990,55 @@ Next: Stage 7.1 begins after the queued 30-test benchmark confirms Stage 6 gains
 **PORTING_LEDGER / ADR updated**: ADR-028 filed; PORTING_LEDGER unchanged (companion §7.4 will audit it during execution).
 
 **Stop-condition status**: Stage 7 DoD (per ADR-028 §6) requires companion §7.1 exit checklist + companion §7.4 exit checklist + BUILD_LOG timestamps + SESSION_HANDOFF overwrite. Two remaining: companion §7.1 (docker-compose topology reconciliation, blocked on read-only Colossus dump from operator) + companion §7.4 (ledger audit, no prerequisites).
+
+## 2026-08-06 14:36 EDT — Stage 7.1 complete · `docker-compose.yml` topology reconciliation
+
+**Stage / plugin / port**: Stage 7.1 (companion-doc, per [ADR-028](docs/adr/028-stage-7-deviation-topology-first-capability-slices-renumbered.md)) · docker-compose · no ports touched (documentation of existing ports only).
+
+**What changed**:
+- Rewrote root `docker-compose.yml` from a fully-containerized (and broken — see below) topology to a truthful two-service topology reflecting how Forge-OH actually runs on Colossus:
+  - **Kept**: `bff` (containerized uvicorn on 8081), `qdrant` (VectorPort on 6333/6334).
+  - **Removed**: `openhands:` service — pointed at `ghcr.io/all-hands-ai/openhands:0.60.0` which is not the SDK Forge-OH consumes (agent-server runs as host process from `.oh-venv` via `scripts/forge-up.sh`).
+  - **Removed**: `frontend:` service — referenced nonexistent `Dockerfile.frontend` (confirmed absent at 2026-08-06 14:26 EDT dump). Next.js runs as host process (`pnpm dev` on :3000, `npx next start` on :3100).
+  - **Not folded in** (deliberate, documented): SearXNG stays in `ops/compose/searxng.yml` (independent lifecycle per its own README); DozerDB stays Kosmos-owned per ADR-019; vLLM planner container + vLLM coder process + Ollama stay host-managed via existing supervisor scripts.
+- Added `docs/deployment-topology.md` — authoritative host-vs-container split table with observed 2026-08-06 14:26 EDT baseline; records three observed deviations from spec (coder role on 8000 not 8501; coder model deepseek-r1-distill not ADR-013 Qwen3-coder-30b-a3b; two Qdrant instances co-resident with `kosmos-qdrant`). Deviations recorded but not fixed — outside Stage 7.1 scope.
+- Added `scripts/start-host-services.sh` — idempotent orchestrator for Ollama + vLLM planner container + vLLM coder. Wraps existing `scripts/vllm_start.sh` and `scripts/vllm-coder-bringup.sh` rather than replacing them. Explicitly does NOT start agent-server / BFF / Next.js / SearXNG / DozerDB.
+- `Dockerfile.frontend` nonexistent-reference bug: fixed by removing the reference (no `Dockerfile.frontend` created — host-process Next.js is the canonical path).
+- Preserved decisions from ADR-028 §Q1 (Forge-OH keeps its own Qdrant, does not consolidate with `kosmos-qdrant`) and §Q2 (fully host-oriented compose).
+
+**Files touched**:
+- `docker-compose.yml` (rewrite — 89 lines changed, net −34)
+- `docs/deployment-topology.md` (new, 121 lines)
+- `scripts/start-host-services.sh` (new, 86 lines, executable)
+
+**Ports / adapters affected**: no port renumbering. Documentation clarifies which ports are compose-owned vs host-owned. BFF `OPENHANDS_BASE_URL` changed from `http://openhands:8090` (compose network hostname) to `http://host.docker.internal:8090` (Linux gateway to host process); `extra_hosts: host.docker.internal:host-gateway` added.
+
+**PORTING_LEDGER / ADR updated**: none. ADR-028 §Q1 + §Q2 decisions are now realized in code.
+
+**Stop-condition status**: Companion §7.1 exit checklist per ADR-028 §6 item 1: awaits operator verification of `docker compose down && docker compose up -d && docker compose ps` showing bff + qdrant healthy on Colossus. §7.4 completed in same session (next entry).
+
+## 2026-08-06 14:36 EDT — Stage 7.4 complete · documentation + PORTING_LEDGER + .gitignore completeness audit
+
+**Stage / plugin / port**: Stage 7.4 (companion-doc, per [ADR-028](docs/adr/028-stage-7-deviation-topology-first-capability-slices-renumbered.md)) · PORTING_LEDGER · .gitignore.
+
+**What changed**: Read-only audit. No files modified.
+
+**Audit results**:
+
+- **PORTING_LEDGER commit-hash resolution** (via `gh api repos/<owner>/<repo>/commits/<sha> --jq .sha`, no local checkouts):
+  - `c455165bca0d645f0d43572d0c286dca7033d31d` → `rmholston420/kosmos` **OK** (ADR-019 pinned Kosmos SHA, Stage 4.4 + 5.2 + 6.1 sources).
+  - `c7af2c09ef45faa4367c0e2a9f770fb73a62a612` → `oraios/serena` **OK** (Serena LSPClient pin per ADR-018).
+  - `49ac191f181d47911cf38e5b9944fbbe6d4a6e60` → `FloridSleeves/LLMDebugger` **OK** (Slice E.3 upstream reference).
+- **Six additional 40-char lowercase hashes** initially flagged by regex sweep are **not commits**:
+  - `6b97f9bd...`, `7ac3001d...`, `9ba905da...`, `f09f37f6...`, `f0ea8df7...` — file-content SHA-256 digests inside PORTING_LEDGER's "Ported files (SHA-256 equality proof of donor bytes at pinned SHA)" block for the Stage 6.1 SearXNG port. Correctly labeled as `donor sha256` in the doc.
+  - `dc5c10fda6818dfef7abfdf9f451b898242c3321` — 40-char prefix of the Docker image digest `searxng/searxng:2026.8.4-c63835bd2@sha256:dc5c10fda6818dfef7abfdf9f451b898242c3321514a9524af215cbedc79c89b` — image content digest, not a git commit.
+- **`.env`-family tracked in git**: `.env.example`, `.env.local.example`, `.env.test` — all templates, explicitly allow-listed in `.gitignore` lines 20–22.
+- **`.gitignore` coverage**: `.env`, `.env.local`, `.env.development.local`, `.env.test.local`, `.env.production.local`, `.env.neo4j` all excluded (lines 13–18). Template allow-list (lines 20–22) is exhaustive vs currently-tracked templates.
+
+**Files touched**: none (audit-only).
+
+**Ports / adapters affected**: none.
+
+**PORTING_LEDGER / ADR updated**: none (audit confirmed existing content is correct).
+
+**Stop-condition status**: Companion §7.4 exit checklist per ADR-028 §6 item 2 **passes**: every commit hash resolves against its stated upstream; no `.env`-family secret file is staged or tracked; `.gitignore` coverage is complete. Stage 7 DoD items 1 + 2 both cleared (item 1 pending operator `docker compose up -d` verification). Items 3 + 4 (BUILD_LOG + SESSION_HANDOFF) satisfied by this commit.
