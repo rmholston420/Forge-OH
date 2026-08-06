@@ -126,12 +126,19 @@ def _message_summary(ev: dict[str, Any]) -> str:
 # icon and label. Discriminator lives on the flat `type` string — no new
 # discriminated union (see ADR-018).
 _SERENA_TOOL_TO_LSP_OP: dict[str, str] = {
+    # Structural read
     "find_symbol": "find_symbol",
     "find_referencing_symbols": "find_referencing_symbols",
+    "find_implementations": "find_implementations",
+    "find_declaration": "find_declaration",
     "get_symbols_overview": "get_symbols_overview",
+    "get_diagnostics_for_file": "get_diagnostics",
+    # Structural write
     "replace_symbol_body": "replace_symbol_body",
     "insert_after_symbol": "insert_after_symbol",
     "insert_before_symbol": "insert_before_symbol",
+    "rename_symbol": "rename_symbol",
+    "safe_delete_symbol": "safe_delete_symbol",
 }
 
 

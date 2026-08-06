@@ -5335,3 +5335,18 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Ports/adapters affected:** none. The public MCP contract (`POST /api/mcp/{id}/ping`, `GET /api/mcp`) is unchanged; only the internal registration path moved from BFF-self-HTTP to agent-server-direct.
 - **Verification pending:** re-run the same Colossus block from the 01:04 EDT session; expected `curl /api/mcp | jq '.[] | select(.id=="serena")'` returns a non-empty object and `POST /api/mcp/serena/ping` returns `{"ok":true, ...}` on first call (30–60s while `uvx` resolves the pinned commit).
 - **Stop-condition status:** Pass 3 CODE COMPLETE (v2). Colossus smoke test next.
+
+## 2026-08-06 01:10 EDT — Stage 4.4 CLOSED (Serena LSPClient live)
+
+- **Colossus verification (post-hotfix `4dea63d`):**
+  - `pytest bff/tests/test_mcp_bootstrap.py -q` → **10/10 pass** (0.06s).
+  - `curl /api/mcp | jq '.[] | select(.id=="serena")'` → non-empty object. `transport:"stdio"`, `command:"uvx"`, `enabled:true`, pinned SHA `c7af2c09`, workspace `/home/rmholston/dev/forge-oh`.
+  - `curl -X POST /api/mcp/serena/ping` → `{"ok":true, "latencyMs":5914, "toolCount":21}`. First-run `uvx` resolved the pinned commit in ~6s (subsequent pings will be sub-second from cache).
+- **Serena tools live on Colossus (all 21):** `find_symbol`, `find_referencing_symbols`, `find_implementations`, `find_declaration`, `get_symbols_overview`, `get_diagnostics_for_file`, `replace_symbol_body`, `insert_after_symbol`, `insert_before_symbol`, `rename_symbol`, `safe_delete_symbol` (11 LSP structural), plus 10 memory/onboarding tools not part of the LSP contract.
+- **Follow-up code lift (same commit as this entry):** the shipped `_SERENA_TOOL_TO_LSP_OP` map only knew 6 of the 11 LSP tools Serena actually exposes. Extended to cover all 11 so the frontend renders `find_implementations`, `find_declaration`, `get_diagnostics_for_file` (as `lsp_get_diagnostics`), `rename_symbol`, and `safe_delete_symbol` as `lsp_*` cards too. Added matching icons in `EventCard.tsx` and extended the vitest ops list in `EventCard-lsp.test.tsx`.
+- **Files touched (close-out):**
+  - `bff/services/event_normalize.py` — `_SERENA_TOOL_TO_LSP_OP` expanded from 6 → 11 entries.
+  - `src/components/domain/EventCard.tsx` — 5 additional LSP icons.
+  - `src/tests/unit/EventCard-lsp.test.tsx` — ops list extended to 11.
+- **Stop-condition status:** § 4.4 **CLOSED**. Automated gate green, live gate green, agent-server confirms 21-tool Serena instance. Deferred to Stage 4 exit sweep: an agent-driven end-to-end symbol rename (not part of § 4.4 DoD).
+- **Next up:** § 4.5 — DozerDB consolidation. Requires a user decision between Option A (shared DozerDB instance, Kosmos-donor-friendly) vs Option B (dedicated Forge-OH DozerDB). Hard blocker for the Stage 4 exit gate. Agent will inspect the Kosmos donor for `dozer.*` procedure calls first, then present both options with a recommendation.

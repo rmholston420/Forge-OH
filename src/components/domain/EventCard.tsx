@@ -18,12 +18,19 @@ const EVENT_ICONS: Record<string, string> = {
   finish: '✅',
   // Stage 4.4 — Serena LSP tool actions. Discriminator is `event.type`
   // (see ADR-018); no discriminated-union type change is needed.
+  // Structural read
   lsp_find_symbol: '🔎',
   lsp_find_referencing_symbols: '🔗',
+  lsp_find_implementations: '🧬',
+  lsp_find_declaration: '📍',
   lsp_get_symbols_overview: '🗂️',
+  lsp_get_diagnostics: '🩺',
+  // Structural write
   lsp_replace_symbol_body: '✏️',
   lsp_insert_after_symbol: '➕',
   lsp_insert_before_symbol: '➕',
+  lsp_rename_symbol: '🏷️',
+  lsp_safe_delete_symbol: '🗑️',
 };
 
 /** Stage 4.4 — render an "LSP" family badge for symbol-precise ops. */

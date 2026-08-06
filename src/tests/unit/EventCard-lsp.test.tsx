@@ -37,10 +37,15 @@ describe('EventCard — LSP variant', () => {
     const ops = [
       'lsp_find_symbol',
       'lsp_find_referencing_symbols',
+      'lsp_find_implementations',
+      'lsp_find_declaration',
       'lsp_get_symbols_overview',
+      'lsp_get_diagnostics',
       'lsp_replace_symbol_body',
       'lsp_insert_after_symbol',
       'lsp_insert_before_symbol',
+      'lsp_rename_symbol',
+      'lsp_safe_delete_symbol',
     ];
     for (const t of ops) {
       const { unmount } = render(<EventCard event={makeEvent({ id: t, type: t })} />);
