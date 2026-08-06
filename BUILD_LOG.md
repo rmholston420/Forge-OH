@@ -6212,3 +6212,33 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   - BFF must be launched via `uvicorn bff.main:app_with_sio` (NOT `bff.main:app`)
     with `FORGE_TIMELINE_DEBUG_INJECT=1`. Using bare `app` mounts no
     `/socket.io/` and yields 404/403 on WS handshake — logged in DEBUG_LOG.
+
+## 2026-08-06 06:42 EDT — Stage 6.4 · post-DoD polish (Q1/Q2/Q3)
+
+- **Slice:** Stage 6.4 close-out follow-through.
+- **Q1 decision:** Stage 6.4 CLOSED. Stage 6.4b to be opened separately for
+  D3 (per-run worktrees + file revert) — kept out of 6.4 to avoid scope
+  creep beyond the wire-key regression + user-message-only surface.
+- **Q2 decision:** `ForkFromHereButton` now gated behind
+  `NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED` (symmetric with `ForkRunModal`).
+  Default-on unless the env var is explicitly `'false'`. Hook order
+  preserved (early-return AFTER all hooks). Added Vitest case
+  `'renders null when feature flag is disabled'` matching the pattern used
+  by `domain-ForkRunModal.test.tsx`.
+- **Q3 decision:** `forge-oh-colossus-ops` skill updated to:
+  - Correct the "BFF module" line from `bff.main:app` to
+    `bff.main:app_with_sio` (was contradicting the recipes below it).
+  - Add a Runtime Triage Playbook symptom entry keyed on
+    "Socket.IO handshake fails / 403 on WebSocket / 404 on `/socket.io/`
+    polling / `Disconnected from run stream` banner sticky in Playwright"
+    with the polling curl verifier and pointer to DEBUG_LOG
+    2026-08-06 06:37 EDT. Future sessions grepping any of those symptoms
+    land on the fix immediately.
+- **Files touched:**
+  - `src/components/domain/ForkFromHereButton.tsx` (flag gate, hook-safe)
+  - `src/tests/unit/domain-ForkFromHereButton.test.tsx` (flag-off test + env reset in beforeEach)
+  - `forge-oh-colossus-ops` skill (space scope) — persisted via
+    `save_custom_skill`.
+- **Verification pending on Colossus:** `pnpm test:vitest` on the button
+  suite (10 tests expected, was 9) + `pnpm build` clean. See rerun block
+  in SESSION_HANDOFF.
