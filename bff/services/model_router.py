@@ -204,6 +204,87 @@ class RoleRoute:
         return f"{self.backend}/{self.model}"
 
 
+# ---------------------------------------------------------------------------
+# ADR-012 §3 completion (2026-08-06 — unblocks ADR-027 / Stage 6.5.2).
+#
+# Role ↔ model compatibility catalog. The routing layer determines WHICH
+# vLLM instance is resident (via ``route_by_role``); this catalog answers
+# the orthogonal question "is model X legal for role Y?" — consulted by
+# mid-run switching (Stage 6.5.2) and preset validation (Stage 1.5.3).
+#
+# Canonicals are the ADR-013-ratified values (2026-08-05). ``compatible``
+# is the closed set of models the mid-run switcher will accept without
+# an operator override. Adding a model here means: it is known to work
+# against the role's resident vLLM/Ollama instance (same served-model-name
+# semantics, same tokenizer family, same tool-calling contract).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RoleCatalog:
+    """Legal model set for a role.
+
+    Fields:
+        canonical: the ADR-013-ratified default for this role.
+        compatible: closed set of legal alternates. ``canonical`` is
+            always a member.
+    """
+
+    canonical: str
+    compatible: frozenset[str]
+
+    def __post_init__(self) -> None:
+        if self.canonical not in self.compatible:
+            # Frozen dataclass — use object.__setattr__ to widen the set.
+            object.__setattr__(
+                self,
+                "compatible",
+                frozenset(self.compatible | {self.canonical}),
+            )
+
+
+MODEL_ROUTER_CATALOG: dict[str, RoleCatalog] = {
+    "coder": RoleCatalog(
+        # ADR-013 F.1b + F.3 full-500 ratification (2026-08-05 19:20 EDT).
+        canonical="qwen3.6-27b-int4-autoround",
+        compatible=frozenset(
+            {
+                "qwen3.6-27b-int4-autoround",   # canonical vLLM coder
+                "qwen3-coder:32k",              # Ollama coder fallback (ap-3)
+            }
+        ),
+    ),
+    "planner": RoleCatalog(
+        # ADR-013 Path E winner (ratified 2026-08-05 03:52 EDT).
+        canonical="deepseek-r1-distill-32b-awq",
+        compatible=frozenset(
+            {
+                "deepseek-r1-distill-32b-awq",  # canonical vLLM planner
+            }
+        ),
+    ),
+}
+
+
+def is_model_compatible_with_role(model: str, role: str) -> bool:
+    """Return True iff ``model`` is a legal choice for ``role``.
+
+    Consulted by mid-run model switching (Stage 6.5.2 / ADR-027) and by
+    preset validation (Stage 1.5.3, when it lands). Unknown roles return
+    False rather than raising — callers convert to HTTP 422.
+    """
+    catalog = MODEL_ROUTER_CATALOG.get(role)
+    if catalog is None:
+        return False
+    return model in catalog.compatible
+
+
+def canonical_model_for_role(role: str) -> str | None:
+    """Return the ADR-013 canonical model for ``role``, or None if unknown."""
+    catalog = MODEL_ROUTER_CATALOG.get(role)
+    return catalog.canonical if catalog else None
+
+
 async def ollama_health_check(model: str) -> bool:
     """Return True iff Ollama is reachable and has a model whose name shares
     the requested ``model``'s pre-colon prefix (e.g. ``qwen3.6``)."""

@@ -6721,3 +6721,29 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 **Stop-condition status**: §6.5.1 CLOSED; §6.5.2 unblocked.
 
 **Next action**: Implement `POST /api/runs/{run_id}/model` per ADR-027 contract (agentPresetId-only body → hydrate `LLM-Input` from preset + secrets → forward to agent-server `switch_llm`), plus pytest suite covering unknown preset (404), preset↔role incompatibility (422), happy path (200), agent-server error echo (502).
+
+## 2026-08-06 09:56 EDT — ADR-012 §3 micro-slice landed (MODEL_ROUTER_CATALOG)
+
+**Stage/plugin/port**: Stage 1 completion micro-slice (unblocks ADR-027 / Stage 6.5.2) · `bff/services/model_router.py`.
+
+**What changed**:
+- Added `RoleCatalog` frozen dataclass (canonical + compatible frozenset; `__post_init__` widens compatible to include canonical).
+- Added `MODEL_ROUTER_CATALOG` dict with:
+  - `coder` = canonical `qwen3.6-27b-int4-autoround` (ADR-013 F.1b + F.3 full-500), compatible `{qwen3.6-27b-int4-autoround, qwen3-coder:32k}`.
+  - `planner` = canonical `deepseek-r1-distill-32b-awq` (ADR-013 Path E), compatible `{deepseek-r1-distill-32b-awq}`.
+- Added `is_model_compatible_with_role(model, role) -> bool` (returns False for unknown role/model; caller converts to 422).
+- Added `canonical_model_for_role(role) -> str | None`.
+- Added `bff/tests/test_model_router_catalog.py` with 10 test cases: canonical assertions, cross-role rejection, unknown-role rejection, unknown-model rejection, seed-preset drift guard.
+
+**Rationale**: ADR-012 §3 (Accepted 2026-08-04) described this structure but the code never landed. ADR-027 §2 (Ratified 2026-08-06 09:52 EDT) requires it for the Stage 6.5.2 mid-run switch compatibility gate. This micro-slice fulfills the ADR-012 §3 contract using ADR-013-ratified canonicals (not the stale seed comment in ADR-012 §3).
+
+**Files touched**:
+- `bff/services/model_router.py` (+79 lines after RoleRoute)
+- `bff/tests/test_model_router_catalog.py` (new, 110 lines)
+- `BUILD_LOG.md` (this entry)
+
+**Ports/adapters affected**: `bff/services/model_router.py` public API expanded (three new exports).
+
+**Stop-condition status**: Micro-slice complete pending green pytest on Colossus. Then Stage 6.5.2 proceeds.
+
+**Next action**: Push, verify tests green on Colossus, then implement Stage 6.5.2 `POST /api/runs/{run_id}/model`.
