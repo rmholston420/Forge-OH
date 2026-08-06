@@ -6242,3 +6242,20 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Verification pending on Colossus:** `pnpm test:vitest` on the button
   suite (10 tests expected, was 9) + `pnpm build` clean. See rerun block
   in SESSION_HANDOFF.
+
+## 2026-08-06 06:47 EDT — Stage 6.4 · Vitest verification passed
+
+- **Verified on Colossus:**
+  - `pnpm exec vitest run src/tests/unit/domain-ForkFromHereButton.test.tsx`
+    → **10/10 passed in 129ms** (was 9/9 pre-flag-gate; new
+    "renders null when feature flag is disabled" case included).
+  - `pnpm build` clean.
+  - `pnpm exec playwright test src/tests/e2e/run-fork-from-here.spec.ts`
+    → 1/1 in 1.3s (test-suite wall = 22.8s).
+  - Full `pnpm test:unit`: 872/880 passed (6 skipped, 2 failed).
+    Both failures are in `src/tests/unit/gitDiff.test.tsx` — flagged
+    as pre-existing and OUT OF SCOPE for Stage 6.4. Awaiting baseline
+    confirmation before filing in DEBUG_LOG. gitDiff.test.tsx is not
+    touched by any commit in this session (verified via
+    `git log --oneline -- src/tests/unit/gitDiff.test.tsx`).
+- **Stage 6.4 close-out: FULLY VERIFIED.**
