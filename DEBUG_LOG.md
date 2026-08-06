@@ -1558,3 +1558,15 @@ Ran the Stage 4 exit-gate sweep on Colossus 01:20–01:22 EDT against `bb09ff2` 
 ### Decision
 
 All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in this session, and all Stage 4 manual-verification items are green. Stage 4 exit gate is met; the four flakes are recorded here so they get picked up in a follow-up test-hygiene slice (not part of Stage 4 or Stage 5.1 kickoff scope).
+
+## 2026-08-06 01:59 EDT — Ollama contract tests: stale nomic-embed literals after ADR-020
+- **Symptom:** After ADR-020 flipped the default from `nomic-embed-text` (768) to `qwen3-embedding:0.6b` (1024), two live-tier runs on Colossus failed:
+  1. `test_live_nomic_embed_text_is_768_dim`: `assert 1024 == 768` (baseline run) and `assert 2560 == 768` (with `OLLAMA_EMBED_MODEL=qwen3-embedding:4b`). The live call to Ollama succeeded and returned the correct native dim for each model — only the assertion was stale.
+  2. `test_embed_returns_vectors_from_canned_response`: `assert 'qwen3-embedding:4b' == 'qwen3-embedding:0.6b'` — the ambient `OLLAMA_EMBED_MODEL=qwen3-embedding:4b` A/B env var propagated into the ctor and broke a literal string assertion.
+- **Affected:** `bff/tests/memory/test_ollama_embeddings_adapter_contract.py` (Stage 5.2 vendored test surface).
+- **Root cause:** Kosmos-vendored tests were name-and-dim pinned to `nomic-embed-text`. When I filed ADR-020 I updated the mock-response `"model"` field and one string assertion, but missed: (a) the live-tier test name + 768-dim literal, (b) that the mock-response test reads `OLLAMA_EMBED_MODEL` from the process env in the ctor `os.environ.get(...)` fallback path.
+- **Fix:**
+  - Live-tier test renamed to `test_live_default_embedder_matches_declared_dim` and rewritten to look up the expected dim from the adapter's `_MODEL_DIMENSIONS` table using the resolved model name. It now correctly validates any model registered in the table — 0.6b (1024), 4b (2560), 8b (4096), or the legacy `nomic-embed-text` (768). One test now covers every supported A/B run.
+  - Canned-response test now passes `default_model="qwen3-embedding:0.6b"` explicitly to the ctor so its literal assertion is stable regardless of ambient `OLLAMA_EMBED_MODEL`.
+- **Files changed:** `bff/tests/memory/test_ollama_embeddings_adapter_contract.py`.
+- **Verified:** 43/43 memory contract tests pass with no env override AND with `OLLAMA_EMBED_MODEL=qwen3-embedding:4b` set (live tier still skipped in CI sandbox without `FORGE_MEMORY_LIVE=1`).

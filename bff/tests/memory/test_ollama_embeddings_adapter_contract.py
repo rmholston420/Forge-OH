@@ -46,7 +46,12 @@ def test_adapter_satisfies_embeddings_port() -> None:
 
 
 def test_embed_returns_vectors_from_canned_response(monkeypatch) -> None:
-    adapter = OllamaEmbeddingsAdapter(base_url="http://localhost:11434")
+    # Pin the model explicitly so the assertion is stable regardless of
+    # the ambient OLLAMA_EMBED_MODEL env var (e.g. during a 4B A/B run).
+    adapter = OllamaEmbeddingsAdapter(
+        base_url="http://localhost:11434",
+        default_model="qwen3-embedding:0.6b",
+    )
 
     fake_client = MagicMock(spec=httpx.AsyncClient)
     fake_client.post = AsyncMock(
@@ -159,15 +164,34 @@ def test_close_is_idempotent() -> None:
     os.environ.get("FORGE_MEMORY_LIVE") != "1",
     reason="Live Ollama tier: set FORGE_MEMORY_LIVE=1 to run",
 )
-def test_live_nomic_embed_text_is_768_dim() -> None:
+def test_live_default_embedder_matches_declared_dim() -> None:
+    """Live-tier smoke: whatever OLLAMA_EMBED_MODEL resolves to (Forge-OH
+    default ``qwen3-embedding:0.6b`` per ADR-020, or the ambient env-var
+    override for A/B runs), the vector length must match the dimension the
+    adapter declares via its ``_MODEL_DIMENSIONS`` table."""
+    from openhands_tools_ext.memory.adapters.embeddings.ollama.adapter import (
+        _MODEL_DIMENSIONS,
+    )
+
     adapter = OllamaEmbeddingsAdapter()
+    resolved_model = adapter._default_model
+    expected_dim = _MODEL_DIMENSIONS.get(resolved_model) or _MODEL_DIMENSIONS.get(
+        resolved_model.split(":", 1)[0]
+    )
+    assert expected_dim is not None, (
+        f"model {resolved_model!r} missing from _MODEL_DIMENSIONS — add its "
+        "native dim to the table before running the live smoke test"
+    )
 
     async def _run() -> list[list[float]]:
         try:
-            return await adapter.embed(texts=["hello Kosmos"])
+            return await adapter.embed(texts=["hello Forge-OH"])
         finally:
             await adapter.close()
 
     vectors = asyncio.run(_run())
     assert len(vectors) == 1
-    assert len(vectors[0]) == 768
+    assert len(vectors[0]) == expected_dim, (
+        f"live Ollama returned dim={len(vectors[0])} for model "
+        f"{resolved_model!r} but adapter table declares {expected_dim}"
+    )
