@@ -6493,3 +6493,22 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   - `1a761fe` test fixup: add required `title` to CreateRunRequest bodies (was returning 422).
   - `2dda3d7` test fixup: two-tier URL matcher (suffix-first, substring-fallback) so `/events/search` beats `/api/conversations/run-1` for the send_run_message GET.
 - **Stop-condition status:** Stage 6.4c step 1a + 1b + 1c COMPLETE. Ledger module written + wired at lifespan; normalizer threads sha_lookup; router captures at create+send, hydrates on read, cascade-purges on delete. Step 1d next: `bff/services/restart.py` composition module + `POST /api/runs/{run_id}/restart` endpoint with 8+ tests.
+
+## 2026-08-06 08:33 EDT — Stage 6.4c step 1d: restart endpoint + composition module
+
+- **Stage/plugin/port:** Stage 6.4c · `bff/services/restart.py` (new) · `bff/routers/runs.py` (new endpoint) · new tests.
+- **What:** Implemented ADR-026 §Decision item 1 (`POST /api/runs/{run_id}/restart`) end-to-end on the backend.
+  - New module `bff/services/restart.py` (~400 lines): `RestartError` (discriminated code), `RestartResult` (dataclass), `restart_from_here(app, *, source_run_id, anchor_event_id)` doing the 9-step composition (source lookup → ledger sha resolve → anchor event fetch + validate → source-repo resolve → mint id + provision worktree at sha → POST /api/conversations with source's agent config → POST /events seed with anchor text → best-effort ledger stamp on seeded event → return `RestartResult`).
+  - Rollback: worktree removed on both create-conversation and seed failure via `remove_worktree(new_run_id, missing_ok=True)`.
+  - Router: `RestartRunRequest` pydantic model, `_RESTART_CODE_TO_STATUS` map (404/409/502), `POST /runs/{run_id}/restart` handler that delegates + maps errors.
+- **Tests (16 total, all green, `bff/tests/test_runs_restart.py`):**
+  - `TestExtractMessageText` (6): content list, message-field fallback, text-field fallback, empty content, whitespace-only, missing shape.
+  - `TestRestartFromHereService` (9): happy path (stamps ledger for seed), source_not_found, no_sha_anchor, anchor_not_found, not_user_message (assistant with target id), worktree_failed, create_failed rolls back, seed_failed rolls back, ledger stamp failure does not fail outer.
+  - `TestRestartEndpoint` (7): happy path 200 + response shape, source_not_found→404, no_sha_anchor→409, not_user_message→409, worktree_failed→502, missing from_event_id→422 (pydantic gate), unknown error code→502 (default).
+- **Files touched:**
+  - `bff/services/restart.py` (new, 405 lines)
+  - `bff/routers/runs.py` (+ 3 imports, RestartRunRequest, _RESTART_CODE_TO_STATUS, restart_run handler)
+  - `bff/tests/test_runs_restart.py` (new, 574 lines, 16 tests)
+- **Regression check:** `test_runs_sha_capture` (14), `test_runs_fork` (9), `test_runs_worktree` (7), `test_event_commit_ledger` (15) — 68/68 total green including step 1d's 16.
+- **Commit:** `7bca18e` — clean first push, no fixups needed.
+- **Stop-condition status:** Stage 6.4c step 1a + 1b + 1c + 1d COMPLETE (backend). Remaining before Stage 6.4c DoD: (1) step 2 — frontend `RestartFromHereButton.tsx` + vitest + wired into event card, gated behind `NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED`; (2) end-to-end Colossus integration verify script following the `scripts/stage-6.4b-verify.sh` pattern.
