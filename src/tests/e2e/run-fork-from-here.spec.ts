@@ -213,25 +213,15 @@ test('Stage 6.4: fork-from-here appears on user messages only + wires from_event
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
+
   const runId = await pickOrCreateConversation(request);
+  // eslint-disable-next-line no-console
+  console.log('[fork-from-here] runId:', runId);
 
-  // Inject one user message and one assistant message. The user one is the
-  // fork target; the assistant one is the negative case for D2 visibility.
-  const userEvt = await injectMessageEvent(
-    request,
-    runId,
-    'user',
-    'STAGE-6.4-DOD user checkpoint — fork from here should be visible for this event.',
-  );
-  const agentEvt = await injectMessageEvent(
-    request,
-    runId,
-    'agent',
-    'STAGE-6.4-DOD assistant reply — fork from here MUST NOT appear for this event.',
-  );
-
-  // Stub POST /api/runs/{runId}/fork so we don't actually fork on agent-server.
-  // Captures the request body to prove exact-wire-key forwarding.
+  // Stub POST /api/runs/{runId}/fork FIRST so the route is intercepted from
+  // the moment the page loads. Captures the request body to prove
+  // exact-wire-key forwarding.
   let capturedBody: any = null;
   const stubbedForkedId = 'stub-forked-id-6-4-dod';
   await page.route(`**/api/runs/${runId}/fork`, async (route) => {
@@ -252,8 +242,34 @@ test('Stage 6.4: fork-from-here appears on user messages only + wires from_event
     });
   });
 
-  // Navigate to the run detail page.
-  await page.goto(`${FRONTEND_URL}/runs/${runId}`);
+  // Navigate to the run detail page FIRST and wait for it to be fully
+  // mounted + Socket.IO-connected. The debug-inject endpoint emits into
+  // the run's socket room only (no persistence), so if we inject before
+  // the client joins the room the event is lost. See reference:
+  // src/tests/e2e/condensation-timeline-marker.spec.ts.
+  await page.goto(`${FRONTEND_URL}/runs/${runId}`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+    timeout: 15_000,
+  });
+  // Give the Socket.IO client time to join the conversation room.
+  await page.waitForTimeout(1_500);
+
+  // NOW inject one user + one assistant message. The user one is the
+  // fork target; the assistant one is the D2 negative case.
+  const userEvt = await injectMessageEvent(
+    request,
+    runId,
+    'user',
+    'STAGE-6.4-DOD user checkpoint — fork from here should be visible for this event.',
+  );
+  const agentEvt = await injectMessageEvent(
+    request,
+    runId,
+    'agent',
+    'STAGE-6.4-DOD assistant reply — fork from here MUST NOT appear for this event.',
+  );
+  // eslint-disable-next-line no-console
+  console.log('[fork-from-here] injected user evt:', userEvt.id, 'agent evt:', agentEvt.id);
 
   // Wait for the timeline to render our injected user event card.
   // Target the EventCard specifically via its role=button (see EventCard.tsx),
