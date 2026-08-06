@@ -145,3 +145,13 @@ Two unit-test failures observed on Colossus while running `pytest bff/tests/test
   # poll GET /repograph until HTTP 200 before running the spec
   ```
 - **Long-term fix path (out of Stage 4 scope):** wrap the persistent launcher in a systemd unit or a `pplx start-server`-style script so kill/replace is one command. For now, the manual `fuser -k` step is the workflow.
+
+---
+
+## 2026-08-06 04:17 EDT — `test_direct_sync_call_would_block_confirms_the_hazard` — broken test premise
+
+- **Symptom:** `bff/tests/test_event_relay_yield.py::test_direct_sync_call_would_block_confirms_the_hazard` fails with `assert ~1e-6 >= 0.15`.
+- **Root cause:** Test constructs `relay_task` then `await asyncio.sleep(0.001)` before creating `http_task`. The sleep yields, `relay_task` runs its 200ms busy-loop and finishes BEFORE `http_task` is created. Latency measurement is meaningless because the request coroutine was never queued during the busy-loop.
+- **Impact:** Diagnostic test only. The three real tests in the file (`test_update_from_event_runs_in_worker_thread`, `test_slow_producer_does_not_block_event_loop`, and the wrapped version) all pass. Production event_relay behaviour is correct.
+- **Fix path (out of Stage 5 scope):** Swap the create_task order — `http_task` first, then `relay_task`, then gather. See DEBUG_LOG 2026-08-06 04:17 EDT for full explanation.
+- **Do NOT block Stage 5 on this.**

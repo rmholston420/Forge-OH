@@ -1643,3 +1643,33 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
 - **Root cause:** The 🧠 glyph is reused across the UI (sidebar nav icon for the Memory route + timeline event icon). A bare text query cannot disambiguate.
 - **Fix applied:** scope the icon assertion to the EventCard button. The EventCard's accessible name is the summary string (`aria-label` = summary), so `getByRole('button', { name: /^Memory consulted \(semantic\)/ })` uniquely identifies it, then `.getByText('🧠')` inside that button asserts the icon is present.
 - **Files changed:** `src/tests/e2e/memory-timeline-marker.spec.ts`.
+
+## 2026-08-06 04:17 EDT — Stage 5 exit gate two new failures
+
+### 1. `openhands_tools_ext/tests/gpu/test_hook.py` — ModuleNotFoundError at collection
+
+- **Symptom:** `ERROR openhands_tools_ext/tests/gpu/test_hook.py :: ModuleNotFoundError: No module named 'openhands_tools_ext'` when running `pytest openhands_tools_ext/tests/ -q`.
+- **Root cause:** Missing `openhands_tools_ext/tests/gpu/__init__.py`. All sibling test dirs (`memory/`, `selfeval/`, `trajectory/`, `verify/`) had one; only `gpu/` was missing. pytest could not resolve the package rootdir for `test_hook.py` and fell back to sys.path without the repo root.
+- **Fix:** `touch openhands_tools_ext/tests/gpu/__init__.py`.
+- **Files:** `openhands_tools_ext/tests/gpu/__init__.py` (new, empty).
+
+### 2. `bff/tests/test_event_relay_yield.py::test_direct_sync_call_would_block_confirms_the_hazard`
+
+- **Symptom:** `AssertionError: Direct sync call did not block the event loop in this test env — the hazard demonstration is broken. assert 1.03e-06 >= 0.15`.
+- **Root cause:** Test flow is:
+  ```python
+  relay_task = asyncio.create_task(_bad_relay_iteration())   # scheduled, not yet run
+  await asyncio.sleep(0.001)   # ← yields; relay_task runs its 200ms busy-loop, RETURNS
+  http_task = asyncio.create_task(_http_request())   # ← created AFTER relay finished
+  ```
+  Because `await asyncio.sleep(0.001)` yields to the loop, `relay_task` (which awaits nothing) runs to completion — spinning for 200ms — BEFORE `http_task` is created. When `http_task` finally runs, it captures `time.perf_counter()` at the coroutine's call site inside the body and appends `now - started_at` — which is ~0 μs because `started_at` was captured at the same instant.
+  The test's premise ("relay hogs the loop while http request is queued") never materializes because the request coroutine is never queued during the busy-loop. This is a test-code bug, not a code-under-test bug.
+- **Fix path (out of Stage 5 scope):** Restructure the test so `http_task` is created BEFORE `relay_task` gets a yield opportunity. One valid pattern:
+  ```python
+  http_task = asyncio.create_task(_http_request())   # captures started_at NOW
+  relay_task = asyncio.create_task(_bad_relay_iteration())   # will run first
+  await asyncio.gather(relay_task, http_task)
+  ```
+  With this order, `http_task` is scheduled at t0. When the loop yields, `relay_task` runs first (FIFO), busy-spins for 200ms, then `http_task` records latency ≈ 200ms.
+- **Impact:** Diagnostic-only test. The three real tests in the same file (`test_update_from_event_runs_in_worker_thread`, `test_slow_producer_does_not_block_event_loop`, and the wrapped version) still pass. The event_relay production code is correct.
+- **Do NOT block Stage 5 on this.** Move to KNOWN_ISSUES.
