@@ -7269,3 +7269,15 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
 - **PORTING_LEDGER / ADR updated:** none. Slice 8.0 has no vendored code. ADR-013 amendment #1 (Qwen3.6-27B-int4-AutoRound canonical) unchanged. Note the ablation: `--speculative-config ngram` was in F.19-pre research and pre-Slice-8.0 spec but is deferred — not re-enabled without a followup probe on structured-diff tasks. Documented in DEBUG_LOG 16:32 EDT + this entry.
 - **Stop-condition status:** MET. Slice 8.0 closed.
 - **Related DEBUG_LOG:** 2026-08-06 16:32 EDT (spec-decode malformed headers), 2026-08-06 18:05 EDT (noise-floor probe).
+
+## 2026-08-06 18:20 EDT — Slice 8.0b planner-role flag bundle applied
+
+- **Stage / plugin / port:** Stage 8 · Slice 8.0b · vLLM planner serving-infra
+- **What changed:** Mirrored the Slice 8.0 flag bundle onto `ops/vllm_launch_planner.sh` per the plan companion §8.0b (docs/reconciliation-plan-stage-8.md lines 178-187). Same additions as coder: `--kv-cache-dtype fp8`, `--enable-chunked-prefill`, `--long-prefill-token-threshold 4096`, `--max-model-len 32768 -> 65536`. Speculative decoding NOT added — same ablation rationale as Slice 8.0 (see DEBUG_LOG 2026-08-06 16:32 EDT). Also added `FORGE_VLLM_PLANNER_MAX_MODEL_LEN` env-override for rollback.
+- **Kept unchanged (per plan companion):** `--reasoning-parser deepseek_r1`, `--quantization awq_marlin` (via env), no `--tool-call-parser` (planner is DSR1, uses reasoning parser).
+- **VRAM math (unmeasured on planner):** AWQ-4bit 32B weights ~16 GiB + fp8 KV @ 65k concurrency=1 ~8 GiB + overhead ~2 GiB = ~26 GiB of 28.8 GiB budget. Headroom ~2.8 GiB — TIGHTER than coder. First-launch verifies this. Rollback path documented in launcher header.
+- **DoD status:** in-progress. DoD is "planner-role smoke does not regress" but no canonical planner bench exists — the plan companion itself defers the bench definition to §8.0b. Effective DoD selected under standing "make optimal choice" delegation: (a) container launches on :8511 with new argv verified via `docker inspect`; (b) `/v1/models` reports `max_model_len: 65536`; (c) live VRAM stays below the 28.8 GiB budget at idle + one 30k+ prompt; (d) rollback env-override is testable.
+- **Files touched:** `ops/vllm_launch_planner.sh`.
+- **Ports / adapters affected:** none. Serving-infra config only.
+- **PORTING_LEDGER / ADR updated:** none. ADR-029 §D5 governs Slice 8.0/8.0b as a cross-cutting condenser tweak; no new ADR required per plan companion line 187.
+- **Stop-condition status:** in-progress. Awaiting user launch on Colossus for VRAM verify.
