@@ -6281,3 +6281,21 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   - `pnpm exec vitest run src/tests/unit/AgentPresetCard.test.tsx` → **5/5** in 55 ms.
   - `pnpm test:unit` (full suite) → **874 passed, 6 skipped, 0 failed** in 4.21 s. No other test file regresses.
 - **Verified by:** reading `src/lib/schemas/run.ts:32-49`, `src/features/run-detail/api.ts:12-19`, and `src/features/agent-presets/AgentPresetCard.tsx:20-57` BEFORE editing either test.
+
+## 2026-08-06 07:04 EDT — Stage 6.4b · OPEN (ADR-025 draft landed; worktree implementation begins next)
+
+- **Slice opened:** Stage 6.4b — Per-run worktrees (`git worktree add` under `WORKTREE_ROOT`).
+- **Design decision (Proposed):** ADR-025 — Restore via fork, not in-place `git reset` + conversation-state rewind. Filed at `docs/adr/025-restore-via-fork.md` and indexed in `docs/adr/README.md`. Splits the plan's monolithic §6.4 into:
+  - **6.4 (SHIPPED 2026-08-06):** fork-from-here on user-message events. Non-destructive.
+  - **6.4b (OPEN):** per-run worktrees.
+  - **6.4c (DEFERRED, opens after 6.4b lands):** `POST /api/runs/{run_id}/restore` composing fork + `git reset --hard` in the new fork's isolated worktree.
+- **Evidence gathered (informs ADR-025):** codebase inspection 2026-08-06 06:59 EDT (recorded in DEBUG_LOG.md) confirmed the plan's §6.4 prerequisites do not exist — no `Checkpoint` entity, no per-run worktrees, no `get_run_workdir`, no SDK-level in-place conversation-state rewind. Fork surface DOES exist end-to-end (Stage 6.4 shipped it). `working_dir` today resolves shared across concurrent runs on the same workspace — a latent data-loss bug the moment §2.4 concurrent worktree-agents lands.
+- **Docs landed this slice-open:**
+  - `docs/adr/025-restore-via-fork.md` (Proposed) — decision + rationale + alternatives + consequences + contingency triggers
+  - `docs/adr/README.md` — index row for ADR-025
+  - `docs/reconciliation-plan-stage-6.md` — canonical stage-6 companion doc, prepended with a STATUS NOTE explaining the 6.4 → 6.4/6.4b/6.4c split and the ADR-025 supersession of the design layer of §6.4.1–§6.4.5
+- **Stage/plugin/port:** Stage 6.4b · BFF run lifecycle + workspace resolution · new port surface `WORKTREE_ROOT` (env-driven).
+- **Files touched this open-commit:** `docs/adr/025-restore-via-fork.md`, `docs/adr/README.md`, `docs/reconciliation-plan-stage-6.md`.
+- **Ports/adapters affected:** none yet (design-only commit). Next commit touches `bff/routers/runs.py`, `bff/services/event_relay.py`, `bff/services/run_compare.py`, `bff/services/metrics_aggregation.py`.
+- **PORTING_LEDGER:** N/A — no vendored code (native git plumbing via subprocess).
+- **Stop-condition status (6.4b):** NOT YET MET. See ADR-025 §Decision · Stage 6.4b bullet. DoD = two concurrent runs against the same workspace do not observe each other's file changes; `git worktree list` shows both; `run_compare` still works between them.

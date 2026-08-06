@@ -24,6 +24,7 @@ Index of ADRs under `docs/adr/`. Numbering is sequential; gaps (e.g. ADR-010) ar
 | [022](./022-stage-5-4-zero-trust-satisfied-by-port-layer.md) | Stage 5.4 zero-trust write enforcement satisfied by ported port-layer validators | Ratified | Plan §5.4.2 proposed `MemoryWriteEvent` pydantic model (superseded — port-layer validators are stricter) | — |
 | [023](./023-ace-curation-cycle.md) | ACE-style memory curation cycle: triple-shaped, deterministic string-overlap first pass, library-only until a caller exists (Stage 5.5) | Ratified | Plan §5.5.1 + §5.5.2 free-string sketches (superseded — ADR-021 D1 pins `:MemoryEvent` as triple-shaped) | — |
 | [024](./024-memory-frontend-plumbing.md) | Memory frontend plumbing: `MemoryConsultationEvent` + `memory_consultation` event type + `list_recent_writes` port + inspector page + lazy BFF MemoryPort singleton (Stage 5.6a) | Ratified | — | — |
+| [025](./025-restore-via-fork.md) | Restore via fork, not in-place `git reset` + conversation-state rewind (Stage 6.4b enables · Stage 6.4c consumes) | Proposed | Reconciliation-plan-v1 §6.4 + stage-6 §6.4.1–6.4.5 (design layer only — plan text stays as historical prose) | — |
 
 ## Authoring workflow
 
