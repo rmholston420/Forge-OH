@@ -45,8 +45,18 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_WORKTREE_ROOT = Path.home() / ".forge-oh" / "worktrees"
 _GIT_TIMEOUT_SEC = 30
+
+
+def _default_worktree_root() -> Path:
+    """Return the default worktree root, computed at call time.
+
+    Deferred so ``Path.home()`` is re-read on every ``get_worktree_root``
+    call rather than frozen at module-import.  Lets tests use
+    ``monkeypatch.setattr('pathlib.Path.home', ...)`` without also
+    having to patch a module-level constant.
+    """
+    return Path.home() / ".forge-oh" / "worktrees"
 
 
 class WorktreeError(Exception):
@@ -84,7 +94,7 @@ def get_worktree_root() -> Path:
     ``~/.forge-oh/worktrees/``.  The directory is created on first
     call so callers don't have to.
     """
-    root = Path(os.environ.get("FORGE_WORKTREE_ROOT") or _DEFAULT_WORKTREE_ROOT)
+    root = Path(os.environ.get("FORGE_WORKTREE_ROOT") or _default_worktree_root())
     root = root.expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     return root
