@@ -5560,3 +5560,42 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   Expect: `Stage 5.4 verification: 12/12 checks passed` and exit 0. Nothing else required — no `.env`, no DozerDB, no Ollama/Qdrant.
 - **STAGE 5.4 CLOSED.**
 - **Next stage:** 5.5 — ACE-style memory curation (generation → reflection → curation). Not part of Kosmos ports; must be built fresh informed by ACA-v8 §ACE.
+
+## 2026-08-06 02:55 EDT — Stage 5.5: ACE-style memory curation cycle shipped as library (ADR-023) — STAGE CLOSED
+- **Stage/plugin/port:** Stage 5.5 — ACE-style memory curation cycle (generate → reflect → curate) over `MemoryPort`. Fresh Forge-OH code, not a Kosmos port (per plan §5.5).
+- **What was built:**
+  1. **ADR-023** filed at `docs/adr/023-ace-curation-cycle.md` (Ratified). Pins the cycle as triple-shaped (ADR-021 D1), deterministic string-overlap first pass, zero-trust floor preserved (D3), library-only until a caller exists (D7). Records the two-tier escalation policy (D5: embedding similarity first, LLM only after evaluation evidence). Supersedes plan §5.5.1 + §5.5.2 free-string sketches.
+  2. **New module** `openhands_tools_ext/memory/curation/`:
+     - `__init__.py` — public surface re-exports (`CurationCandidate`, `CurationResult`, `generate_candidate`, `reflect_on_candidate`, `curate`, `curated_write`).
+     - `ace_cycle.py` (~275 lines) — `CurationCandidate` (frozen dataclass, triple + provenance/confidence + optional attrs; `triple_text()` for normalized string-overlap; `to_write_kwargs()` for adapter call), `CurationResult`, deterministic reflection, substring-keyed `curate` dispatch, `curated_write` orchestrator (search_semantic → curate → adapter.write_event on keep/merge).
+  3. **Contract tests** at `bff/tests/memory/test_ace_curation_contract.py` (15 tests). Uses the ported `DozerDbMemoryAdapter` with all four lanes wired in-memory (`InMemoryGraphBackend`, `InMemoryTemporalIndex`, `NoOpAmgPolicy`, deterministic 4-dim `_FakeEmbeddings`, `QdrantVectorAdapter(InMemoryQdrantBackend())`). Follows the fixture pattern from `test_semantic_memory_path_contract.py` (D=existing-pattern per scope agreement).
+  4. **DoD verifier** `scripts/verify_stage_5_5_curation.py` (~175 lines). Plan §5.5.3 duplicate-discard check adapted to the triple-shaped surface: (1) first identical triple → `keep` + 1 `:MemoryEvent`, (2) second identical triple → `discard` + still 1 `:MemoryEvent`, (3) empty provenance on a fresh adapter → `ValueError` from the port-level guard (D3). Standalone — no live infra.
+- **Files touched:**
+  - `openhands_tools_ext/memory/curation/__init__.py` (new)
+  - `openhands_tools_ext/memory/curation/ace_cycle.py` (new)
+  - `bff/tests/memory/test_ace_curation_contract.py` (new)
+  - `scripts/verify_stage_5_5_curation.py` (new)
+  - `docs/adr/023-ace-curation-cycle.md` (new)
+  - `docs/adr/README.md` (ADR-023 row added)
+  - `BUILD_LOG.md`, `SESSION_HANDOFF.md`
+- **Ports/adapters affected:** none. `MemoryPort`, `VectorPort`, `EmbeddingsPort`, and their adapters are untouched. Curation sits above the port layer.
+- **Scope decisions (agreed pre-implementation):**
+  - **A=triple** — candidate/result carry the ADR-021 triple, not free-string.
+  - **B=B1** — related-memory lookup uses `adapter.search_semantic`.
+  - **C=ADR-023-yes** — new ADR filed (this entry).
+  - **D=existing-pattern** — contract tests use the fixture shape from `test_semantic_memory_path_contract.py`.
+- **Verification (sandbox, `/tmp/foh-verify`, `PYTHONPATH=.`):**
+  - `bff/tests/memory/test_ace_curation_contract.py`: **15 passed** in 0.06s.
+  - Full `bff/tests/memory/`: **111 passed, 1 skipped** in 0.19s (baseline embedder).
+  - Full `bff/tests/memory/` under `OLLAMA_EMBED_MODEL=qwen3-embedding:4b`: **111 passed, 1 skipped** in 0.21s.
+  - `scripts/verify_stage_5_5_curation.py`: **3/3 checks passed**.
+- **Colossus verification (user, one command):**
+  ```
+  cd ~/dev/forge-oh && git pull
+  PYTHONPATH=. python -m pytest bff/tests/memory/test_ace_curation_contract.py -v
+  PYTHONPATH=. python scripts/verify_stage_5_5_curation.py
+  ```
+  Expect: 15 passed + `Stage 5.5 verification: 3/3 checks passed`. No live infra required.
+- **STAGE 5.5 CLOSED.**
+- **Deferred to future ADRs** (locked by ADR-023 §D5 / §D6 / §D7): embedding-similarity dedup, LLM reflection, `merge`/`supersede` semantics, wire-in to higher-stack callers.
+- **Next stage:** 5.6 per plan — Letta-style memory-block edits routed through `curated_write` once a caller exists. Not part of this stage.

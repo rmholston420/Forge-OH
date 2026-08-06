@@ -22,6 +22,7 @@ Index of ADRs under `docs/adr/`. Numbering is sequential; gaps (e.g. ADR-010) ar
 | [020](./020-qwen3-embedding-default.md) | Qwen3-Embedding as Forge-OH's default EmbeddingsPort model (Stage 5.2) | Accepted | — (departs from Kosmos upstream `nomic-embed-text` default) | — |
 | [021](./021-memory-adapter-graph-shape.md) | Memory adapter graph shape: CIDOC-native triples + MemoryEvent node + fulltext temporal index (Stage 5.3b) | Ratified | — (Kosmos ADR-027 inherited; D5 diverges to `NoOpAmgPolicy`, TemporalIndex replaces deleted `GraphitiTemporalIndex` from Kosmos ADR-075 D1) | — |
 | [022](./022-stage-5-4-zero-trust-satisfied-by-port-layer.md) | Stage 5.4 zero-trust write enforcement satisfied by ported port-layer validators | Ratified | Plan §5.4.2 proposed `MemoryWriteEvent` pydantic model (superseded — port-layer validators are stricter) | — |
+| [023](./023-ace-curation-cycle.md) | ACE-style memory curation cycle: triple-shaped, deterministic string-overlap first pass, library-only until a caller exists (Stage 5.5) | Ratified | Plan §5.5.1 + §5.5.2 free-string sketches (superseded — ADR-021 D1 pins `:MemoryEvent` as triple-shaped) | — |
 
 ## Authoring workflow
 
