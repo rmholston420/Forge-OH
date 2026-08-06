@@ -6701,3 +6701,23 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - §6.5.2 stop-condition: unchanged — awaits code landing.
 
 **Next action**: Stage 6.5.2 backend forwarding endpoint `POST /api/runs/{run_id}/model` per ADR-027 contract.
+
+## 2026-08-06 09:52 EDT — ADR-027 Ratified · Stage 6.5.2 unblocked
+
+**Stage/plugin/port**: Stage 6.5 Runtime model switching · ADR-027.
+
+**What changed**:
+- ADR-027 flipped Proposed → Ratified via header amendment block (operator confirmed "make optimal choice"; optimal path is preset-driven `switch_llm` forwarding).
+- ADR index status updated to Ratified (2026-08-06).
+- Enforcement gates carried forward: §6.5.2 backend must land green pytest + §6.5.3 frontend must be preset-driven; violation triggers amendment, not silent drift.
+
+**Files touched**:
+- `docs/adr/027-runtime-model-switching-forwards-switch-llm.md` (status amendment block prepended, Status line updated, Lock-in phase updated)
+- `docs/adr/README.md` (ADR-027 row status → Ratified)
+- `BUILD_LOG.md` (this entry)
+
+**Ports/adapters affected**: none yet; decision layer only.
+
+**Stop-condition status**: §6.5.1 CLOSED; §6.5.2 unblocked.
+
+**Next action**: Implement `POST /api/runs/{run_id}/model` per ADR-027 contract (agentPresetId-only body → hydrate `LLM-Input` from preset + secrets → forward to agent-server `switch_llm`), plus pytest suite covering unknown preset (404), preset↔role incompatibility (422), happy path (200), agent-server error echo (502).

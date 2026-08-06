@@ -1,6 +1,8 @@
 # ADR-027: Runtime Model Switching — BFF forwards only `switch_llm`, blast-radius-minimized
 
-- **Status:** Proposed
+> **STATUS AMENDMENT (2026-08-06):** Ratified. Operator confirmed the `switch_llm`-only forwarding contract with preset-driven credential hydration. Original decision text preserved verbatim below; §6.5.2 backend endpoint may now land against this ADR as the load-bearing contract.
+
+- **Status:** Ratified (2026-08-06)
 - **Date:** 2026-08-06
 - **Slice:** Stage 6.5 · reconciliation-plan-stage-6 §6.5.2 (backend forwarding endpoint)
 - **Supersedes:** —
@@ -103,7 +105,7 @@ Not affected by this ADR:
 
 ## Lock-in phase
 
-Ratifies when Stage 6.5.2 backend endpoint lands with green pytest suite AND the §6.5.3 frontend control lands preset-driven (not raw-model). Until then this ADR is Proposed.
+Ratified 2026-08-06 by operator decision ("make optimal choice" — optimal path confirmed as preset-driven `switch_llm` forwarding with server-side credential hydration). Backend landing under Stage 6.5.2 with green pytest suite AND frontend §6.5.3 landing preset-driven remain the enforcement gates; violation of either invariant during implementation triggers an amendment, not silent drift.
 
 ## References
 
