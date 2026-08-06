@@ -2297,3 +2297,27 @@ Structural quality summary across all 26 executed tasks: baseline (25 well-forme
 
 **Files changed:** `ops/vllm_launch_coder.sh`.
 **Related BUILD_LOG:** 2026-08-06 15:30 EDT (Slice 8.0 executed), 2026-08-06 16:32 EDT (spec-decode ablation).
+
+## 2026-08-06 18:05 EDT — Slice 8.0 Step 2 pass@1 drop is seed variance, not 65k regression
+
+**Symptom:** Step 2 (65k) pass@1 = 8/30 vs Step 1 (32k) pass@1 = 9/30 (both no-spec). 3 tasks appeared to flip resolved=True→False between Step 1 and Step 2: matplotlib-24570, scikit-learn-14629, sphinx-9591. Concern: fp8 KV × 65k context interaction subtly degrading structured output on tasks that use < 5% of the ceiling.
+
+**Affected:** Slice 8.0 attestation · c01 coder · 30-task smoke.
+
+**Root cause:** Seed variance on 3-sample resolved outcomes, NOT a deterministic 65k regression. Targeted probe (3 tasks × 3 samples × 2 contexts, all no-spec):
+
+| task | 32k | 65k |
+|---|---|---|
+| matplotlib-24570 | 2/3 (T,F,T) | 1/3 (F,F,T) |
+| scikit-learn-14629 | 2/3 (T,T,F) | 2/3 (T,T,F) |
+| sphinx-9591 | 3/3 (T,T,T) | 3/3 (T,T,T) |
+
+- 2 of 3 tasks are identical across contexts (scikit + sphinx)
+- matplotlib is a coin-flip at BOTH contexts (2/3 vs 1/3, well inside n=3 binomial variance)
+- No task went 3/3 True at 32k and 0/3 at 65k
+- The apparent Step 1→Step 2 "-1 task" delta is inside the noise floor of pass@1 on 30-task smoke. Effective uncertainty ~ ±2 tasks per single-sample smoke run.
+
+**Fix applied:** No code change required. Documented the noise floor in BUILD_LOG closeout so future Slice comparisons apply the ±2-task tolerance. Recommendation for future attestation-critical decisions: run 3 samples of a single-task or 3-sample-averaged pass@1 rather than single-sample smoke.
+
+**Files changed:** `BUILD_LOG.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`.
+**Related BUILD_LOG:** 2026-08-06 18:05 EDT.
