@@ -46,7 +46,7 @@ Concretely:
   5. Return `{ok, restarted_run_id, from_event_id, reset_to_sha, source_run_id}`.
   6. Rollback: if step 4 fails, `remove_worktree(new_run_id, missing_ok=True)`. The source run is never touched.
 
-- **Event-normalize addition:** `commit_sha_at_time_of_event` on user-message events in `bff/services/event_normalize.py`. Value captured at ingest time as the current HEAD SHA of the run's worktree when the user-message event is normalised. Not backfilled onto pre-existing events; those simply cannot be restart-anchors (front end will hide the button when the field is missing).
+- **Storage of `commit_sha_at_time_of_event`:** BFF-side sidecar table (option W2 below). User-message events are created by agent-server, not by the BFF, so the sha cannot be stored on the event itself without forking agent-server. Instead, the BFF captures the run-worktree's current HEAD sha at the moment it hands the message text to agent-server, and persists the mapping `(run_id, event_id) → commit_sha` in a small aiosqlite table. Event-normalize joins the sidecar on the way out so the frontend sees `commit_sha_at_time_of_event` on the event object exactly as if agent-server had produced it. Fully documented in the Storage section below.
 
 - **Frontend contract:** `RestartFromHereButton` mirrors `ForkFromHereButton` on user-message events with `commit_sha_at_time_of_event` set. Confirmation dialog copy: *"Start a new run at this point with files reset to that state. You'll re-send your original message; the assistant's prior replies won't carry over. Your current run is preserved."* Feature-flagged under the same `NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED` flag as fork-from-here.
 
@@ -96,21 +96,66 @@ Considered as Option C above. Rejected because it indefinitely blocks Stage 6.4c
 ## Consequences
 
 **New files:**
-- `bff/routers/runs.py` — new `POST /runs/{run_id}/restart` handler.
+- `bff/services/event_commit_ledger.py` — W2 storage module (aiosqlite pattern from `idempotency_ledger.py`).
 - `bff/services/restart.py` — restart composition (worktree + fresh conversation + rollback).
+- `bff/tests/test_event_commit_ledger.py` — insert/fetch/delete + schema tests.
+- `bff/tests/test_event_normalize_commit_sha.py` — normaliser stamps `commit_sha_at_time_of_event` when the sidecar has a hit.
 - `bff/tests/test_restart_endpoint.py` — 8+ tests covering happy path, missing sha, missing event, worktree provision failure, agent-server create failure, non-user-message anchor rejection, source-run-not-found, cross-workspace guard.
-- `bff/tests/test_event_normalize_commit_sha.py` — tests for the new field on user-message events.
 - `src/components/events/RestartFromHereButton.tsx` — feature-flagged UI button.
 - `src/tests/RestartFromHereButton.test.tsx` — vitest coverage.
 
 **Modified files:**
-- `bff/services/event_normalize.py` — new `commit_sha_at_time_of_event` field on user-message events.
-- `bff/routers/runs.py` — new endpoint import, feature-flag wire-up.
+- `bff/main.py` — register `event_commit_ledger.init_db` / `close_db` in the FastAPI lifespan.
+- `bff/services/event_normalize.py` — optional `sha_lookup` kwarg on `normalize_event`/`normalize_events`; stamps `commit_sha_at_time_of_event` on user MessageEvents when the lookup returns a value.
+- `bff/routers/runs.py` — (a) capture sha after `create_run` initial-message, (b) capture sha after `send_run_message`, (c) new `POST /runs/{run_id}/restart` handler, (d) cascade delete via `event_commit_ledger.delete_run` in `DELETE /runs/{id}`, (e) pass `sha_lookup` into normalisation on the events read paths.
 - `docs/reconciliation-plan-stage-6.md` — supersede §6.4.1–6.4.5 design layer with reference to this ADR. Plan text stays as historical prose per the same convention ADR-025 used.
 
 **No changes to:**
 - `bff/services/worktree.py` — `provision_worktree` already accepts a `base_ref` argument that supports the target-sha use case.
 - Fork-from-here (Stage 6.4 shipped). Restart is an orthogonal primitive; fork stays unchanged.
+- Agent-server (no fork; only APIs it documents are used).
+
+## Storage of `commit_sha_at_time_of_event`
+
+User-message events are created by agent-server (`POST /api/conversations` with `initial_message` for the first message, `POST /api/conversations/{id}/events` with `role=user` for subsequent messages). The BFF never authors the event body itself, so it cannot stamp a new field onto it. Four options were considered:
+
+- **W1 — fork agent-server** to add `commit_sha_at_time_of_event` as a first-class field on `MessageEvent`. Rejected: forking upstream is an explicit non-goal per project instructions unless the user asks; this ADR asks only for what agent-server 1.40.0 already exposes.
+- **W2 — BFF sidecar table (accepted)** — details below.
+- **W3 — reflog reconstruction** at restart time (walk `git reflog` in the worktree, correlate to event timestamp). Rejected: reflogs are not durable (git gc), agent-server bash tools can move HEAD between message and observation, timestamp-→-sha correlation is racy across concurrent runs.
+- **W4 — use current HEAD at restart-invocation time** (ignore per-event sha). Rejected: reduces "restart from this specific message" to "restart with whatever the files look like right now," which collapses every restart button on the same run to the same outcome and defeats the reconciliation-plan §6.4 intent.
+
+### W2 decision
+
+A new aiosqlite-backed table lives in the BFF, following the pattern established by `bff/services/idempotency_ledger.py` (aiosqlite + `init_db(app)` / `close_db(app)` in the FastAPI lifespan; single shared connection on `app.state`).
+
+**Module:** `bff/services/event_commit_ledger.py`
+
+**Table schema:**
+
+```sql
+CREATE TABLE IF NOT EXISTS event_commit_shas (
+  run_id       TEXT NOT NULL,
+  event_id     TEXT NOT NULL,
+  commit_sha   TEXT NOT NULL,
+  captured_at  REAL NOT NULL,
+  PRIMARY KEY (run_id, event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_evshas_run ON event_commit_shas (run_id);
+```
+
+**Capture points (both must land before ADR-026 is Ratified):**
+
+1. **First user message on a run** — in `bff/routers/runs.py` `create_run` handler, after `POST /api/conversations` returns the new conversation payload, the BFF already knows: (a) the fresh worktree path (from `provision_worktree`), and (b) the `event_id` of the freshly-created `initial_message` event (returned by agent-server in `conversation.events[0].id` or reachable via a follow-up `GET /api/conversations/{id}/events?limit=1`). BFF captures `git rev-parse HEAD` inside the worktree and inserts one row. First-message capture happens after conversation creation succeeds; failure to capture is logged but does NOT fail the run creation (frontend simply hides the restart button on that event).
+
+2. **Send-while-running user message** — in `bff/routers/runs.py` `send_run_message` handler, after `POST /api/conversations/{id}/events` returns, BFF reads the returned `event.id` (agent-server returns the created event), captures `git rev-parse HEAD` in the run's worktree, inserts one row. Same failure semantics.
+
+**Read path:** `event_normalize.normalize_event(raw, *, sha_lookup=None)` gets a new optional keyword parameter. When `raw.kind == "MessageEvent"` and `_message_summary` recognises the source as user (existing helper), the normaliser calls `sha_lookup(event_id) -> Optional[str]` and stamps `commit_sha_at_time_of_event` on the output dict when the lookup returns a hit. Absent hits mean the event predates ADR-026 or the capture failed — both cases downgrade gracefully (the frontend hides the button).
+
+**Cleanup:** rows are deleted lazily by a `delete_run(run_id)` helper called from the existing `DELETE /api/runs/{run_id}` code path in `bff/routers/runs.py`. No TTL / no daemon.
+
+**Migration:** the `init_db(app)` call in `bff/main.py`'s lifespan handler runs `CREATE TABLE IF NOT EXISTS` on startup; no manual migration step. Existing runs simply have zero rows in the new table and their user-message events never expose `commit_sha_at_time_of_event`, matching the graceful-downgrade contract above.
+
+**Test coverage (added in this slice):** `bff/tests/test_event_commit_ledger.py` — insert-and-fetch, primary-key uniqueness, index existence, `delete_run` cascade. `bff/tests/test_event_normalize_commit_sha.py` — normaliser stamps the field when `sha_lookup` returns a value, omits it when absent, ignores non-user MessageEvents.
 
 **PORTING_LEDGER:** no ports added or removed. This is composition of shipped primitives + one new endpoint.
 

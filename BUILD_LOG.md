@@ -6446,3 +6446,23 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   3. New `POST /api/runs/{run_id}/restart` handler in `bff/routers/runs.py`.
   4. Tests: `bff/tests/test_restart_endpoint.py` (8+ tests) + `bff/tests/test_event_normalize_commit_sha.py`.
   5. Frontend `RestartFromHereButton` in a follow-up step per the "backend + frontend ship together" rule (paired with the endpoint in step 1 of Stage 6.4c).
+
+## 2026-08-06 08:01 EDT — ADR-026 amended with W2 storage decision
+
+- **Stage/plugin/port:** Stage 6.4c · design layer
+- **Trigger:** mid-drafting inspection of `bff/routers/runs.py` (line 401 `initial_message`, line 947 `send_run_message`) revealed user-message events are authored by agent-server, not the BFF. The `commit_sha_at_time_of_event` field cannot live on the event body without forking upstream.
+- **Options considered (fully enumerated in ADR-026 §Storage):**
+  - W1 — fork agent-server (rejected per project instructions)
+  - W2 — BFF sidecar table (accepted)
+  - W3 — reflog reconstruction (rejected: not durable, racy)
+  - W4 — current-HEAD-at-restart-time (rejected: collapses UX)
+- **User decision:** W2.
+- **What ADR-026 now specifies:**
+  - New module `bff/services/event_commit_ledger.py` following the `idempotency_ledger.py` pattern (aiosqlite, `init_db(app)`/`close_db(app)`, single shared connection on `app.state`).
+  - Table `event_commit_shas(run_id, event_id, commit_sha, captured_at)` with primary key `(run_id, event_id)` and `idx_evshas_run` on `run_id`.
+  - Capture at two BFF points: (1) after `POST /api/conversations` in `create_run`, (2) after `POST /api/conversations/{id}/events` in `send_run_message`. Both via `git rev-parse HEAD` in the run's worktree.
+  - Read path: `normalize_event(raw, *, sha_lookup=None)` gains optional kwarg; stamps `commit_sha_at_time_of_event` on user MessageEvents when the lookup hits.
+  - Cascade cleanup via `delete_run(run_id)` in the existing DELETE handler.
+  - Migration: none — `CREATE TABLE IF NOT EXISTS` at lifespan startup.
+- **Files:** `docs/adr/026-restart-from-here.md` (Decision + Consequences + new Storage section)
+- **Stop-condition status:** ADR-026 is design-complete. Next: implementation of the ledger module + event_normalize wiring + capture-point wiring + restart endpoint + tests + frontend button. All in the same "backend + frontend ship together" commit per ADR-026 lock-in phase.
