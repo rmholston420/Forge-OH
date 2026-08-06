@@ -242,6 +242,19 @@ test('Stage 6.4: fork-from-here appears on user messages only + wires from_event
     });
   });
 
+  // Log browser console for diagnostics.
+  page.on('console', (msg) => {
+    const t = msg.text();
+    if (t.includes('socket') || t.includes('stream') || t.includes('error') || t.includes('Error')) {
+      // eslint-disable-next-line no-console
+      console.log('[browser]', msg.type(), t.slice(0, 400));
+    }
+  });
+  page.on('pageerror', (err) => {
+    // eslint-disable-next-line no-console
+    console.log('[browser pageerror]', err.message);
+  });
+
   // Navigate to the run detail page FIRST and wait for it to be fully
   // mounted + Socket.IO-connected. The debug-inject endpoint emits into
   // the run's socket room only (no persistence), so if we inject before
@@ -251,8 +264,16 @@ test('Stage 6.4: fork-from-here appears on user messages only + wires from_event
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
     timeout: 15_000,
   });
-  // Give the Socket.IO client time to join the conversation room.
-  await page.waitForTimeout(1_500);
+
+  // Wait for the stream to actually connect. StreamBanner renders
+  // 'Disconnected from run stream' (role=status) when disconnected and
+  // renders nothing when connected. Wait for the banner to disappear.
+  const disconnectedBanner = page.getByText('Disconnected from run stream');
+  await expect(disconnectedBanner).toHaveCount(0, { timeout: 20_000 });
+  // eslint-disable-next-line no-console
+  console.log('[fork-from-here] stream connected (Disconnected banner absent)');
+  // Small settle window for the room join to complete on the server side.
+  await page.waitForTimeout(500);
 
   // NOW inject one user + one assistant message. The user one is the
   // fork target; the assistant one is the D2 negative case.
