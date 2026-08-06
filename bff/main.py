@@ -43,7 +43,13 @@ from bff.routers import (
     trajectories,
     workspaces,
 )
-from bff.services import episodic_memory, event_relay, gpu_monitor, trajectory_drain
+from bff.services import (
+    episodic_memory,
+    event_relay,
+    gpu_monitor,
+    mcp_bootstrap,
+    trajectory_drain,
+)
 
 
 @asynccontextmanager
@@ -76,6 +82,18 @@ async def lifespan(app: FastAPI):
 
         logging.getLogger(__name__).warning(
             "gpu monitor failed to start: %s", exc
+        )
+    # Stage 4.4: register Serena MCP server if enabled. Idempotent and
+    # best-effort; a failure here must never sink BFF startup.
+    try:
+        from bff.settings import get_settings
+
+        await mcp_bootstrap.register_serena_if_missing(get_settings())
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "serena mcp bootstrap failed: %s", exc
         )
     yield
     # Graceful shutdown.

@@ -120,14 +120,60 @@ def _message_summary(ev: dict[str, Any]) -> str:
     return "(message)"
 
 
+# Stage 4.4 — Serena LSP tool names (upstream oraios/serena main).
+# When an ActionEvent's `tool_name` is one of these, we rewrite the event's
+# `type` to `lsp_<op>` so the frontend can render it with an LSP-specific
+# icon and label. Discriminator lives on the flat `type` string — no new
+# discriminated union (see ADR-018).
+_SERENA_TOOL_TO_LSP_OP: dict[str, str] = {
+    "find_symbol": "find_symbol",
+    "find_referencing_symbols": "find_referencing_symbols",
+    "get_symbols_overview": "get_symbols_overview",
+    "replace_symbol_body": "replace_symbol_body",
+    "insert_after_symbol": "insert_after_symbol",
+    "insert_before_symbol": "insert_before_symbol",
+}
+
+
+def _serena_op_from_tool_name(tool_name: str) -> str | None:
+    """Return the canonical LSP op name if `tool_name` is a known Serena tool.
+
+    Matches on the last dotted segment so both bare (`find_symbol`) and
+    namespaced (`serena.find_symbol`, `mcp.serena.find_symbol`) shapes work.
+    """
+    if not tool_name:
+        return None
+    tail = tool_name.rsplit(".", 1)[-1]
+    return _SERENA_TOOL_TO_LSP_OP.get(tail)
+
+
 def _action_summary(ev: dict[str, Any]) -> str:
     """ActionEvent already has its own top-level `summary`; fall back to thought."""
+    # Explicit agent-set summary always wins — including for Serena tools.
     if ev.get("summary"):
         return str(ev["summary"])
-    if ev.get("thought"):
-        return str(ev["thought"])
+
     tool = ev.get("tool_name") or ""
     action = ev.get("action") or {}
+
+    # Stage 4.4: for Serena LSP tools without an explicit summary, produce
+    # a compact `Serena <op>: <symbol>` line so the timeline reads
+    # symbol-precise at a glance.
+    op = _serena_op_from_tool_name(tool)
+    if op:
+        symbol = None
+        if isinstance(action, dict):
+            symbol = (
+                action.get("name_path")
+                or action.get("symbol")
+                or action.get("name")
+                or action.get("query")
+            )
+        prefix = f"Serena {op}"
+        return f"{prefix}: {symbol}" if symbol else prefix
+
+    if ev.get("thought"):
+        return str(ev["thought"])
     if isinstance(action, dict):
         # Common shapes: {"command": "..."} for bash, {"path": "..."} for file_editor
         cmd = action.get("command") or action.get("path") or action.get("query")
@@ -207,6 +253,12 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
         summary = _message_summary(raw)
     elif kind == "ActionEvent":
         summary = _action_summary(raw)
+        # Stage 4.4: if this ActionEvent invoked a Serena tool, promote the
+        # event's `type` from generic "action" to `lsp_<op>` so the frontend
+        # EventCard can render an LSP-specific icon and label.
+        _lsp_op = _serena_op_from_tool_name(raw.get("tool_name") or "")
+        if _lsp_op:
+            typ = f"lsp_{_lsp_op}"
     elif kind == "ObservationEvent":
         summary = _observation_summary(raw)
     elif kind in {"AgentErrorEvent", "ConversationErrorEvent"}:

@@ -85,6 +85,27 @@ plan's per-stage stop condition is stricter than DoD, the stricter condition win
 
 ---
 
+## Three-Tier Retrieval Cascade
+
+Stage 4 finalizes Forge-OH's code-retrieval strategy as a three-tier cascade. Every code-search / code-navigation tool the agent has today falls into exactly one tier; new retrieval work must state which tier it augments and why the higher tiers are insufficient.
+
+| Tier | Purpose | Backing tech (today) | Backing tech (planned) |
+|------|---------|----------------------|------------------------|
+| **1 — LSP structural** | Symbol-precise ops: `find_symbol`, `find_referencing_symbols`, `rename` / `replace_symbol_body`, `get_symbols_overview`. Use when the question is about *this named identifier* and cross-file references must be exact. | Serena LSP over MCP (Stage 4.4, ADR-018). Registered at BFF startup when `SERENA_ENABLED=true`. Events surface as `type=lsp_<op>` in the timeline. | Same. |
+| **2 — RepoGraph structural** | Graph-shape questions: call graph, module dependencies, PageRank centrality, "what depends on X", "give me the top-N files". Use when the question is about *the shape of the codebase*, not a single symbol. | tree-sitter parser + DozerDB (Neo4j-compatible) + PageRank (Stage 4.2/4.3, ADR-006). Force-directed view at `/repograph`. | Stage 5: same graph + Qdrant semantic embeddings sitting alongside; retrieval fuses graph edges with embedding similarity. |
+| **3 — Grep / full-text** | Literal string / regex match, unknown-symbol exploration, non-code text (docs, configs, TODO comments). Use when neither a symbol nor a graph shape is defined for the query. | Ripgrep via bash tool. | Same, potentially fronted by a `search_code` MCP tool later. |
+
+**Cascade discipline for the agent:**
+
+1. If the query names an identifier and needs cross-file precision → Tier 1 (Serena LSP).
+2. If Tier 1 returns nothing OR the query is about shape/structure → Tier 2 (RepoGraph).
+3. If Tier 2 has no answer OR the query is unstructured text → Tier 3 (grep).
+4. Never skip *up* the cascade for speed — grep-first is a code smell when the query is symbol-precise; it hides regressions that only appear when a rename crosses files.
+
+Any new retrieval capability must be pitched as "strengthens Tier N because …", not as a fourth parallel path. New tiers require an ADR.
+
+---
+
 ## Commit Message Format
 
 ```

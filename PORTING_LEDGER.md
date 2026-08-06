@@ -144,3 +144,28 @@ Format per entry:
   - `src/features/repograph/RepoGraphGraphView.tsx` — force-directed view
   - `src/app/(dashboard)/repograph/page.tsx` — standalone `/repograph` route
 - **Rollback:** remove the `react-force-graph-2d` line in `package.json`, delete `RepoGraphGraphView.tsx` and `src/app/(dashboard)/repograph/`, revert the Graph toggle branch of `RepoGraphPanel.tsx`. `full_graph()` and `GET /api/repograph/graph` remain callable without the view.
+
+---
+
+## 2026-08-06 00:53 EDT — Serena (LSPClient port) — Stage 4.4
+
+- **Slice:** Stage 4.4 (`LSPClient` port via MCP passthrough).
+- **Upstream:** [oraios/serena](https://github.com/oraios/serena).
+- **Version pin (commit SHA):** `c7af2c09ef45faa4367c0e2a9f770fb73a62a612` (upstream `main` HEAD as of 2026-08-06 00:48 EDT). Recorded in `bff.settings.Settings.serena_pin_sha`.
+- **SPDX license:** `MIT` (per upstream `LICENSE` file, verified from GitHub 2026-08-06). If a diligence check surfaces a different license, bump this entry and open a follow-up ADR.
+- **Port type:** **dependency-only** — no upstream source was copied. Serena is fetched at runtime by `uvx` from the pinned Git URL on first `POST /api/mcp/serena/ping`.
+- **Launch verb (canonical):**
+  ```
+  uvx --from git+https://github.com/oraios/serena@c7af2c09ef45faa4367c0e2a9f770fb73a62a612 \
+      serena start-mcp-server --context ide-assistant --project <SERENA_WORKSPACE_DEFAULT>
+  ```
+  Transport: `stdio`. Context flag `ide-assistant` chosen per upstream README recommendation for embedded MCP clients.
+- **Modification notes:** none. Registered as an MCP server via `POST /api/mcp` at BFF startup when `SERENA_ENABLED=true` (see `bff/services/mcp_bootstrap.py`).
+- **Related files:**
+  - `bff/settings.py::Settings.serena_*` — feature flag, workspace default, pin SHA
+  - `bff/services/mcp_bootstrap.py::register_serena_if_missing` — idempotent startup registration
+  - `bff/main.py` — lifespan hook that calls the bootstrap
+  - `bff/services/event_normalize.py::_serena_op_from_tool_name` — promotes ActionEvent `type` to `lsp_<op>`
+  - `src/components/domain/EventCard.tsx` — LSP badge + LSP-family icons
+  - `docs/adr/018-serena-lspclient-integration.md` — design decisions and spec-diff record
+- **Rollback:** set `SERENA_ENABLED=false` in `.env` and restart BFF. Registration coroutine no-ops. No frontend rollback needed — the LSP icons and badge are dead code when no LSP-typed events arrive.

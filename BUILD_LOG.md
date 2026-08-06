@@ -5291,3 +5291,34 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Deferral rescinded:** the 2026-08-06 00:44 EDT deferral note is now historical. Playwright bar is CLEARED as part of the Stage 4.2 + 4.3 exit gate.
 - **Operational note for future sessions:** production frontend on Colossus is a long-lived `nohup npx next start -H 127.0.0.1 -p 3100` process. Before an ad-hoc launch that will re-bind port 3100 (e.g. Playwright E2E prep), run `fuser -k 3100/tcp` first or use `ss -ltnp | grep 3100` to check. Added this to KNOWN_ISSUES 2026-08-06 00:47 EDT as an operational trap.
 - **Stop-condition status:** Stage 4.2 + 4.3 FULLY VERIFIED. Cleared to begin Pass 3 (§ 4.4 Serena LSPClient via MCP passthrough).
+
+## 2026-08-06 00:57 EDT — Stage 4.4 Pass 3 code shipped (Serena LSPClient via MCP passthrough)
+
+- **Scope:** Stage 4.4 of `docs/reconciliation-plan-stage-4.md`. Serena registered as an MCP server; frontend renders Serena tool calls as `lsp_<op>` events with an "LSP" badge; ADR-018 records the four locked design decisions and the plan-doc corrections that flow from them.
+- **Design decisions locked** (see `docs/adr/018-serena-lspclient-integration.md`):
+  - **D1 — Registration:** idempotent bootstrap coroutine at BFF startup calling the existing `POST /api/mcp`. Never crashes startup.
+  - **D2 — Launch verb:** `uvx --from git+https://github.com/oraios/serena@<sha> serena start-mcp-server --context ide-assistant --project <ws>` (stdio). Pin SHA `c7af2c09ef45faa4367c0e2a9f770fb73a62a612` (upstream `main` HEAD as of 2026-08-06 00:48 EDT).
+  - **D3 — Frontend:** no `ToolEvent` schema change. Backend promotes ActionEvent `type` to `lsp_<op>` when `tool_name` matches a known Serena tool. `EventCard.tsx` gains six LSP icons + an "LSP" badge.
+  - **D4 — Language gate:** none. Trust Serena upstream to refuse unsupported languages.
+- **Plan-doc corrections logged in ADR-018 § "Context":**
+  1. `bff/config.py` does not exist — real is `bff/settings.py` (Pydantic `Settings`).
+  2. Frontend has no `EventCardType` discriminated union — real event is flat `ToolEvent { type: string, ... }` in `src/lib/schemas/event.ts`.
+  3. `python3 -m serena start-mcp-server --workspace <ws>` is not a real upstream invocation — canonical verb is `uvx --from git+...` (see D2).
+  4. `pip install serena-agent` is not documented upstream — Serena is a `uvx`-driven tool.
+- **Files touched:**
+  - `bff/settings.py` — added `serena_enabled`, `serena_workspace_default`, `serena_pin_sha`.
+  - `bff/services/mcp_bootstrap.py` — **new.** `register_serena_if_missing()` + `_build_serena_registration_body()`. Idempotent, best-effort, never raises.
+  - `bff/main.py` — wired bootstrap into the lifespan chain after `gpu_monitor.start()`.
+  - `bff/services/event_normalize.py` — added `_SERENA_TOOL_TO_LSP_OP` map + `_serena_op_from_tool_name()`; `_action_summary()` produces `Serena <op>: <symbol>`; `normalize_event()` promotes `type` to `lsp_<op>`.
+  - `bff/tests/test_mcp_bootstrap.py` — **new.** Covers disabled/idempotent/network-error/POST-failure paths using `httpx.MockTransport`.
+  - `bff/tests/test_event_normalize.py` — 6 new cases in `TestSerenaLSPNormalization`.
+  - `src/components/domain/EventCard.tsx` — 6 new LSP icons + `data-testid="event-lsp-badge"` header pill.
+  - `src/tests/unit/EventCard-lsp.test.tsx` — **new.** 4 cases.
+  - `docs/reconciliation-plan-stage-4.md` — **new.** Copy of the Stage 4 plan into the repo (source of truth in-tree).
+  - `docs/adr/018-serena-lspclient-integration.md` — **new.** ADR.
+  - `docs/adr/README.md` — index now lists ADRs 015, 016, 017, 018.
+  - `PORTING_LEDGER.md` — appended Serena entry (dependency-only, SPDX MIT, pinned SHA).
+  - `AGENTS.md` — added "Three-Tier Retrieval Cascade" section: Tier 1 Serena LSP → Tier 2 RepoGraph → Tier 3 grep.
+- **Ports/adapters affected:** `LSPClient` port is satisfied via MCP passthrough — Serena is one MCP server among many, not a special-cased adapter. `EventNormalizer` gains an LSP-aware branch.
+- **ADR/ledger updates:** ADR-018 filed. `PORTING_LEDGER.md` gains the Serena entry. `docs/adr/README.md` extended to include ADR-015..018.
+- **Stop-condition status:** Pass 3 CODE COMPLETE and pushed. Stage 4.4 automated exit gate (pytest + typecheck + test:unit + build all clean, `SERENA_ENABLED=true` boot check green, `POST /api/mcp/serena/ping` returns `ok:true`) is the next verification step — awaits Colossus run.

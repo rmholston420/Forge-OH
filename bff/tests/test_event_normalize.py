@@ -80,3 +80,63 @@ class TestNormalizeEvent:
         assert len(out) == 2
         assert out[0]["securityRisk"] == "LOW"
         assert "securityRisk" not in out[1]
+
+
+class TestSerenaLSPNormalization:
+    """Stage 4.4 — ActionEvents whose tool_name matches a known Serena
+    LSP tool should get their `type` promoted to `lsp_<op>` and, when no
+    explicit summary is provided, a compact "Serena <op>: <symbol>" line."""
+
+    def test_bare_find_symbol_promotes_type_to_lsp_find_symbol(self):
+        ev = _action(
+            summary=None,
+            tool_name="find_symbol",
+            action={"name_path": "MyClass/foo"},
+        )
+        # _action injects "summary"; nulling it forces the LSP branch.
+        ev.pop("summary", None)
+        out = normalize_event(ev)
+        assert out["type"] == "lsp_find_symbol"
+        assert out["summary"] == "Serena find_symbol: MyClass/foo"
+
+    def test_namespaced_tool_name_still_matches(self):
+        """`mcp.serena.find_referencing_symbols` matches on the tail segment."""
+        ev = _action(
+            tool_name="mcp.serena.find_referencing_symbols",
+            action={"name_path": "foo"},
+        )
+        ev.pop("summary", None)
+        out = normalize_event(ev)
+        assert out["type"] == "lsp_find_referencing_symbols"
+
+    def test_explicit_summary_wins_over_lsp_reformat(self):
+        """If agent-server sets `summary`, we preserve it verbatim
+        even for LSP tools \u2014 but the `type` is still promoted."""
+        ev = _action(
+            summary="Renaming foo -> bar",
+            tool_name="replace_symbol_body",
+            action={"name_path": "foo"},
+        )
+        out = normalize_event(ev)
+        assert out["type"] == "lsp_replace_symbol_body"
+        assert out["summary"] == "Renaming foo -> bar"
+
+    def test_non_serena_tool_stays_generic_action(self):
+        ev = _action(tool_name="terminal", action={"command": "ls"})
+        out = normalize_event(ev)
+        assert out["type"] == "action"
+
+    def test_missing_tool_name_stays_generic_action(self):
+        ev = _action(tool_name=None, action={})
+        out = normalize_event(ev)
+        assert out["type"] == "action"
+
+    def test_lsp_summary_without_symbol_falls_back_to_op_only(self):
+        ev = _action(
+            tool_name="get_symbols_overview",
+            action={},
+        )
+        ev.pop("summary", None)
+        out = normalize_event(ev)
+        assert out["type"] == "lsp_get_symbols_overview"
+        assert out["summary"] == "Serena get_symbols_overview"

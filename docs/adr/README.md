@@ -14,6 +14,10 @@ Index of ADRs under `docs/adr/`. Numbering is sequential; gaps (e.g. ADR-010) ar
 | [011](./011-selfeval-harness.md) | Self-eval harness | Accepted | — | — |
 | [012](./012-dual-mode-model-routing.md) | Dual-mode model routing — role-first with preset model override | Accepted | ADR-009 §1, §2, §3, §3a (routing-layer contract) | — |
 | [013](./013-qwen36-27b-canonical-coder-planner.md) | Canonical coder + planner (F.1b ratified · F.3 full-500 validated) | Amended · Planner ratified 2026-08-05 03:52 · Coder ratified 2026-08-05 04:55 (F.1b) · F.3 full-500 pass@1 = 26.6% / 28.6% attempted-only (2026-08-05 19:20) | ADR-009 §1 + §2 | — |
+| [015](./015-swe-bench-sandbox.md) | SWE-bench sandbox | Accepted | — | — |
+| [016](./016-colossus-github-mirror-parity.md) | Colossus ↔ GitHub mirror parity | Ratified | — | — |
+| [017](./017-bench-nvml-mandatory.md) | NVML GPU sampling mandatory on every bench harness | Ratified | — | — |
+| [018](./018-serena-lspclient-integration.md) | Serena LSPClient integration via MCP passthrough (Stage 4.4) | Accepted | — | — |
 
 ## Authoring workflow
 
