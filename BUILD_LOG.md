@@ -5733,3 +5733,19 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
     npx playwright test tests/e2e/memory-inspector.spec.ts --reporter=list
   ```
 - **Expected outcome:** two screenshots (`screenshots/memory-inspector-page.png`, `screenshots/memory-inspector-sidebar.png`) auto-committed and pushed to `origin/main` by the spec.
+
+## 2026-08-06 03:34 EDT — Stage 5.6a: seed sys.path bootstrap; .serena/ ignored
+- **Purpose:** unblock live-DozerDB Playwright pass. Second attempt succeeded on the assertions (200/200/rows=1) but the seed step raised `ModuleNotFoundError` and the screenshot auto-push tripped ADR-016 on `.serena/`.
+- **What shipped:**
+  1. `scripts/seed_memory_event.py` — add REPO_ROOT to `sys.path` before importing `openhands_tools_ext.memory.composition`. The package is repo-local, not pip-installed under `.oh-venv`.
+  2. `.gitignore` — ignore `.serena/` (editor tool state, per-machine, not a repo artifact) with an ADR-016 rationale comment.
+- **Files touched:** `scripts/seed_memory_event.py`, `.gitignore`, `BUILD_LOG.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`.
+- **Rerun path (user, on Colossus):** just re-run the visual spec, no restart required. All infrastructure (BFF composed with MemoryPort, prod frontend on :3100) is already up.
+  ```
+  cd ~/dev/forge-oh && git pull
+  cd src
+  PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
+  PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+    npx playwright test tests/e2e/memory-inspector.spec.ts --reporter=list
+  ```
+- **Expected outcome:** seed step logs `[seed] wrote MemoryEvent id=...`; both screenshots auto-committed + pushed; pre-commit passes.

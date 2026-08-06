@@ -17,6 +17,14 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from pathlib import Path
+
+# openhands_tools_ext is a repo-local package (not pip-installed under
+# .oh-venv). Add REPO_ROOT to sys.path so this script works whether
+# invoked directly by Playwright or run from a shell inside the venv.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 
 async def _main() -> int:

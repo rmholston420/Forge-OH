@@ -1581,3 +1581,15 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
   2. `src/tests/e2e/memory-inspector.spec.ts` — prefer `.oh-venv/bin/python` for the seed helper (falls back to `python` on PATH). Keeps the seed working when Playwright is invoked from a shell without `.oh-venv` activated.
 - **Files changed:** `scripts/forge-up.sh`, `src/tests/e2e/memory-inspector.spec.ts`.
 - **Verified:** sandbox-only edits (Colossus verify pending user pull). Rerun path documented in SESSION_HANDOFF and in BUILD_LOG 2026-08-06 03:30 EDT entry below.
+
+## 2026-08-06 03:34 EDT — seed_memory_event.py ModuleNotFoundError; .serena/ ADR-016 violation blocks screenshot push
+- **Symptom A:** `ModuleNotFoundError: No module named 'openhands_tools_ext'` when Playwright ran `.oh-venv/bin/python scripts/seed_memory_event.py`. Spec continued (seed is non-fatal), but no new row was added — the assertion still passed because DozerDB already had `rows: 1` from a prior write.
+- **Symptom B:** Screenshot auto-push failed with `ADR-016 VIOLATION: Colossus<->GitHub mirror drift detected` — `.serena/.gitignore` and `.serena/project.yml` were untracked and unignored on Colossus.
+- **Affected:** Stage 5.6a live-DozerDB visual pass (both symptoms occurred in the same run).
+- **Root cause A:** `openhands_tools_ext` is a repo-local package, not pip-installed into `.oh-venv`. It's importable at runtime because the BFF adds REPO_ROOT to `sys.path` (uvicorn worker cwd), but a standalone script has no such setup. The venv-python-vs-PATH-python distinction was a red herring; the fix is `sys.path` bootstrap, not choosing a different interpreter.
+- **Root cause B:** Serena (an editor/assistant tool) creates `.serena/project.yml` + `.serena/.gitignore` in the workspace on first use. ADR-016 mandates every path is either tracked or explicitly ignored. Serena's state is per-machine noise, so it should be ignored, not tracked.
+- **Fix:**
+  - `scripts/seed_memory_event.py` — prepend `REPO_ROOT` (parent of `scripts/`) to `sys.path` if not already present. Works whether the script is invoked from the venv or PATH python.
+  - `.gitignore` — add `.serena/` with a rationale comment tying it to ADR-016.
+- **Files changed:** `scripts/seed_memory_event.py`, `.gitignore`.
+- **Verified:** sandbox edits only; Colossus re-run required.

@@ -100,6 +100,12 @@ storybook-static/
 .DS_Store
 .vercel
 
+# --- Editor / assistant tool state (per-machine, not a repo artifact) --------
+#   .serena/ — Serena editor tool workspace state (project.yml, cache). Added
+#              2026-08-06 to satisfy ADR-016 Colossus<->GitHub parity after
+#              seeing untracked-unignored files block the pre-commit hook.
+.serena/
+
 # =============================================================================
 # NOTE: The following rules were REMOVED in ADR-016 (2026-08-05):
 #   tests/    — directory does not exist on Colossus; tests/ belongs on GitHub per ADR-016
