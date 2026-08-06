@@ -55,32 +55,38 @@ def _mk_response(status_code: int, json_body: Any) -> httpx.Response:
 class _FakeUpstream:
     """Route-aware fake for agent-server.
 
-    Supports .get/.post/.delete on distinct URL suffixes.  Each response
-    is a callable that returns ``httpx.Response`` — the callable can
-    inspect the params/body if it needs to.
+    Matches on longest-substring first so more-specific patterns
+    (``/events/search``) win over their shorter parents
+    (``/api/conversations/run-1``).  Unmocked routes 404 loudly.
     """
 
     def __init__(self) -> None:
-        self._get_handlers: dict[str, Any] = {}
-        self._post_handlers: dict[str, Any] = {}
-        self._delete_handlers: dict[str, Any] = {}
+        self._get_handlers: list[tuple[str, httpx.Response]] = []
+        self._post_handlers: list[tuple[str, httpx.Response]] = []
+        self._delete_handlers: list[tuple[str, httpx.Response]] = []
         self.calls: list[tuple[str, str, dict[str, Any]]] = []
 
     def on_get(self, suffix: str, resp: httpx.Response) -> None:
-        self._get_handlers[suffix] = resp
+        self._get_handlers.append((suffix, resp))
 
     def on_post(self, suffix: str, resp: httpx.Response) -> None:
-        self._post_handlers[suffix] = resp
+        self._post_handlers.append((suffix, resp))
 
     def on_delete(self, suffix: str, resp: httpx.Response) -> None:
-        self._delete_handlers[suffix] = resp
+        self._delete_handlers.append((suffix, resp))
 
-    def _match(self, url: str, table: dict[str, Any]) -> httpx.Response:
-        for suffix, resp in table.items():
-            if url.endswith(suffix) or suffix in url:
-                return resp
-        # Default: 404 so tests fail loudly on unmocked routes.
-        return _mk_response(404, {"detail": f"unmocked {url}"})
+    def _match(
+        self, url: str, table: list[tuple[str, httpx.Response]]
+    ) -> httpx.Response:
+        # Sort by suffix length descending so the most specific pattern
+        # wins even when a shorter one is a strict prefix.
+        matches = [
+            (pat, resp) for pat, resp in table if pat in url
+        ]
+        if not matches:
+            return _mk_response(404, {"detail": f"unmocked {url}"})
+        matches.sort(key=lambda pair: len(pair[0]), reverse=True)
+        return matches[0][1]
 
     async def get(
         self, url: str, *, params: dict[str, Any] | None = None, **_: Any
@@ -591,7 +597,8 @@ class TestGetRunEventsHydratesShas:
             r = cli.get("/api/runs/run-1/events")
         assert r.status_code == 200, r.text
         body = r.json()
-        by_id = {e["event_id"]: e for e in body["data"]}
+        # normalize_event's output key is "id" (matches the wire event schema).
+        by_id = {e["id"]: e for e in body["data"]}
         assert by_id["ev-1"].get("commit_sha_at_time_of_event") == "c" * 40
         # Assistant events must never carry the key even when the lookup hits.
         assert "commit_sha_at_time_of_event" not in by_id["ev-2"]
