@@ -6966,3 +6966,27 @@ Next: Stage 7.1 begins after the queued 30-test benchmark confirms Stage 6 gains
   1. Path A baseline complete (need pass@1 number to compare against).
   2. Path B shakeout on one task (`--tasks django__django-11099 --dry-plan-only`) to verify BFF response shapes match assumptions.
   3. Full Path B smoke run once shakeout passes.
+
+## 2026-08-06 14:24 EDT — ADR-028 filed: Stage 7 deviation, capability slices renumbered to Stage 8
+
+**Stage / plugin / port**: Stage 7 sequencing + Stage 8 initialization · docs/ · no ports touched (planning-only)
+
+**What changed**: Filed [ADR-028](docs/adr/028-stage-7-deviation-topology-first-capability-slices-renumbered.md) resolving the three-way slice-number collision between `docs/reconciliation-plan-v1.md` §7 (canonical, terse), workspace-draft `Forge-OH-reconciliation-plan-v1-stage-7.md` (detailed closeout), and `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` (capability uplift, 7.0–7.9).
+
+- Workspace draft canonicalized as `docs/reconciliation-plan-stage-7.md` (474 lines, matches Stages 2/4/6 companion pattern).
+- `docs/reconciliation-plan-v1.md` §7 rewritten: 7.1–7.5 point at companion doc (7.1 + 7.4 execute now per option-C hybrid; 7.0/7.2/7.3/7.5 defer post-Stage-8); pre-ADR-028 canonical §7.2–§7.6 fold to renumbered deferred tail 7.6–7.10 (healthcheck / next-auth removal / webhook subscriber / VSCode-VNC takeover / ACA-v8 deferrals).
+- §Recommended Execution Order item 7 rewritten to reflect Stage 7.1 → 7.4 → Stage 8.0–8.9 → Stage 7 tail closeout ordering.
+- Council-Synthesis renumber 7.x → 8.x was pre-applied in the Perplexity project files repo at commit `8e093bc` (see ADR-028 §1 rollout).
+- 30-task + 500-task SWE-bench Verified gate explicitly waived for the Stage 6 → Stage 7 transition; Stage 6 baseline `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/` (Path A pass@1 = 33.3%, model c01) treated as reference. Stage 8.0.5 will re-baseline against an expanded ≥100-task smoke with McNemar telemetry as its first act.
+
+**Files touched**:
+- `docs/adr/028-stage-7-deviation-topology-first-capability-slices-renumbered.md` (new, 158 lines)
+- `docs/reconciliation-plan-stage-7.md` (new, 474 lines — canonicalized from workspace draft)
+- `docs/reconciliation-plan-v1.md` (§7 + §Recommended Execution Order item 7 rewritten)
+- `docs/adr/README.md` (+1 row)
+
+**Ports / adapters affected**: none — pure planning transaction.
+
+**PORTING_LEDGER / ADR updated**: ADR-028 filed; PORTING_LEDGER unchanged (companion §7.4 will audit it during execution).
+
+**Stop-condition status**: Stage 7 DoD (per ADR-028 §6) requires companion §7.1 exit checklist + companion §7.4 exit checklist + BUILD_LOG timestamps + SESSION_HANDOFF overwrite. Two remaining: companion §7.1 (docker-compose topology reconciliation, blocked on read-only Colossus dump from operator) + companion §7.4 (ledger audit, no prerequisites).
