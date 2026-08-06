@@ -153,13 +153,15 @@ Both are needed; they gate different tokens. Recommendation: adopt `LLMSummarizi
 
 **No new slice for this.** It rides on §8.0 (vLLM infra config bundle) as a configuration tweak in whatever module composes the agent. The condenser adoption is a compose-time choice, not a slice.
 
+**Amendment 2026-08-06 15:30 EDT:** During Slice 8.0 execution, discovered Forge-OH's BFF has no agent-compose site — it forwards runs to OpenHands agent-server on :8090, which owns the condenser process. The `LLMSummarizingCondenser` wiring cannot ride on §8.0 because there is nowhere to put it. Moving the condenser wiring to **Slice 8.6** (SDK Skills adoption), which will introduce the compose site as part of that slice's core work. Same `keep_first` + `max_tokens` recommendations above still apply; only the landing slice changes.
+
 ### D5 — Slices 8.0, 8.0.5, 8.3, 8.4, 8.5, 8.7, 8.8, 8.9 — hand-build with SDK affordances where they help
 
 Per-slice, the SDK either does not cover the primitive or covers it in a way that materially differs from Council-Synthesis's contract:
 
 | Slice | SDK affordance available | SDK covers the slice? | Decision |
 |---|---|---|---|
-| **8.0** (vLLM config bundle) | `LLMSummarizingCondenser.keep_first` (see D4) | No — it's vLLM config, not SDK code | Hand-build in `scripts/vllm_start.sh` and `docs/deployment-topology.md`. Adopt D4 condenser tweak at compose time. |
+| **8.0** (vLLM config bundle) | ~~`LLMSummarizingCondenser.keep_first` (see D4)~~ — deferred to §8.6 per D4 amendment 2026-08-06 15:30 EDT | No — it's vLLM config, not SDK code | Hand-build in `ops/vllm_launch_coder.sh` (canonical launcher; `scripts/vllm_start.sh` was the F.18 experimental path). Condenser tweak deferred to Slice 8.6. |
 | **8.0.5** (Measurement hardening) | None | No | Hand-build in `bench/`. |
 | **8.3** (Selection layer w/ LLM judge) | `openhands.sdk.agent.critic_mixin`, `openhands.sdk.agent.parallel_executor` | Partial — critic gives us the judge primitive; SDK doesn't ship a rank-aggregation function | HYBRID: adopt `critic_mixin` for the judge, hand-build the rank aggregator (trusted-tests > compiles > minimal-diff > judge tie-break with swapped-order). |
 | **8.4** (Path B tree-sitter localization) | None (RepoGraph is in Forge-OH's own ext package) | No | Hand-build; vendor tree-sitter via PORTING_LEDGER. |

@@ -5,6 +5,20 @@
 # INT4 AutoRound after F.1b instrumented rebench. Ratified via unanimous
 # 3-scorer Council pass. See docs/adr/013-qwen36-27b-canonical-coder-planner.md.
 #
+# Stage 8 Slice 8.0 (2026-08-06 15:30 EDT): serving-infra config bundle added.
+# Verified vLLM 0.26.0 in vllm/vllm-openai:latest (>= 0.10 required for
+# --long-prefill-token-threshold and --speculative-config JSON syntax).
+#   * --kv-cache-dtype fp8            (halves KV memory, enables 65k ceiling)
+#   * --max-model-len 32768 -> 65536  (closes 4 context-budget-skip tasks per
+#                                     KNOWN_ISSUES §68)
+#   * --enable-chunked-prefill        (long-prompt / decode co-scheduling)
+#   * --long-prefill-token-threshold 4096 (chunk prompts > 4k)
+#   * --speculative-config n-gram     (zero-VRAM spec-decode)
+# VRAM math: F.3 peak = 32,599 MiB @ concurrency=1. fp8 KV halves per-token
+# to 80 KiB; 65536 * 80 KiB = 5.0 GiB per active seq — identical footprint
+# to prior 32k*fp16 config. Raised ceiling is VRAM-neutral at concurrency=1.
+# See docs/reconciliation-plan-stage-8.md §8.0 for full rationale.
+#
 # Serves qwen3.6-27b-int4-autoround on :8501 as "qwen3.6-27b-int4-autoround".
 #
 # The Lorbus/Qwen3.6-27B-int4-AutoRound weights are packaged as compressed-
@@ -59,13 +73,17 @@ docker run -d --name "$CONTAINER" --gpus all \
   --served-model-name "$NAME" \
   --host 0.0.0.0 --port 8000 \
   --gpu-memory-utilization 0.90 \
-  --max-model-len 32768 \
+  --max-model-len 65536 \
   --max-num-seqs 128 \
   --dtype auto \
   --trust-remote-code \
   --tool-call-parser qwen3_coder \
   --enable-auto-tool-choice \
   --enable-prefix-caching \
+  --kv-cache-dtype fp8 \
+  --enable-chunked-prefill \
+  --long-prefill-token-threshold 4096 \
+  --speculative-config '{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}' \
   "$@"
 RC=$?
 if [ $RC -ne 0 ]; then

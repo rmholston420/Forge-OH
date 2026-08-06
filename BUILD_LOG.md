@@ -7192,3 +7192,24 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
 - **Ports / adapters affected:** none live; affects only bench-time tooling that shells into the native venv.
 - **PORTING_LEDGER / ADR updated:** —
 - **Stop-condition status:** deferred to F.19.5.
+
+## 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED: vLLM config bundle applied to ops/vllm_launch_coder.sh
+
+- **Stage / plugin / port:** Stage 8 · Slice 8.0 · coder vLLM launcher (:8501)
+- **What changed:**
+  - Verified vLLM version in `vllm/vllm-openai:latest` on Colossus = **0.26.0** (well above the 0.10 threshold; full flag block ratified).
+  - Applied to `ops/vllm_launch_coder.sh`:
+    * **Added**: `--kv-cache-dtype fp8`, `--enable-chunked-prefill`, `--long-prefill-token-threshold 4096`, `--speculative-config '{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}'`
+    * **Modified**: `--max-model-len 32768 → 65536`
+    * **Unchanged**: `--gpu-memory-utilization 0.90`, `--max-num-seqs 128`, `--dtype auto`, `--enable-prefix-caching`, `--tool-call-parser qwen3_coder`, `--enable-auto-tool-choice`, `--trust-remote-code`, all env vars
+  - Header comment block updated with Slice 8.0 rationale + verified vLLM version + VRAM math summary.
+  - DoD item 6 (condenser alignment) moved to Slice 8.6 — BFF has no agent-compose site (it forwards to OpenHands agent-server on :8090; condenser lives there). ADR-029 D4 amended inline.
+  - `docs/reconciliation-plan-stage-8.md` §8.0 updated: revision-history entry, DoD item 6 removal, Q1/Q3 status.
+  - `docs/adr/029-sdk-native-adoption-for-stage-8.md` D4 + D5 table row amended with 2026-08-06 15:30 EDT note.
+- **Files touched:**
+  - `ops/vllm_launch_coder.sh`
+  - `docs/reconciliation-plan-stage-8.md`
+  - `docs/adr/029-sdk-native-adoption-for-stage-8.md`
+- **Ports / adapters affected:** coder role on :8501; :8511 planner deferred to §8.0b (same bundle, mechanical copy).
+- **PORTING_LEDGER / ADR updated:** ADR-029 D4 amendment (in-doc, not a new ADR).
+- **Stop-condition status:** code change complete + pushed. **Next**: user restarts coder container + re-runs smoke-30 to attest DoD items 1–5.

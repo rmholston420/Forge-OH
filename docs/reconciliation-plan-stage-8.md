@@ -7,6 +7,7 @@
 **Revision history:**
 - 2026-08-06 15:12 EDT — initial draft targeted `scripts/vllm_start.sh` (F.18 GGUF experiment). Superseded within the hour.
 - 2026-08-06 15:24 EDT — retargeted to canonical `ops/vllm_launch_coder.sh` (Docker · int4-AutoRound) per ADR-013 amendment #1 + DEBUG_LOG 2026-08-03 18:34 EDT. VRAM math redone against actual F.3.0 concurrency=1 profile.
+- 2026-08-06 15:30 EDT — vLLM 0.26.0 confirmed in `vllm/vllm-openai:latest` (well above 0.10 threshold; full flag block ratified). DoD item 6 (condenser alignment) moved to Slice 8.6 — the compose site the condenser wiring needs does not exist yet in BFF (BFF forwards to OpenHands agent-server on :8090; condenser lives inside that process). ADR-029 D4 amended accordingly. Flag bundle applied to `ops/vllm_launch_coder.sh` in the same commit.
 
 ---
 
@@ -30,8 +31,9 @@ Because the pair never runs concurrently on the same GPU (32 GiB is not enough f
 3. `bench/pathF_swebench/` smoke-30 (same 30 tasks that produced Path A pass@1 = 33.3% baseline at `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/`) re-runs against the reconfigured launcher at `--concurrency 1` (F.3.0's operating point).
 4. Smoke-30 does not regress by more than **1 task** vs. the 33.3% baseline (10/30 tasks solved). Any regression greater than 1 task blocks the slice and forces the §Rollback strategy.
 5. The 4 context-budget-skipped tasks from KNOWN_ISSUES §68 (`django-15629`, `matplotlib-26208`, `sphinx-7590`, `sympy-14248`) no longer skip — they load and either pass or fail through the model, not through the harness's `context-budget-skip` short-circuit.
-6. **Condenser `keep_first` alignment** — `LLMSummarizingCondenser` config in whatever composes the Forge-OH agent (per [ADR-029 §D4](./adr/029-sdk-native-adoption-for-stage-8.md)) is set so its preserved prefix aligns with the vLLM APC prefix boundary. See §Condenser alignment below.
-7. BUILD_LOG entry timestamped at slice completion. SESSION_HANDOFF overwritten to point to §8.0b (planner-side copy). No PORTING_LEDGER entry — this slice adopts SDK primitives already vendored and adds no new OSS.
+6. BUILD_LOG entry timestamped at slice completion. SESSION_HANDOFF overwritten to point to §8.0b (planner-side copy). No PORTING_LEDGER entry — this slice is vLLM launcher config only; no code beyond the launcher flags.
+
+**Note:** Prior DoD item 6 (condenser `keep_first` alignment) is deferred to **Slice 8.6**. ADR-029 D4 originally proposed the condenser tweak ride on §8.0 as a compose-time change, but Forge-OH's BFF has no agent-compose site — it forwards to OpenHands agent-server on :8090, which owns the condenser process. Slice 8.6 (SDK Skills adoption) will introduce the compose site and wire `keep_first` there in the same commit.
 
 ### Stop condition (stricter than DoD, per ADR-028)
 
@@ -134,18 +136,14 @@ Under Slice 8.0 flags:
 
 **Peak-load contingency (Slice 8.0):** if a smoke-30 task hits sustained 65k prompts and preemption cascades, `--max-num-seqs 32` (from 128) tightens the admission-control ceiling. This is §Rollback item 2.
 
-### Condenser alignment (DoD item 6)
+### Condenser alignment — deferred to Slice 8.6
 
-Per [ADR-029 §D4](./adr/029-sdk-native-adoption-for-stage-8.md), `LLMSummarizingCondenser` gets composed into the Forge-OH agent stack (compose-time change, not a slice). The `keep_first` field must preserve enough events at the head of the conversation to cover the vLLM APC-cached prefix.
+Originally scoped as DoD item 6 for §8.0 (per ADR-029 D4). Deferred after discovering Forge-OH's BFF has no agent-compose site (BFF forwards to OpenHands agent-server on :8090; the condenser lives inside that process). Slice 8.6 (SDK Skills adoption) is the correct slice to introduce the compose site and wire `LLMSummarizingCondenser(keep_first=..., max_tokens=...)` there.
 
-vLLM APC caches at block granularity. **APC block size default is 16 tokens** (`--block-size 16` in vLLM ≥ 0.10). The condenser's "kept events" render to a prompt block via `to_prompt`; that block's token length is what must be a multiple of 16 to align cleanly.
-
-**Practical setting for Slice 8.0**:
-- The system prompt + task descriptor in Forge-OH's agent typically renders to ~1200 tokens (measured in `bench/pathF_swebench/` prompts).
-- `keep_first=4` (Council-Synthesis line 60 recommendation) preserves the first 4 events, which for Forge-OH's event schema is: `SystemPromptEvent`, `UserTaskEvent`, `RepoManifestEvent`, `PlanEvent`. Token count for this quadruple varies per task but is always ≥ 1024.
-- **Concrete value**: `keep_first=4` proposed. Alignment enforced at compose time via a helper (`bff/services/agent_compose.py::pad_prefix_to_apc_block` — a new one-function file, ≤ 20 LoC) that pads the last-event trailing whitespace to the next multiple of 16 tokens.
-
-If measurement in §8.0.5 shows the 4-event prefix routinely varies in token count by ≥ 16 tokens across tasks (which would cause frequent APC misses), we bump `keep_first` to 8.
+Setting details deferred to Slice 8.6:
+- vLLM APC block size default is 16 tokens (`--block-size 16` on vLLM ≥ 0.10; 0.26.0 confirmed on Colossus).
+- Council-Synthesis line 60 recommends `keep_first=4` (preserves system prompt + task + repo manifest + plan events).
+- Alignment padding to APC block boundary applied at compose time.
 
 ### Rollback strategy (if DoD item 4 fails)
 
@@ -163,21 +161,19 @@ Each rollback step is one commit. The bisect finishes in one bench run per step.
 ### Files touched (Slice 8.0)
 
 1. `ops/vllm_launch_coder.sh` — replace flag block (see §Flag matrix above).
-2. `bff/services/agent_compose.py` (new, ~20 LoC) — the APC-block-alignment helper for condenser `keep_first`.
-3. Whatever module composes the Forge-OH agent (locate at execution time; likely `bff/main.py` or a `bff/services/agent_factory.py`) — one call to the helper.
-4. `docs/reconciliation-plan-stage-8.md` (this file) — mark §8.0 status → **Ratified** when smoke-30 passes.
-5. `BUILD_LOG.md` — append slice-completion entry.
-6. `SESSION_HANDOFF.md` — overwrite to point to §8.0b (planner-side copy).
+2. `docs/reconciliation-plan-stage-8.md` (this file) — mark §8.0 status → **Ratified** when smoke-30 passes.
+3. `BUILD_LOG.md` — append slice-completion entry.
+4. `SESSION_HANDOFF.md` — overwrite to point to §8.0b (planner-side copy) + smoke re-baseline as the exact next action.
 
-### Open questions surfaced during draft (NON-BLOCKING for Slice 8.0 execution)
+**Zero code touched outside the launcher.** No BFF code, no Python. Pure vLLM launcher-flag change.
 
-**Q1: vLLM version inside `vllm/vllm-openai:latest` on Colossus.** `--long-prefill-token-threshold` and `--speculative-config` JSON syntax require vLLM ≥ 0.10.0. The `:latest` tag on Colossus was validated for F.19 (bench/f19pre) which used these features successfully at bench time, so ≥ 0.10 is nearly certain — but confirm with `docker run --rm vllm/vllm-openai:latest --version` before executing.
+### Open questions surfaced during draft
 
-**Q2: n-gram spec-decode acceptance rate on Qwen3.6-27B int4-AutoRound.** Council-Synthesis rates n-gram "modest" and workload-dependent. §8.0.5 will measure acceptance rate; §8.0 accepts n-gram on the "modest but stacks + zero VRAM" argument.
+**Q1: vLLM version.** **RESOLVED 2026-08-06 15:29 EDT** — `vllm/vllm-openai:latest` reports 0.26.0. Well above the 0.10 threshold; full flag block ratified.
 
-**Q3: `--block-size` default in this vLLM version.** The 16-token default assumed for §Condenser alignment. Verify at bench time; if different, adjust `pad_prefix_to_apc_block` constant accordingly.
+**Q2: n-gram spec-decode acceptance rate on Qwen3.6-27B int4-AutoRound.** DEFERRED to §8.0.5. Council-Synthesis rates n-gram "modest" and workload-dependent. §8.0.5 will measure acceptance rate; §8.0 accepts n-gram on the "modest but stacks + zero VRAM" argument.
 
-None of Q1/Q2/Q3 blocks drafting. Q1 is a 1-shot Colossus probe.
+**Q3: `--block-size` default in this vLLM version.** DEFERRED to Slice 8.6 (condenser wiring). No longer §8.0-relevant.
 
 ### Companion slice §8.0b (planner) — deferred to after §8.0 DoD
 
