@@ -1636,3 +1636,10 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
 - **Root cause:** Fresh install / never ran a real run on this Colossus session. Nothing to reuse.
 - **Fix applied:** extended `pickOrCreateConversation` with a fallback that creates a conversation via BFF `POST /api/runs` using the Ollama fallback preset (`ap-3`) — Ollama on :11434 is always up on Colossus, avoiding the vLLM coder dependency. Overridable via `FORGE_TEST_OLLAMA_PRESET_ID`.
 - **Files changed:** `src/tests/e2e/memory-timeline-marker.spec.ts`.
+
+## 2026-08-06 04:07 EDT — Playwright strict-mode: 🧠 matches 3 elements (Stage 5.6b)
+- **Symptom:** `getByText('🧠')` resolves to 3 nodes (sidebar Memory nav icon, EventCard icon, and one other decorative span); strict mode fails. Summary-text assertion passed — the EventCard is actually rendering correctly.
+- **Affected stage/plugin/port:** Stage 5.6b Playwright DoD spec.
+- **Root cause:** The 🧠 glyph is reused across the UI (sidebar nav icon for the Memory route + timeline event icon). A bare text query cannot disambiguate.
+- **Fix applied:** scope the icon assertion to the EventCard button. The EventCard's accessible name is the summary string (`aria-label` = summary), so `getByRole('button', { name: /^Memory consulted \(semantic\)/ })` uniquely identifies it, then `.getByText('🧠')` inside that button asserts the icon is present.
+- **Files changed:** `src/tests/e2e/memory-timeline-marker.spec.ts`.

@@ -232,7 +232,12 @@ async function waitForBrainCard(page: Page): Promise<void> {
   // race the socket handshake.
   const expectedSummary = `Memory consulted (semantic): "${CONSULT_QUERY}" — ${CONSULT_RESULT_COUNT} result(s)`;
   await expect(page.getByText(expectedSummary)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('🧠')).toBeVisible({ timeout: 5_000 });
+  // Scope the 🧠 assertion to the EventCard button (accessible name is
+  // the summary text). Bare getByText('🧠') would match the sidebar
+  // Memory nav icon and other decorative uses.
+  const eventCard = page.getByRole('button', { name: new RegExp('^Memory consulted \\(semantic\\)') });
+  await expect(eventCard).toBeVisible({ timeout: 5_000 });
+  await expect(eventCard.getByText('🧠')).toBeVisible({ timeout: 5_000 });
 }
 
 test.describe('Memory timeline marker — live emit (Stage 5.6b)', () => {
