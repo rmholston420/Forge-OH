@@ -7332,3 +7332,26 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
   - Cost knob default: `USD_PER_GPU_HOUR=0.60` chosen as rough cloud-parity for RTX 5090-tier (mid-2026 spot pricing bracket). CLI-overridable; setting echoed to summary for auditability. Colossus is single-user so the number is a knob, not a market rate.
 - **Stop-condition status:** MET. Slice 8.0.5 closed. §8.1 unblocked.
 - **Related BUILD_LOG:** 2026-08-06 18:25 EDT (Slice 8.0b closeout).
+
+## 2026-08-06 18:58 EDT — Slice 8.0.5 followup: SMOKE_100_TASK_IDS populated on Colossus
+
+- **Stage / plugin / port:** Stage 8 · Slice 8.0.5 (followup) · `bench/pathF_swebench` smoke set
+- **What changed:** Ran `scripts/generate_smoke_100.py` on Colossus against `~/.forge-oh/bench_pathF_swebench/20260805_1025_run/` (F.3 full-500). Patched the generated 100-ID list into `bench/pathF_swebench/bench_pathF_swebench.py` between the `<SMOKE_100_START>/<SMOKE_100_END>` markers. Verified strict-prefix invariant (first 30 IDs == `SMOKE_TASK_IDS` verbatim) and uniqueness. `--task-count 100 --dry-plan-only` resolves 100 tasks and exits cleanly. Committed as `6964179`, pushed to `origin/main`.
+- **Two generator issues surfaced and fixed in prior commit `eae7b30`:**
+  1. **Off-by-two over-allocation.** First run produced 102 IDs (72 extension). The min-1-per-bucket rebalance loop in `_stratified_sample()` over-allocates when the target is small and many small (repo × outcome) buckets exist. Fix: after sampling and sorting the extension deterministically, tail-trim to exactly `n_extension = 70` by sorted-instance-id drop. Deterministic given `seed=42`; dropped IDs are logged to stderr for audit. Tail-trimmed this run: `['sympy__sympy-22714', 'sympy__sympy-24066']`.
+  2. **Recipe divergence.** The reconstructed recipe (repo × outcome buckets, proportional quotas, min 1 per bucket, `seed=42`) does NOT reproduce the original 30-task set when run against the F.3 full-500 log — ~15 of 30 IDs differ (stderr enumerated 5 missing + 5 extra). Original 30's exact provenance is unrecovered. Consequence: the 30-prefix and the 70-extension are drawn under related but not identical procedures. The strict-prefix invariant (first 30 verbatim) is preserved; the extension is a valid stratified sample of `F.3 full-500 \ CURRENT_SMOKE_30`, but rate differences between prefix and extension should NOT be interpreted as meaningful signal. Documented in generator docstring, emitted list preamble, and `docs/reconciliation-plan-stage-8.md` §8.0.5.
+- **Verification (live on Colossus):**
+  - `len(SMOKE_100_TASK_IDS) == 100`
+  - `SMOKE_100_TASK_IDS[:30] == list(SMOKE_TASK_IDS)` (strict-prefix invariant)
+  - `len(set(SMOKE_100_TASK_IDS)) == 100` (uniqueness)
+  - `python3 -m bench.pathF_swebench.bench_pathF_swebench --task-count 100 --dry-plan-only` prints `[F.3 Path A] artifacts: /home/rmholston/.forge-oh/bench_pathF_swebench/20260806_1858_run` and exits 0
+  - ADR-016 Colossus↔GitHub parity check passed on commit
+- **Files touched:**
+  - `bench/pathF_swebench/bench_pathF_swebench.py` (SMOKE_100 body populated between markers)
+  - `scripts/generate_smoke_100.py` (already committed in `eae7b30`; no further edit)
+  - `docs/reconciliation-plan-stage-8.md` (already committed in `eae7b30`; no further edit)
+- **Ports / adapters affected:** none. Bench data only.
+- **PORTING_LEDGER / ADR updated:** none.
+- **Stop-condition status:** MET (Slice 8.0.5 followup complete). `--task-count 100` is now runnable end-to-end.
+- **Related BUILD_LOG:** 2026-08-06 18:46 EDT (Slice 8.0.5 harness ship).
+- **Deferred / carryover:** first actual 100-task attestation run is deferred to §8.1 (or wherever a "needs a bigger sample" claim first appears). Slice 8.0.5 only ships the mechanism; the empirical 100-task pass@1 belongs to whatever slice first invokes it.
