@@ -5836,3 +5836,44 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   - [ ] `/memory-inspector` reachable via sidebar, real writes with provenance/confidence visible (5.6a DoD screenshots already exist at screenshots/memory-inspector-{page,sidebar}.png).
   - [ ] Every ported file has a PORTING_LEDGER.md entry with the exact Kosmos commit hash.
 - **Next:** user runs the five commands + verifies the manual checklist, pastes any failures. If only the three known-pre-existing failures show up, gate passes and I write the "Stage 5 COMPLETE" entry + open Stage 6.1.
+
+## 2026-08-06 04:20 EDT — Stage 5 COMPLETE
+- **Exit-gate results (all commands run on Colossus):**
+  - `pytest bff/tests/ -q` → 484 passed, 2 failed (both pre-existing known-issue-listed: `TestHealthNoPassword` + `test_direct_sync_call_would_block_confirms_the_hazard`).
+  - `pytest openhands_tools_ext/tests/ -q` → **324/324 passed** (after `openhands_tools_ext/tests/gpu/__init__.py` fix in commit `1d34d29`).
+  - `pnpm typecheck` (tsc --noEmit) → exit 0.
+  - `pnpm test:unit` (vitest run) → 855 passed, 2 failed (both pre-existing known-issue-listed: `AgentPresetCard` + `gitDiff`).
+  - `pnpm build` (next build) → compiled successfully; static route `/memory-inspector` present.
+- **Manual checklist:** all Stage 5.6 DoD screenshots already on `origin/main` — `memory-timeline-marker.png` (5.6b), `memory-inspector-page.png` and `memory-inspector-sidebar.png` (5.6a). Ports, adapters, curation, provenance all logged in `PORTING_LEDGER.md` under Kosmos SHA `c455165bca0d645f0d43572d0c286dca7033d31d`.
+- **Stage 5 sub-stages shipped:**
+  - 5.1 Pure interface layer (ports/memory.py, vector.py, embeddings.py).
+  - 5.2 Qdrant VectorPort + Ollama EmbeddingsPort adapters.
+  - 5.3 DozerDB SemanticMemoryPath.
+  - 5.4 Zero-trust write enforcement + Provenance model.
+  - 5.5 ACE curation cycle.
+  - 5.6a Memory inspector page + `GET /api/memory/recent-writes`.
+  - 5.6b `consult_memory` tool + timeline marker.
+- **Stop condition met.** No open Stage 5 ambiguity. Ready to open Stage 6.1.
+
+## 2026-08-06 04:20 EDT — Stage 6.1 opened
+- **Scope (from reconciliation-plan-v1.md §6.1):** port Kosmos `SearchPort` + SearXNG adapter, deploy local SearXNG via Docker Compose, wrap as `openhands_tools_ext` tool.
+- **Donor (verified via `gh api`):** `github.com/rmholston420/kosmos` @ SHA `c455165bca0d645f0d43572d0c286dca7033d31d` (same SHA used for Stage 5 ports). Confirmed present:
+  - `ports/search.py` (2,692 bytes) — Protocol, `SearchResult`/`SearchResponse` dataclasses.
+  - `adapters/search/searxng/__init__.py` (209 bytes).
+  - `adapters/search/searxng/adapter.py` (8,061 bytes) — JSON-first with HTML-fallback.
+  - `adapters/search/searxng/test_contract.py` (2,158 bytes).
+- **Definition of Done:**
+  1. Port the four files verbatim into `openhands_tools_ext/search/` (mirroring Stage 5's `memory/ports/` layout).
+  2. Log the port in `PORTING_LEDGER.md` with SHA + SHA-256 equality proof.
+  3. Deploy local SearXNG via `ops/compose/searxng.yml` (or equivalent) reachable at `http://127.0.0.1:8888`.
+  4. Wrap as `openhands_tools_ext` tool that thin-calls `SearchPort.search()`, register in agent-server tool registry.
+  5. BFF endpoint `POST /api/search/emit` (mirrors 5.6b's `emit-consultation` pattern) so timeline can render distinct SearXNG event type.
+  6. Frontend: `event_normalize.py` maps new event kind → `EventCard` `Type` variant with query + source-list + provenance.
+  7. Verify: issue a research task, agent calls tool, SearXNG returns real results, provenance visible in run-detail timeline.
+- **Deferred (per §6.1 note):** Zetesis research-loop modules (`claim_support.py`, `cove.py`, `rubric_critique.py`, `self_consistency.py`) — NOT part of Stage 6.1.
+- **Open decisions requiring user input BEFORE any code is written:**
+  1. **SearXNG container image pin.** Preferred images: `searxng/searxng:latest` (rolling), specific tag like `searxng/searxng:2024.4.3-abc123`, or fork `docker.io/paulgauthier/searxng`? Recommend pin to a specific tag SHA to match Forge-OH's "no rolling tags" convention.
+  2. **Compose placement.** Add SearXNG to existing `docker-compose.yml` alongside DozerDB/Qdrant, or new `ops/compose/searxng.yml`? Recommend new file matching the split-compose pattern already established with `ops/compose/memory.yml`.
+  3. **Port binding.** Kosmos default `8888` — is that free on Colossus? Or bind to a Forge-OH-owned port (recommend `18888` to avoid collision risk with other local search UIs).
+  4. **SearXNG config.** Copy Kosmos's `settings.yml` verbatim, or start with a minimal Forge-OH-specific one? Impacts which engines (google/duckduckgo/brave) are enabled by default.
+- **Awaiting user answers on the four open decisions before touching any file.**

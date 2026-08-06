@@ -2,79 +2,77 @@
 
 ## Current stage
 
-**Stage 5 exit gate — IN PROGRESS (2026-08-06 04:14 EDT).**
+**Stage 6.1 — Ported SearXNG web-research tool (Kosmos `SearchPort`).**
+Opened 2026-08-06 04:20 EDT after Stage 5 exit gate passed. **Blocked on four open decisions** — see below.
 
-Stage 5.6 is fully shipped:
-- **5.6a** (memory-inspector page + `GET /api/memory/recent-writes`) shipped 2026-08-06 03:15 EDT, commit `7ea3201`, ADR-024.
-- **5.6b** (consult_memory tool + timeline marker) shipped 2026-08-06 04:08 EDT, commit trail `65d41e0 → fff2311 → 429a07d`.
+## Stage 5 status: COMPLETE
 
-Before opening Stage 6.1, the reconciliation-plan §"Stage 5 exit gate" must pass.
+All exit-gate commands passed on Colossus (2026-08-06 04:15–04:19 EDT):
 
-## Exit-gate — run this on Colossus and paste output
+- `pytest bff/tests/` → 484 passed, 2 failed (both known-ignorable in `KNOWN_ISSUES.md`).
+- `pytest openhands_tools_ext/tests/` → 324/324 passed.
+- `pnpm typecheck` → exit 0.
+- `pnpm test:unit` → 855 passed, 2 failed (both known-ignorable).
+- `pnpm build` → compiled successfully; `/memory-inspector` route present.
 
-```bash
-cd ~/dev/forge-oh && git pull
+DoD screenshots for 5.6a and 5.6b already on `origin/main`. Kosmos SHA for all Stage 5 ports: `c455165bca0d645f0d43572d0c286dca7033d31d`.
 
-# 1. Backend unit tests (37 files under bff/tests/).
-.oh-venv/bin/pytest bff/tests/ -q
+## Stage 6.1 scope (restated from reconciliation-plan-v1.md §6.1)
 
-# 2. Ported memory layer + tool tests (20 files under openhands_tools_ext/tests/).
-.oh-venv/bin/pytest openhands_tools_ext/tests/ -q
+1. Port Kosmos `SearchPort` + SearXNG adapter verbatim from `github.com/rmholston420/kosmos` @ SHA `c455165bca0d645f0d43572d0c286dca7033d31d`. Four files, ~13 KB total.
+2. Deploy local SearXNG via Docker Compose.
+3. Wrap as `openhands_tools_ext` tool that thin-calls `SearchPort.search()`.
+4. Frontend: distinct event type in run-detail timeline with query + source list + `provenance`.
+5. Verify: agent calls the tool, SearXNG returns real results, provenance visible in the UI.
 
-# 3. TypeScript type check.
-pnpm typecheck
+Zetesis research-loop modules (§6.1 optional follow-up) — **deferred**, not in Stage 6.1.
 
-# 4. Frontend unit tests (vitest).
-pnpm test:unit
+## Blocked — please answer these four questions before I write any code
 
-# 5. Production build (must exit 0).
-pnpm build
-```
+1. **SearXNG container image pin.**
+   - (a) Kosmos's exact image (whatever it uses in `ops/compose/searxng*.yml` if that exists) — I'll fetch and match.
+   - (b) `docker.io/searxng/searxng:latest` — rolling, easy but violates the "no rolling tags" convention.
+   - (c) Pin to a specific `searxng/searxng` tag by digest — I'll pick the most recent stable tag and record the digest in `PORTING_LEDGER.md`.
 
-**Known pre-existing failures** (documented in `KNOWN_ISSUES.md` — do NOT block the gate on these):
+2. **Compose placement.**
+   - (a) New file `ops/compose/searxng.yml` — matches the split-compose pattern established with `ops/compose/memory.yml`. **Recommended.**
+   - (b) Add SearXNG service to the existing top-level `docker-compose.yml`.
 
-- `bff/tests/test_repograph_router.py::TestHealthNoPassword::test_returns_error_when_password_missing` — DozerDB dev container accepts empty password; test expects hardened Neo4j behaviour.
-- `src/tests/unit/gitDiff.test.tsx :: FilesTab — Real git diff toggle > renders the toggle when run has a local workspace path` — pre-Stage-4 waitFor timeout.
-- `src/tests/unit/AgentPresetCard.test.tsx :: AgentPresetCard > renders name and model badge` — pre-Stage-4 query failure.
+3. **Host port binding.**
+   - (a) Kosmos default `8888` — simplest if free on Colossus.
+   - (b) Forge-OH-owned `18888` — avoids collision risk with other local search UIs.
+   - (c) Something else — specify.
 
-Anything else that fails should be pasted so I can triage it.
+4. **SearXNG config (`settings.yml`).**
+   - (a) Copy Kosmos's `settings.yml` verbatim if present at the pinned SHA.
+   - (b) Start with a minimal Forge-OH-specific config (google + duckduckgo enabled, everything else disabled).
 
-## Manual checklist (already-shipped items — one-time visual confirmation)
+**Default if you say "just make the optimal call":** 1c (specific tag + digest), 2a (new `ops/compose/searxng.yml`), 3b (`18888` binding), 4a (verbatim Kosmos config if it exists at the pinned SHA; otherwise 4b).
 
-Most items below are already covered by prior Playwright screenshots on `origin/main`; just confirm they still hold on your current Colossus state.
+## Once decisions are locked
 
-- [ ] `from openhands_tools_ext.memory.ports import memory, vector, embeddings` all import cleanly (one-line python check).
-- [ ] Qdrant + Ollama embeddings adapters live: `curl :11434/api/tags` returns embeddings model; Qdrant collection reachable (Stage 5.2 verify path).
-- [ ] DozerDB `search_semantic()` returns a real result (Stage 5.3 verify path).
-- [ ] Provenance-less write rejected at port layer (Stage 5.4 verify path).
-- [ ] ACE curation dedupe fires on a second identical observation (Stage 5.5 verify path).
-- [ ] `MemoryConsultation` events render on run-detail — **already screenshotted:** `screenshots/memory-timeline-marker.png` (Stage 5.6b DoD).
-- [ ] `/memory-inspector` reachable via sidebar with real writes — **already screenshotted:** `screenshots/memory-inspector-page.png` and `screenshots/memory-inspector-sidebar.png` (Stage 5.6a DoD).
-- [ ] Every ported file has a `PORTING_LEDGER.md` entry with Kosmos commit hash.
+1. `git fetch` the four donor files at pinned SHA, land them in `openhands_tools_ext/search/`.
+2. Write `PORTING_LEDGER.md` entry with SHA-256 equality proof for each file.
+3. Write `ops/compose/searxng.yml`, spin up on Colossus, `curl http://127.0.0.1:<port>/search?q=probe&format=json` returns 200.
+4. Add `openhands_tools_ext.search.tools.search_web` tool, `register_tool()` at agent-server import time (same auto-import pattern as `consult_memory`).
+5. Add `bff/routers/search.py` with `POST /api/search/emit` (mirrors `POST /api/memory/emit-consultation`).
+6. Extend `bff.services.event_normalize.normalize_event` to map new `search_web` event kind → normalized `web_search` type.
+7. Extend `EventCard` with a `web_search` variant (query, ranked result list with links, `provenance`).
+8. Playwright spec `search-timeline-marker.spec.ts` (mirrors `memory-timeline-marker.spec.ts`).
+9. Unit tests: `openhands_tools_ext/tests/search/test_search_tool.py`, `bff/tests/test_search_emit_endpoint.py`, contract test carried over from donor.
+10. Screenshot + BUILD_LOG + SESSION_HANDOFF closeout.
 
-## If everything passes
+## Out-of-scope follow-ups still tracked
 
-I write the "Stage 5 COMPLETE" BUILD_LOG entry and open Stage 6.1 (SearXNG port). Per the reconciliation plan:
-
-> **Stage 6.1 exact next action:** port Kosmos's `ports/search.py` and `adapters/search/searxng/adapter.py` verbatim, deploy local SearXNG via docker-compose, wrap as an `openhands_tools_ext` tool.
-
-Before touching Stage 6.1 code, I will restate the scope, ask about the docker-compose placement + SearXNG image pin, and confirm which Kosmos commit hash to source from.
-
-## If something unexpected fails
-
-Paste the failure block and I'll triage. If it's already logged in `KNOWN_ISSUES.md` we ignore it for the gate; otherwise it becomes a debug task before Stage 5 closes.
-
-## Open follow-up (out of Stage 5 scope, still tracked)
-
-- **BFF `blocked`-routing path returns `data.id=""`** — surfaced during Stage 5.6b DoD. When routing fails (e.g. vLLM coder down), `POST /api/runs` returns HTTP 200 with an empty `data.id`. Frontend cannot render a blocked run. Recommend synthesized id or 503. Details in `DEBUG_LOG.md` (2026-08-06 04:00 EDT). Needs its own ADR + KNOWN_ISSUES entry when picked up.
+- **BFF `blocked`-routing path returns `data.id=""`** — surfaced Stage 5.6b DoD. Frontend cannot render a blocked run. Recommend synthesized id or 503. Details in `DEBUG_LOG.md` (2026-08-06 04:00 EDT). Needs ADR + `KNOWN_ISSUES` entry when picked up.
+- **`test_direct_sync_call_would_block_confirms_the_hazard`** — broken test premise, out of Stage 5 scope. See `KNOWN_ISSUES.md` 2026-08-06 04:17 EDT.
 
 ## Recent commit trail on `origin/main`
 
-- `429a07d` — Stage 5.6b close-out (SESSION_HANDOFF + BUILD_LOG)
-- `fff2311` — Playwright screenshot auto-push (5.6b DoD)
-- `4b9a60f` — Stage 5.6b fixup #4 (🧠 EventCard scope)
-- `74cf797` — Stage 5.6b fixup #3 (registry closure + ap-3 fallback)
-- `95ab726` — Stage 5.6b fixup #2 (registry-dict probe + vLLM-independent DoD)
-- `981ba99` — Stage 5.6b fixup #1 (resolve_tool signature + PLAYWRIGHT_START_PROD)
-- `65d41e0` — Stage 5.6b initial code
-- `7ea3201` — Stage 5.6a (memory-inspector + recent-writes)
+- `1d34d29` — openhands_tools_ext gpu `__init__.py` fix + hazard-test known-issue log.
+- `de7b2d2` — Stage 5 exit gate initiated (BUILD_LOG + SESSION_HANDOFF).
+- `429a07d` — Stage 5.6b close-out.
+- `fff2311` — 5.6b Playwright screenshot auto-push.
+- `4b9a60f`, `74cf797`, `95ab726`, `981ba99` — 5.6b fixups.
+- `65d41e0` — Stage 5.6b initial code.
+- `7ea3201` — Stage 5.6a.
