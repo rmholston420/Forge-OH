@@ -6652,3 +6652,27 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Files touched**:
   - `src/app/(dashboard)/runs/[runId]/page.tsx`
   - `BUILD_LOG.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`
+
+## 2026-08-06 09:35 EDT — Branch cleanup: rescue 4 unique docs from audit/frontend-backend-parity
+
+- **Stage/plugin/port**: repo hygiene · docs · pre-F.20 planning.
+- **Trigger**: user asked whether unmerged branches on origin held real work.  Diff analysis showed 4 stale branches whose code was either squash-merged into main or superseded by more complete implementations, EXCEPT for 4 docs on `audit/frontend-backend-parity` (598 lines total) that are actively referenced by the ADR index but had never landed.
+- **Files rescued** (extracted verbatim from `origin/audit/frontend-backend-parity` @ `9058ff6`):
+  - `docs/adr/010-frontend-parity-scope.md` (54 lines) — Proposed ADR locking F.20–F.31 scope decisions Q1/Q2/Q3.
+  - `docs/decisions/2026-08-03-frontend-parity-plan.md` (127 lines) — F.20–F.31 slice-by-slice execution plan.
+  - `docs/frontend-backend-gap.md` (171 lines) — parity audit report identifying 12 gaps.
+  - `docs/kosmos-plugin-analysis.md` (246 lines) — Kosmos plugin conversion analysis (verdict: NOT NOW; revisit at Phase 5).
+- **ADR index updated**: `docs/adr/README.md` — removed the stale "ADR-010 is a historical skip" note; added ADR-010 row with Status=Proposed.
+- **Branches to be pruned after this commit**:
+  - `slice/stage1-reconciliation-v1` — squashed as #5, only StatusBadge (now Badge on main) as unique adds. Delete.
+  - `slice/dual-mode-routing-adr` — squashed as #6, same. Delete.
+  - `audit/frontend-backend-parity` — after this commit lands, 0 unique files remain. Delete.
+  - `slice/coder-planner-rebench` — 52 commits, but ALL outputs (ADR-013 amendments, bench/pathF_swebench, ADR-015/016/017, F.3 harness) already on main. Archive-only. Keep for reference for one week then delete.
+  - 11 auto-generated `agent/screenshots-*` branches — Playwright artifacts. Delete.
+- **Files touched**:
+  - `docs/adr/010-frontend-parity-scope.md` (new)
+  - `docs/decisions/2026-08-03-frontend-parity-plan.md` (new)
+  - `docs/frontend-backend-gap.md` (new)
+  - `docs/kosmos-plugin-analysis.md` (new)
+  - `docs/adr/README.md` (ADR-010 row added; stale note removed)
+  - `BUILD_LOG.md`
