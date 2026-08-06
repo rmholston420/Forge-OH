@@ -20,6 +20,10 @@ Slice 7A (derived from event stream):
 Slice 7B (real passthrough):
   POST /runs/{id}/fork       → agent-server POST /api/conversations/{id}/fork
 
+Stage 6.4b (ADR-025):
+  DELETE /runs/{id}          → agent-server DELETE /api/conversations/{id}
+                                + reap per-run worktree under WORKTREE_ROOT.
+
 Slice 7F (derived from event stream):
   GET  /runs/{id}/traces     → spans from ActionEvents + MessageEvents
 
@@ -60,6 +64,11 @@ from bff.services.model_router import (
     route_by_role,
 )
 from bff.services.sidecar import seed_sidecar
+from bff.services.worktree import (
+    WorktreeError,
+    provision_worktree,
+    remove_worktree,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -345,6 +354,44 @@ async def create_run(body: CreateRunRequest) -> dict:
     except Exception as exc:
         log.warning("create_run: workspace lookup failed, using default: %s", exc)
 
+    # 2.5) Stage 6.4b (ADR-025): provision an isolated per-run git worktree
+    #      OFF the workspace path so concurrent runs against the same
+    #      workspace get independent filesystem views.
+    #
+    #      A1 (fallback):   non-git workspaces log-and-pass-through with
+    #                       the raw path.  Concurrent runs against them
+    #                       still collide, but nothing NEW breaks.
+    #      C1 (leak guard): on any create-path failure below, best-effort
+    #                       remove_worktree(worktree_run_id, missing_ok=True).
+    #
+    #      Why we don't rename to <cid> after agent-server assigns it:
+    #      agent-server has already been given the working_dir; renaming
+    #      the filesystem path (or using `git worktree move`) invalidates
+    #      the working_dir agent-server holds in memory.  We keep the
+    #      pending name and recover it at delete time by reading
+    #      ``conv.workspace.working_dir`` — the last path segment is
+    #      the run_id we passed to provision_worktree.
+    import uuid as _uuid  # local import to avoid polluting module top
+    worktree_run_id = f"run-{_uuid.uuid4().hex[:12]}"
+    worktree_provisioned: Path | None = None
+    original_working_dir = working_dir
+    try:
+        info = provision_worktree(worktree_run_id, Path(working_dir))
+        worktree_provisioned = info.path
+        working_dir = str(info.path)
+        log.info(
+            "create_run: provisioned worktree %s off %s",
+            worktree_run_id, original_working_dir,
+        )
+    except WorktreeError as exc:
+        # Not a git repo, missing, or other structural failure.  A1:
+        # log and continue with the raw path.  Cross-run isolation is
+        # forfeited for this workspace until it's initialised.
+        log.info(
+            "create_run: skipping worktree for %s (%s); using raw path",
+            body.workspaceId, exc,
+        )
+
     # 3) Create conversation on agent-server.
     create_body = {
         "workspace": {
@@ -392,13 +439,46 @@ async def create_run(body: CreateRunRequest) -> dict:
         create_resp = await client.post("/api/conversations", json=create_body)
         create_resp.raise_for_status()
     except Exception as exc:
+        # C1: agent-server create failed after we may have provisioned a
+        # worktree.  Best-effort cleanup so we don't leak filesystem
+        # state on every failed run creation.
+        if worktree_provisioned is not None:
+            try:
+                remove_worktree(worktree_run_id, missing_ok=True)
+                log.info(
+                    "create_run: rolled back worktree %s after agent-server failure",
+                    worktree_run_id,
+                )
+            except Exception as cleanup_exc:  # pragma: no cover - defensive
+                log.warning(
+                    "create_run: worktree cleanup for %s failed: %s",
+                    worktree_run_id, cleanup_exc,
+                )
         log.exception("create_run: /api/conversations failed")
         raise HTTPException(status_code=502, detail=f"agent-server create failed: {exc}") from exc
 
     conv = create_resp.json()
     cid = conv.get("id")
     if not cid:
+        # C1: worktree leak protection on the missing-cid branch too.
+        if worktree_provisioned is not None:
+            try:
+                remove_worktree(worktree_run_id, missing_ok=True)
+            except Exception as cleanup_exc:  # pragma: no cover - defensive
+                log.warning(
+                    "create_run: worktree cleanup after missing cid failed: %s",
+                    cleanup_exc,
+                )
         raise HTTPException(status_code=502, detail="agent-server returned no conversation id")
+
+    # Note on worktree naming: the worktree stays under its pending name
+    # for the run's entire lifetime.  We do NOT rename it to <cid>
+    # because agent-server has already been told its working_dir is the
+    # pending path — a rename would break agent-server's file access.
+    # `git worktree move` is functionally similar but the same constraint
+    # applies.  On delete we recover the pending name by reading
+    # ``conv.workspace.working_dir`` from agent-server; the last path
+    # segment IS the run_id we passed to `provision_worktree`.
 
     # 3.5) Slice F.12 — seed the trajectory sidecar so the STOP hook has
     #     a real task_description to attribute the run to. Best-effort:
@@ -568,6 +648,70 @@ async def get_run(run_id: str) -> dict:
     start_relay(run_id)
     path_to_id = await _workspace_path_to_id_map()
     return {"data": _conv_to_run_summary(resp.json(), path_to_id)}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /runs/{run_id}  — Stage 6.4b step 2 (B2): proxy to agent-server
+# delete + reap the per-run worktree.
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/runs/{run_id}", status_code=204)
+async def delete_run(run_id: str) -> None:
+    """Delete a run and reap its worktree.
+
+    Order:
+      1. Fetch conversation to recover working_dir (worktree path).
+      2. Ask agent-server to delete the conversation.
+      3. Remove the worktree (missing_ok=True; non-git or already-removed
+         is fine).  Runs against non-git workspaces never provisioned a
+         worktree in the first place, so this is a no-op there.
+
+    Failures on step 3 log a warning but don't fail the request — the
+    conversation is already gone; a stray worktree is discoverable via
+    list_worktrees() and reapable by a future GC slice.
+    """
+    client = get_client()
+
+    # 1) Fetch the conversation.  If agent-server is down we can't
+    #    recover the worktree name reliably, so fail loudly.
+    try:
+        get_resp = await client.get(f"/api/conversations/{run_id}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"agent-server unreachable: {exc}") from exc
+    if get_resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="run not found")
+    get_resp.raise_for_status()
+
+    conv = get_resp.json() or {}
+    working_dir = (conv.get("workspace") or {}).get("working_dir") or ""
+    # Only run_ids we minted ("run-<hex12>") should be reaped; treat any
+    # other tail segment as a non-managed path and skip removal.
+    tail = Path(working_dir).name if working_dir else ""
+    worktree_run_id = tail if tail.startswith("run-") else None
+
+    # 2) Delete on agent-server.  409/404 both mean "already gone" and
+    #    we treat as success so we can still reap the worktree.
+    try:
+        del_resp = await client.delete(f"/api/conversations/{run_id}")
+        if del_resp.status_code not in (200, 202, 204, 404, 409):
+            del_resp.raise_for_status()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.warning("delete_run: agent-server delete failed for %s: %s", run_id, exc)
+
+    # 3) Reap worktree.  missing_ok=True: idempotent by design.
+    if worktree_run_id:
+        try:
+            remove_worktree(worktree_run_id, missing_ok=True)
+            log.info("delete_run: reaped worktree %s for run %s", worktree_run_id, run_id)
+        except Exception as exc:
+            log.warning(
+                "delete_run: failed to reap worktree %s for run %s: %s",
+                worktree_run_id, run_id, exc,
+            )
+    return None
 
 
 # ---------------------------------------------------------------------------

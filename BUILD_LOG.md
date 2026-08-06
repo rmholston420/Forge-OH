@@ -6299,3 +6299,25 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Ports/adapters affected:** none yet (design-only commit). Next commit touches `bff/routers/runs.py`, `bff/services/event_relay.py`, `bff/services/run_compare.py`, `bff/services/metrics_aggregation.py`.
 - **PORTING_LEDGER:** N/A — no vendored code (native git plumbing via subprocess).
 - **Stop-condition status (6.4b):** NOT YET MET. See ADR-025 §Decision · Stage 6.4b bullet. DoD = two concurrent runs against the same workspace do not observe each other's file changes; `git worktree list` shows both; `run_compare` still works between them.
+
+## 2026-08-06 07:12 EDT — Stage 6.4b step 1 · GREEN (bff.services.worktree landed)
+
+- **What shipped:** `bff/services/worktree.py` (native git-worktree provisioning primitive) + `bff/tests/test_worktree_service.py` (23 unit tests including the 6.4b DoD isolation invariant).
+- **Commits:** `e325a3c` (initial) + `13f181b` (defer-default-root fix so `Path.home` monkeypatch works in tests).
+- **Verification on Colossus:** `pytest bff/tests/test_worktree_service.py -v` → **23 passed in 0.16 s**. Zero failures, zero warnings.
+- **Coverage highlights:**
+  - `provision_worktree` happy path + git-worktree registration probe (source repo's `git worktree list --porcelain` sees the new entry).
+  - Duplicate-run-id rejection.
+  - Non-git and non-existent source rejection.
+  - `remove_worktree` cleans up both filesystem AND git admin state.
+  - `remove_worktree(missing_ok=True)` is a no-op on unknown ids.
+  - Filesystem-fallback path (corrupted `.git` pointer) still cleans up.
+  - Safety-guard rejects 7 path-traversal / separator / leading-dot run_ids.
+  - `_assert_under_root` refuses to operate on paths outside `WORKTREE_ROOT` even when they exist.
+  - **6.4b DoD invariant:** two worktrees off the same source repo write independent files; neither observes the other's changes; source repo (detached HEAD) sees neither.
+- **Stage/plugin/port:** Stage 6.4b · new port `bff.services.worktree` (env-driven via `FORGE_WORKTREE_ROOT`).
+- **Files touched:** `bff/services/worktree.py`, `bff/tests/test_worktree_service.py`.
+- **Ports/adapters affected:** none downstream yet — step 1 is the primitive only. Step 2 wires it into `bff/routers/runs.py`.
+- **PORTING_LEDGER:** N/A (native git plumbing via subprocess; no OSS vendoring).
+- **ADR reference:** ADR-025 §Decision · Stage 6.4b.
+- **Stop-condition status (6.4b):** primitive in place — DoD not yet met. Next: step 2 (run-lifecycle wiring) + step 3 (read-path updates) + step 5 (FE chip) + step 6 (Colossus concurrency verify).
