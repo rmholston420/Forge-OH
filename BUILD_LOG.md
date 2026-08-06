@@ -6788,3 +6788,16 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Known follow-up (out of scope for §6.5.3)**: `RunSummarySchema` exposes `agentPresetName` but not `agentPresetId`. The modal currently falls back to `presets[0]` for preselection when no explicit `currentAgentPresetId` is passed. Wiring the current preset ID cleanly requires either (a) adding `agentPresetId` to `RunSummarySchema` + the BFF row (surface change) or (b) resolving the name → ID client-side from the preset list. Filed as a note in the page.tsx mount — not blocking §6.5.3 DoD because the fallback works and the modal's Confirm step is explicit.
 - **Verification**: sandbox has no `node_modules` (fresh checkout); TS + Vitest + Playwright run on Colossus after push.
 - **Stop-condition status**: §6.5.3 code + tests landed; Colossus verify pending.
+
+## 2026-08-06 10:16 EDT — Stage 6.5.3 CLOSED · Colossus verified
+
+- **Verification pass on Colossus at `19d3f90`**:
+  - **Vitest**: 7/7 green in 800ms (`domain-RunModelSwitchModal.test.tsx`) — MSW-mocked 200 happy, 404 preset-not-found, 422 preset_model_incompatible_for_role, 503 model-unavailable, plus title+preselect / no-op disabled / cancel.
+  - **forge-restart.sh**: agent-server :8090 · BFF :8081 · Next dev :3000 all `alive · match`.
+  - **Production build**: `npm run build` succeeded; `next start -H 127.0.0.1 -p 3100` returned `prod=200` on `/runs`.
+  - **Playwright** (`tests/e2e/run-model-switch.spec.ts`): 2 tests · 2 skipped cleanly (no running/paused run on BFF at verify time; `test.skip(!runId, ...)` guard fired as designed — same pattern as `run-fork.spec.ts`). No failures, no timeouts.
+- **Stop-condition status**: **§6.5.3 CLOSED**. `POST /api/runs/{run_id}/model` port is now wired frontend-to-BFF. Mid-run model switching is user-accessible on any running or paused run.
+- **Deferred (not blocking)**:
+  1. Playwright live-path — assert the `🔀 Switch model` button actually renders + modal opens against a real running run. Needs a fixture run in `running`/`paused` state; can be picked up when we add e2e run-fixture seeding.
+  2. Expose `agentPresetId` on `RunSummarySchema` so the modal can preselect the current preset instead of falling back to `presets[0]`.
+- **Files touched** (verified on Colossus): 7 modified + 3 new — same list as the `Stage 6.5.3` commit at `19d3f90`.

@@ -1,59 +1,41 @@
-# SESSION HANDOFF — 2026-08-06 10:22 EDT
+# SESSION HANDOFF — 2026-08-06 10:17 EDT
 
 ## Current build-sequencing stage / plugin / port
 
-**Stage 6.5 · Runtime model switching**
+**Stage 6.5 · Runtime model switching — ALL SUBSTAGES CLOSED**
 
-- §6.5.1 CLOSED (verdict PRESENT-as-REST, ADR-027 Ratified)
-- §6.5.2 CLOSED (BFF endpoint `POST /runs/{run_id}/model` shipped, 32/32 tests green on Colossus at `f58f66c`)
-- **§6.5.3 CODE LANDED — awaiting Colossus verify**
+- §6.5.1 CLOSED — verdict PRESENT-as-REST, ADR-027 Ratified (`936b5e7`)
+- §6.5.2 CLOSED — BFF endpoint `POST /runs/{run_id}/model`, 32/32 tests green on Colossus (`f58f66c`)
+- **§6.5.3 CLOSED** — Frontend `RunModelSwitchModal` + header button, 7/7 Vitest + Playwright skip-guard verified on Colossus (`19d3f90`)
+
+Stage 6.5 stop-condition — "user can change the LLM of a running conversation from the run-detail header, error paths surface distinct user-visible messages" — is met.
 
 ## What was completed this session
 
-1. §6.5.3 UI slice implemented in `/tmp/forge-oh-work`:
-   - `RunModelSwitchModal.tsx` — preset picker + Confirm/Cancel, ADR-027 error-contract mapping (200 / 404 / 422 / 503 / 502 → distinct Banner messages).
-   - `useSwitchRunModel()` mutation hook mirroring `useRestartRun`.
-   - `switchRunModel()` API function + `ENDPOINTS.RUNS.model(runId)`.
-   - `RunDetailHeader.tsx` — `🔀 Switch model` button rendered only when `isRunning || isPaused` AND `onSwitchModel` prop is provided.
-   - `runs/[runId]/page.tsx` — modal mounted + `modelSwitchOpen` state wired.
-   - Vitest: 6 cases (title/preselect, no-op disabled, cancel, 200, 422, 503, 404) via MSW.
-   - Playwright e2e: 2 cases (button visible on eligible run + modal open/cancel), skips cleanly when no running/paused run exists.
-2. BUILD_LOG entry appended with full slice ledger.
+1. §6.5.3 UI slice implemented, pushed as `19d3f90`.
+2. Colossus verify pass at `2026-08-06 10:16 EDT`:
+   - Vitest 7/7 green in 800ms.
+   - `forge-restart.sh` clean (agent-server / BFF / Next dev all `alive · match`).
+   - Production build `prod=200` on `:3100`.
+   - Playwright 2 tests / 2 skipped cleanly (no eligible run on BFF at verify time — skip-guard behaved as designed).
+3. BUILD_LOG appended with `Stage 6.5.3 CLOSED · Colossus verified` entry.
 
-## What remains before §6.5.3 DoD is met
+## What comes next
 
-1. **Push to origin/main** (this session).
-2. **Colossus verify** — pull, install (should be no-op), run Vitest + production-build Playwright:
-   ```bash
-   cd ~/dev/forge-oh
-   git pull
-   npm ci
-   npx vitest run src/tests/unit/domain-RunModelSwitchModal.test.tsx
-   bash scripts/forge-restart.sh
-   fuser -k 3100/tcp 2>/dev/null; sleep 2
-   npm run build 2>&1 | tail -8
-   NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \
-     nohup npx next start -H 127.0.0.1 -p 3100 >~/.forge-oh/next-prod.log 2>&1 &
-   sleep 6
-   curl -sf http://127.0.0.1:3100/runs >/dev/null && echo OK
-   cd src
-   PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
-     npx playwright test tests/e2e/run-model-switch.spec.ts --reporter=list
-   ```
-3. If Playwright green → §6.5.3 CLOSED. Update SESSION_HANDOFF to point at §6.5.4 (BUILD_LOG entry timestamped with real Colossus verify time).
+**Stage 6.6** or the next unblocked slice in `docs/reconciliation-plan-v1.md` — the specific target has NOT been chosen yet. Load `reconciliation-plan-v1.md` on next session start and restate scope before writing code.
+
+Two follow-ups from §6.5.3 that are queued but not yet scheduled:
+
+1. **Playwright live-path**: assert `🔀 Switch model` button + modal render against a real running fixture run. Needs an e2e run-fixture seeder (also useful for `run-fork.spec.ts`, `run-detail.spec.ts`, etc. — cross-cutting). File as its own micro-slice when we start the e2e-fixture layer.
+2. **Expose `agentPresetId` on `RunSummarySchema`**: currently the modal falls back to `presets[0]` for preselection because only `agentPresetName` is on the RunSummary row. Small BFF change (populate the field in `_run_summary_from_ledger` or wherever RunSummary is built) + schema addition. Filed inline in `runs/[runId]/page.tsx` as a comment.
 
 ## Open questions / ambiguities awaiting user answer
 
-None blocking. One known follow-up filed inline in `page.tsx`: `RunSummary` doesn't expose `agentPresetId`, only `agentPresetName`. Wiring the current preset ID cleanly requires a separate micro-slice (add `agentPresetId` to `RunSummarySchema` + BFF row). Fallback (preset[0] preselection) is functional; user always confirms via the modal's Switch button.
+None. Ready to pick the next slice.
 
-## Commit stack on origin/main (pending push of §6.5.3)
+## Commit stack on origin/main
 
-Local stack (sandbox `/tmp/forge-oh-work`, not yet pushed):
-
-- **PENDING** — `Stage 6.5.3: RunModelSwitchModal + header button (ADR-027)` — this session's slice
-
-Already on origin:
-
+- `19d3f90` **Stage 6.5.3: RunModelSwitchModal + header button (ADR-027)** ← §6.5.3 code
 - `3037569` SESSION_HANDOFF: Stage 6.5.2 CLOSED + §6.5.3 spec supersession noted
 - `f58f66c` Stage 6.5.2: POST /runs/{run_id}/model (ADR-027) with 14 pytest cases
 - `0242347` ADR-012 §3 micro-slice: MODEL_ROUTER_CATALOG + compatibility oracle
@@ -62,6 +44,5 @@ Already on origin:
 
 ## Exact next action
 
-1. Commit + push (this session, right after this SESSION_HANDOFF write).
-2. On next session start: run the Colossus verify block above.
-3. If green: append final `Stage 6.5.3 CLOSED · Colossus verified` BUILD_LOG entry with the timestamp, overwrite SESSION_HANDOFF for §6.5.4.
+1. On next session start: load `forge-oh-slice-driver` (auto), read this handoff (auto), then read `docs/reconciliation-plan-v1.md` and restate the scope of the next stage/slice before writing any code.
+2. Confirm with user which of the deferred §6.5.3 follow-ups (if any) to fold in vs. defer further.
