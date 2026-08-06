@@ -146,12 +146,17 @@ test.afterAll(() => {
 async function pickOrCreateConversation(
   request: import('@playwright/test').APIRequestContext,
 ): Promise<string> {
+  // 1. Try to reuse any existing conversation on agent-server. A terminal
+  //    or failed conversation still works as a socket room — we just want
+  //    a valid conversationId to inject events into.
   const listResp = await request.get(`${AGENT_URL}/api/conversations`).catch(() => null);
   if (listResp && listResp.ok()) {
     const body = await listResp.json();
     const items: Array<{ id?: string }> = Array.isArray(body)
       ? body
       : (body?.items ?? body?.data ?? []);
+    // eslint-disable-next-line no-console
+    console.log('[fork-from-here] agent /api/conversations items=', items.length);
     for (const it of items) {
       if (it && typeof it.id === 'string' && it.id.length > 0) {
         // eslint-disable-next-line no-console
@@ -159,8 +164,39 @@ async function pickOrCreateConversation(
         return it.id;
       }
     }
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(
+      '[fork-from-here] agent /api/conversations list failed status=',
+      listResp?.status(),
+    );
   }
 
+  // 2. Try creating a bare conversation directly on agent-server (no BFF
+  //    routing pre-check, no LLM required). This is the surface used by
+  //    the SDK's own tests — POST /api/conversations with an empty body.
+  const agentCreate = await request.post(`${AGENT_URL}/api/conversations`, {
+    data: {},
+  }).catch(() => null);
+  if (agentCreate && agentCreate.ok()) {
+    const body = await agentCreate.json().catch(() => null);
+    const id: string | undefined = body?.id || body?.data?.id || body?.conversation_id;
+    if (id) {
+      // eslint-disable-next-line no-console
+      console.log('[fork-from-here] created bare conversation on agent-server id:', id);
+      return id;
+    }
+  } else if (agentCreate) {
+    // eslint-disable-next-line no-console
+    console.log(
+      '[fork-from-here] agent POST /api/conversations status=',
+      agentCreate.status(),
+      'body=',
+      (await agentCreate.text().catch(() => '')).slice(0, 200),
+    );
+  }
+
+  // 3. Last-resort fallback — BFF's /api/runs (requires routing to be up).
   const res = await request.post(`${BFF_URL}/api/runs`, {
     data: {
       title: 'Stage 6.4 fork-from-here DoD',
@@ -177,10 +213,14 @@ async function pickOrCreateConversation(
     /* non-JSON body */
   }
   const id: string | undefined = body?.data?.id;
-  if (!res.ok() || !id) {
+  const status: string | undefined = body?.data?.status;
+  if (!res.ok() || !id || status === 'blocked') {
     throw new Error(
-      `Could not synthesize a conversation via preset ${OLLAMA_PRESET_ID}. ` +
-        `HTTP ${res.status()} body=${text.slice(0, 400)}`,
+      `Could not synthesize a conversation. All three paths failed:\n` +
+        `  1. agent-server list returned no conversations\n` +
+        `  2. agent-server POST /api/conversations rejected the create\n` +
+        `  3. BFF POST /api/runs returned HTTP ${res.status()} status=${status ?? 'n/a'}\n` +
+        `  body=${text.slice(0, 400)}`,
     );
   }
   return id;
