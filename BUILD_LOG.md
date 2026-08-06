@@ -5813,3 +5813,26 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **DEBUG_LOG entries filed:** resolve_tool signature drift (03:54), Playwright :3000-vs-:3100 skip (03:54), resolve_tool takes Tool object not string (04:00), no existing agent-server conversations on fresh box (04:04), registry stores resolver closure not class (04:04), Playwright strict-mode 3-element 🧠 match (04:07).
 - **Follow-up (out of scope, tracked in DEBUG_LOG 04:00):** BFF `blocked`-routing path returns `data.id=""`. Frontend cannot render a run without an id — needs an ADR + KNOWN_ISSUES entry when picked up.
 - **Stop condition:** met. Next slice = Stage 5.6c (memory-inspector page + `GET /api/memory/recent-writes`). Do not proceed until user confirms placement/sort-order/empty-state decisions listed in SESSION_HANDOFF.md.
+
+## 2026-08-06 04:14 EDT — Stage 5 exit gate initiated
+- **Scope:** run reconciliation-plan §"Stage 5 exit gate" pre-checks before formally closing Stage 5 and opening Stage 6.1 (SearXNG port).
+- **Automated gate (four commands, exit-non-zero fails the gate):**
+  1. `pytest bff/tests/ -q`
+  2. `pytest openhands_tools_ext/tests/ -q`   (extension — 5.1-5.5 port tests live here, not in bff/tests/)
+  3. `pnpm typecheck` (`tsc --noEmit`)
+  4. `pnpm test:unit` (`vitest run`)
+  5. `pnpm build` (`next build`)
+- **Known pre-existing failures (per KNOWN_ISSUES — do NOT block gate on these):**
+  - `bff/tests/test_repograph_router.py::TestHealthNoPassword::test_returns_error_when_password_missing` — DozerDB dev container connects on empty password; Colossus red, hardened Neo4j green.
+  - `src/tests/unit/gitDiff.test.tsx :: FilesTab — Real git diff toggle > renders the toggle when run has a local workspace path` — pre-Stage-4 waitFor timeout.
+  - `src/tests/unit/AgentPresetCard.test.tsx :: AgentPresetCard > renders name and model badge` — pre-Stage-4 query failure.
+- **Manual checklist (must be visually confirmed once, then logged):**
+  - [ ] All three pure interfaces (`memory.py`, `vector.py`, `embeddings.py`) import cleanly from `openhands_tools_ext.memory.ports`.
+  - [ ] Qdrant + Ollama-embeddings adapters live against real services (768-dim vectors, real collection).
+  - [ ] DozerDB semantic-memory path runs `search_semantic()` cleanly against Stage-4.5 connection config.
+  - [ ] Provenance-less or bad-confidence write rejected at port layer (both model + adapter call).
+  - [ ] ACE curation cycle discards a duplicate write on a real second identical observation.
+  - [ ] `MemoryConsultation` events render in run-detail timeline on a real search (5.6b DoD screenshot already exists at screenshots/memory-timeline-marker.png).
+  - [ ] `/memory-inspector` reachable via sidebar, real writes with provenance/confidence visible (5.6a DoD screenshots already exist at screenshots/memory-inspector-{page,sidebar}.png).
+  - [ ] Every ported file has a PORTING_LEDGER.md entry with the exact Kosmos commit hash.
+- **Next:** user runs the five commands + verifies the manual checklist, pastes any failures. If only the three known-pre-existing failures show up, gate passes and I write the "Stage 5 COMPLETE" entry + open Stage 6.1.
