@@ -6406,3 +6406,43 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Files touched:** `.env` (added two keys), `scripts/vllm-coder-status.sh`, `scripts/vllm-coder-inspect.sh`, `scripts/vllm-coder-bringup.sh` (superseded by fix-env.sh), `scripts/vllm-coder-env-probe.sh`, `scripts/vllm-coder-fix-env.sh` (final working recipe).
 - **Follow-up (non-blocking, not this slice):** reconcile the running container's port + served-name with BFF defaults so operators don't need `.env` overrides. Options: (a) restart `vllm-bench` on :8501 with the canonical served-name; or (b) update `model_router.py` defaults to :8000 and the observed served-name; or (c) have the router auto-discover served-name via `/v1/models` on startup. Pick during 6.4c planning.
 - **Stop-condition status:** runtime prerequisite for Stage 6.4c integration testing is met. Backend unit tests never needed this; they can proceed independently.
+
+## 2026-08-06 07:50 EDT — Stage 6.4c evidence: fork-inheritance probe
+
+- **Stage/plugin/port:** Stage 6.4c investigation · BFF · `POST /api/conversations/{id}/fork` semantics
+- **What:** `scripts/6-4c-fork-worktree-probe.sh` created a parent run, forked it (no `from_event_id`), read both conversations from agent-server, and compared `workspace.working_dir`.
+- **Result:** VERDICT = **inherited**. Both parent and fork resolved to the exact same path (`~/.forge-oh/worktrees/run-8474bad8ac74`).
+- **Impact:** ADR-025's core premise ("reset in the fork's isolated worktree") is unsound. A `git reset --hard` in "the fork's worktree" would destroy the parent's files — the exact shared-path failure mode ADR-025 was written to prevent.
+- **Files:** `scripts/6-4c-fork-worktree-probe.sh` (new evidence artifact).
+- **Follow-up:** run mutation probe to see whether the fork's working_dir can be rewritten post-creation.
+
+## 2026-08-06 07:54 EDT — Stage 6.4c evidence: agent-server workspace-mutation probe
+
+- **Stage/plugin/port:** Stage 6.4c investigation · agent-server 1.40.0 API surface
+- **What:** `scripts/6-4c-agent-server-mutation-probe.sh` + `scripts/6-4c-patch-schema-inspect.sh` fetched agent-server's OpenAPI spec (591703 bytes), inspected the PATCH endpoint schema, and tried PATCH/PUT with a new `workspace.working_dir` payload.
+- **Result:**
+  - `PATCH /api/conversations/{id}` `UpdateConversationRequest` schema: `properties = ['title', 'tags']`. Nothing workspace-shaped.
+  - PATCH with `{"workspace":{"working_dir":...}}` returns `200 {"success":true}` while silently discarding the unknown field.
+  - `PUT` and `PATCH /workspace` both return `405 Method Not Allowed`.
+  - Post-mutation `GET /api/conversations/{id}` shows `working_dir` unchanged.
+  - VERDICT = **immutable**.
+- **Impact:** No amendment can keep ADR-025 sound. Fork inherits the parent's working_dir (probe 07:50 EDT), and nothing in the API lets us change it afterwards.
+- **Files:** `scripts/6-4c-agent-server-mutation-probe.sh`, `scripts/6-4c-patch-schema-inspect.sh` (new evidence artifacts).
+- **Follow-up:** author ADR-026 replacing ADR-025 with a design that uses only APIs agent-server actually exposes.
+
+## 2026-08-06 07:55 EDT — ADR-025 superseded by ADR-026 (restart-from-here)
+
+- **Stage/plugin/port:** Stage 6.4c · design layer
+- **What:** ADR-025 superseded by ADR-026 based on the two evidence probes above. ADR-026 replaces the "fork + reset" primitive (unsound against agent-server 1.40.0) with "restart-from-here": `POST /api/runs/{run_id}/restart` mints a new run with a fresh worktree checked out at `<commit_sha_at_time_of_event>`, seeded with the user-message text from `from_event_id`.
+- **User decision:** Option A (restart-from-here) selected over Option B (destructive in-place reset) and Option C (park 6.4c indefinitely).
+- **Tradeoff:** loses conversation state (tool-call history, plan state, prior assistant messages) that fork-from-here preserves. Fork-from-here stays as-is for the state-preserving path; restart-from-here fills the different gap ("I want to actually rewind the files").
+- **Files:**
+  - `docs/adr/026-restart-from-here.md` (new)
+  - `docs/adr/025-restore-via-fork.md` (status-amendment block prepended; body preserved per authoring convention)
+  - `docs/adr/README.md` (index updated: ADR-025 → Superseded, ADR-026 → Proposed)
+- **Stop-condition status:** Stage 6.4c step 1 unblocked and re-scoped:
+  1. Add `commit_sha_at_time_of_event` field to user-message events in `bff/services/event_normalize.py`.
+  2. New `bff/services/restart.py` module encapsulating the composition (worktree provision + fresh conversation + rollback).
+  3. New `POST /api/runs/{run_id}/restart` handler in `bff/routers/runs.py`.
+  4. Tests: `bff/tests/test_restart_endpoint.py` (8+ tests) + `bff/tests/test_event_normalize_commit_sha.py`.
+  5. Frontend `RestartFromHereButton` in a follow-up step per the "backend + frontend ship together" rule (paired with the endpoint in step 1 of Stage 6.4c).

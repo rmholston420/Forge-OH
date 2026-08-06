@@ -1,6 +1,17 @@
+> **STATUS AMENDMENT (2026-08-06 07:55 EDT):** Superseded by [ADR-026](./026-restart-from-here.md).
+>
+> Two evidence probes on 2026-08-06 invalidated ADR-025's load-bearing premises:
+>
+> 1. `scripts/6-4c-fork-worktree-probe.sh` (07:50 EDT) — forks inherit the parent's `workspace.working_dir` verbatim. A `git reset --hard` in "the fork's worktree" would destroy the parent's files.
+> 2. `scripts/6-4c-patch-schema-inspect.sh` (07:54 EDT) — agent-server 1.40.0's `PATCH /api/conversations/{id}` `UpdateConversationRequest` schema exposes only `title` and `tags`. No workspace mutation is possible post-creation. The PATCH returned `200 {"success":true}` but silently discarded the workspace field.
+>
+> No possible amendment keeps this ADR's premise sound against agent-server 1.40.0's actual surface. ADR-026 replaces it with a fresh design ("restart-from-here": new run at target sha, source untouched) that uses only APIs agent-server documents. The `commit_sha_at_time_of_event` addition to event-normalize survives unchanged. Original decision text preserved below for historical record.
+
+---
+
 # ADR-025 — Restore via fork, not in-place `git reset` + conversation-state rewind (Stage 6.4b · Stage 6.4c)
 
-**Status:** Proposed
+**Status:** Superseded by ADR-026 (2026-08-06 07:55 EDT). Previously: Proposed
 **Date:** 2026-08-06
 **Slice:** Stage 6.4b (per-run worktrees) enables · Stage 6.4c (restore action) consumes
 **Related:**
@@ -10,7 +21,7 @@
 - ADR-016 (Colossus↔GitHub parity — every run-worktree file must be either tracked or ignored)
 
 **Supersedes:** —
-**Superseded by:** —
+**Superseded by:** [ADR-026](./026-restart-from-here.md)
 
 ## Context
 

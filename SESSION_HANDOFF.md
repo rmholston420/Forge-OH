@@ -99,9 +99,35 @@ Verified via `POST /api/runs` (ap-1) → `status=queued`, `routing.selected="vll
 
 **Nothing blocking 6.4c.** Backend unit tests + full-stack integration tests can both proceed.
 
+## Stage 6.4c re-scoped after ADR-026
+
+ADR-025 was superseded by ADR-026 on 2026-08-06 07:55 EDT based on two evidence probes:
+- `scripts/6-4c-fork-worktree-probe.sh` — forks inherit parent's `workspace.working_dir` (VERDICT=inherited).
+- `scripts/6-4c-patch-schema-inspect.sh` — agent-server 1.40.0 exposes no workspace-mutation endpoint (VERDICT=immutable; PATCH accepts only `title` and `tags`).
+
+**New design (ADR-026):** restore is renamed "restart" and implemented as a fresh run with a fresh worktree checked out at `<commit_sha_at_time_of_event>`, seeded with the user-message text at `from_event_id`. Source run untouched. Loses conversation state; fork-from-here stays as the state-preserving primitive.
+
+### Restated Stage 6.4c step-1 scope
+
+- Endpoint: `POST /api/runs/{run_id}/restart`, body `{from_event_id: str}`.
+- Composition: source-run lookup → event lookup → `provision_worktree(new_run_id, source_repo, base_ref=<sha>)` → `POST /api/conversations` with fresh worktree and user-message text → return `{ok, restarted_run_id, from_event_id, reset_to_sha, source_run_id}`. Rollback: `remove_worktree(new_run_id, missing_ok=True)` on any step-4 failure.
+- Event-normalize addition: `commit_sha_at_time_of_event` on user-message events in `bff/services/event_normalize.py`. Captured at ingest time.
+- Frontend: `RestartFromHereButton` mirrors `ForkFromHereButton` on user-message events; feature-flagged under `NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED`. Dialog copy: *"Start a new run at this point with files reset to that state. You'll re-send your original message; the assistant's prior replies won't carry over. Your current run is preserved."*
+
+### Files to touch (per ADR-026)
+
+- New: `bff/routers/runs.py` restart handler, `bff/services/restart.py`, `bff/tests/test_restart_endpoint.py`, `bff/tests/test_event_normalize_commit_sha.py`, `src/components/events/RestartFromHereButton.tsx`, `src/tests/RestartFromHereButton.test.tsx`.
+- Modified: `bff/services/event_normalize.py`, `docs/reconciliation-plan-stage-6.md` (§6.4.1–6.4.5 supersession note).
+- Not touched: `bff/services/worktree.py` (already supports `base_ref` parameter for target-sha use case), fork-from-here plumbing (orthogonal).
+
 ## Next sub-session's first act
 
-1. Read this file.
-2. Q1/Q2/Q3 already locked — skip to implementation.
-3. Confirm coder backend is still up: `bash scripts/vllm-coder-status.sh` (should show `vllm-bench` container up on :8000 with `c01_coder_vllm_qwen36_27b_int4`). If not, `bash scripts/vllm-coder-fix-env.sh` re-verifies + re-persists.
-4. Implement Stage 6.4c step 1 (backend `POST /api/runs/{run_id}/restore` endpoint).
+1. Read this file and `docs/adr/026-restart-from-here.md`.
+2. Confirm coder backend is still up: `bash scripts/vllm-coder-status.sh`. If not, `bash scripts/vllm-coder-fix-env.sh`.
+3. Start Stage 6.4c step 1 implementation:
+   a. Add `commit_sha_at_time_of_event` to `bff/services/event_normalize.py` (user-message events only).
+   b. Author `bff/services/restart.py` with the ADR-026 composition + rollback semantics.
+   c. Author `POST /api/runs/{run_id}/restart` in `bff/routers/runs.py`.
+   d. Write the two test files (8+ endpoint tests, 4+ normalize tests).
+   e. Frontend button + vitest in the same commit (backend + frontend ship together).
+4. Do NOT resume Q1/Q2/Q3 answers from before the probes — they were based on ADR-025's superseded premise. ADR-026 supplies the correct semantics.
