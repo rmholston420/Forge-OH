@@ -4916,3 +4916,17 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **PORTING_LEDGER / ADR updated:** none. No external code vendored.
 - **KNOWN_ISSUES:** "Preset card badges hardcoded to cloud IDs" (introduced by Stage 2.1 seed swap) now closed by dynamic backend chip rendering. Preset edit drawer remains deferred (Stage 3 UX slice).
 - **Stop-condition status:** Stage 2.2 (frontend backend visibility + per-run pin override) COMPLETE per amended plan § 2.2. Stage 2 as a whole exits Definition-of-Done pending the Colossus visual-verification paste block returned by the user.
+
+## 2026-08-05 22:47 EDT — Stage 2 DoD verified on Colossus
+
+- **What:** Ran the Stage 2.2 verification paste block on Colossus. All checks green after one iteration.
+- **Results:**
+  - `pnpm typecheck`: clean.
+  - `pnpm vitest run src/tests/unit/HealthBadge.test.tsx`: 6/6 pass in 608ms.
+  - `bash scripts/forge-restart.sh` + `forge-status.sh`: all three components healthy.
+  - `GET /api/inference-backends`: returns six entries with expected states — ollama healthy (28ms), llamacpp degraded (129ms, `:8080` collision documented-deferred), vllm-coder/planner/legacy + sglang unhealthy (no runtime up, as expected).
+  - `npm run build` + `npx next start -p 3100`: `/agents` 200, `/runs` 200.
+  - `npx playwright test tests/e2e/backend-selector.spec.ts`: 2/2 pass in 1.0s (after `ca720d5` spec fix — the config only reads `PLAYWRIGHT_BASE_URL` not `PLAYWRIGHT_FRONTEND_URL`, so I updated the spec to accept either).
+- **Iteration:** first Playwright run failed with "Cannot navigate to invalid URL" because relative `page.goto('/agents')` needs `baseURL` set. Matched the `gpu-popover.spec.ts` env-resolution pattern and pushed `ca720d5`.
+- **Files touched:** `src/tests/e2e/backend-selector.spec.ts` (env-var handling).
+- **Stop-condition status:** Stage 2 (backend visibility + preset routing + per-run pin override) COMPLETE per amended plan. Both DoD checks (§ 2.1 backend inventory + preset routing; § 2.2 frontend selector + preset card fix) met and verified live on Colossus. Ready for Stage 3.

@@ -1,42 +1,38 @@
 # Session Handoff
 
-**Last updated:** 2026-08-05 22:38 EDT
+**Last updated:** 2026-08-05 22:47 EDT
 
 ## Current stage / plugin / port in progress
 
-- **Stage:** Stage 2.2 — frontend `BackendSelector` + `HealthBadge` + preset-card badge fix (amended plan `docs/reconciliation-plan-stage-2.md § 2.2`).
-- **Layer:** frontend only (Next.js UI + React Query). Stage 2.1 BFF layer is unchanged.
-- **Adjacent:** Stage 2 completes when this ships and passes the visual-verification paste block on Colossus. No new ports; no ADR.
+- **Stage 2 (backend visibility + preset routing + per-run pin override): COMPLETE.**
+- **Next stage:** Stage 3 per `docs/reconciliation-plan-v1.md`.
+- **Adjacent:** run-store SQLite persistence still deferred to Stage 3 (documented in the amended Stage 2 plan); does not block Stage 2 exit.
 
 ## Completed this session
 
-1. Diagnosed Stage 2.1 Colossus verification: Ollama had auto-stopped between checks (unrelated to our code). User restarted with `sudo systemctl start ollama`. Endpoint returned correct per-entry health after that.
-2. Confirmed Option B for Stage 2.2 (`:8080` collision between llama.cpp default and openhands-workspace HTML is documented-deferred — degraded state is the honest signal).
-3. Fresh clone at commit `98763c6` (Stage 2.1 tip on main).
-4. Frontend schema layer widened:
-   - `src/lib/schemas/run.ts` — `BackendIdSchema` + `backendId` on `CreateRunRequestSchema`.
-   - `src/features/agent-presets/schemas.ts` — `ModelIdSchema` → `z.string()`, added `BackendIdSchema` / `RoleHintSchema` / `backendId` / `role`.
-   - `src/features/runs/schemas.ts` — optional `backendId` + `role` on loose preset.
-   - `src/lib/api/endpoints.ts` — `INFERENCE_BACKENDS.list()`.
-   - `src/lib/query/query-keys.ts` — `inferenceBackendKeys` + registration in `QUERY_KEYS` aggregate.
-5. New feature folder `src/features/inference-backends/` with `schemas.ts`, `api.ts`, `hooks.ts` (10s refetch), `HealthBadge.tsx` (state→variant map), `BackendSelector.tsx` + `.module.css` (radio group, role-incompatible options disabled), `index.ts`.
-6. Fixed `src/features/agent-presets/AgentPresetCard.tsx` — replaced hardcoded cloud MODEL_BADGES with dynamic model + backend + role chips (`data-testid="backend-chip-<id>"`).
-7. Wired `BackendSelector` into `src/components/domain/NewRunComposer.tsx` via `Controller`; role passed from the selected preset so incompatible backends render disabled.
-8. Added `src/tests/unit/HealthBadge.test.tsx` (6 cases) and `src/tests/e2e/backend-selector.spec.ts` (two live-BFF tests).
-9. Static sanity in-sandbox: all `@/` imports resolve to real exports; all CSS tokens exist in `src/styles/tokens.css`.
-10. BUILD_LOG entry appended (this session's full changeset).
+1. Diagnosed Stage 2.1 verification anomaly on Colossus: Ollama had auto-stopped between checks (unrelated to code). User restarted; endpoint returned correct per-entry health after.
+2. Decided Option B on the `:8080` collision (llama.cpp default vs. openhands-workspace HTML) — degraded state is the honest signal; document-deferred to Stage 3.
+3. Stage 2.2 landed on `main` (`5c997af`) + Playwright spec fix (`ca720d5`). Full changeset in BUILD_LOG.md.
+4. Colossus verification passed:
+   - `pnpm typecheck` clean
+   - `pnpm vitest HealthBadge`: 6/6
+   - BFF `/api/inference-backends`: correct 6-entry inventory
+   - Prod frontend `/agents` + `/runs`: both 200
+   - Playwright `backend-selector.spec.ts`: 2/2
 
-## What remains before DoD
+## What remains
 
-- **User runs the Colossus verification paste block** (produced next by the assistant): `pnpm typecheck`, `pnpm test:unit -- HealthBadge`, then `pnpm test:e2e -- backend-selector.spec.ts` against the prod frontend on `:3100`.
-- If any of those fail, iterate before declaring Stage 2 DoD met.
-- Preset edit drawer is explicitly **out of scope** (deferred to Stage 3 UX slice — no consumer exists in the current UI beyond the Zustand action).
-- `:8080` llama.cpp collision remains documented-deferred.
+- Nothing for Stage 2. All DoD items green.
+- Stage 3 planning starts fresh — reload `docs/reconciliation-plan-v1.md` for scope selection.
 
 ## Open questions / ambiguity awaiting the user
 
-None. Everything in scope is on `main` after the push.
+- **Deferred to Stage 3:**
+  - Run-store SQLite persistence (currently in-memory).
+  - `:8080` llama.cpp collision — needs either a port move or an explicit "not in this deployment" flag on the backend registry entry.
+  - Preset edit drawer — no UI consumer beyond the Zustand action.
+  - `AgentPresetCard` visual polish — pre-existing global-class strings render unstyled; needs a proper `AgentPresetCard.module.css`.
 
 ## Exact next action
 
-Run the Colossus verification paste block delivered in the assistant's message. On green, Stage 2 is DONE.
+Start Stage 3. Restate scope from `docs/reconciliation-plan-v1.md` (which sub-slice, ports touched, DoD, stop condition) before writing any code.
