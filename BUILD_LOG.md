@@ -6526,3 +6526,23 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Regression:** `pnpm typecheck` clean (`tsc --noEmit`). Both button test files green: `ForkFromHereButton` 10/10, `RestartFromHereButton` 12/12 → 22/22 verified on Colossus 2026-08-06 08:40 EDT.
 - **Commit:** `aff6062` — clean first push, no fixups.
 - **Stop-condition status:** Stage 6.4c backend + frontend COMPLETE. Remaining before Stage 6.4c full DoD: end-to-end Colossus verify script following the `scripts/stage-6.4b-verify.sh` pattern (real BFF + real agent-server + real worktree provision + real restart, asserting `restarted_run_id`, new `worktree_path`, HEAD == captured anchor sha; plus 404 and 409 failure paths).
+
+## 2026-08-06 08:56 EDT — Stage 6.4c step 1e: capture-point scan fix
+
+- **Stage/plugin/port**: Stage 6.4c · P1 Restart-from-here · BFF create_run §3b + send_run_message §3b · verify harness
+- **Symptom on Colossus (2026-08-06)**: Live probe of `GET /api/runs/{id}/events?limit=20` on agent-server 1.40 returned a 13-event initial page where the user MessageEvent lives at INDEX 3 — preceded by ConversationStateUpdateEvent (env), ConversationStateUpdateEvent (env), SystemPromptEvent (agent).  Step 1d shipped with `limit=1`, so §3b's `first_items[0]` never was a user MessageEvent → sha never captured → "Restart from here" button silently missing in real UI.
+- **Fix (backend)**: Both capture points now request `limit=20` and iterate the page for the FIRST `kind=MessageEvent, source=user` event.
+  - `bff/routers/runs.py` §3b of create_run (~L560-612): scan loop; `sort_order=TIMESTAMP` (asc).
+  - `bff/routers/runs.py` §3b of send_run_message (~L1082-1127): scan loop; `sort_order=CREATED_AT_DESC`.  Guards against agent-server emitting a follow-up ConversationStateUpdateEvent between our POST and the GET.
+- **Regression tests** (`bff/tests/test_runs_sha_capture.py`):
+  - Replaced `test_assistant_first_event_skips_record` → `test_no_user_message_in_page_skips_record` (semantic fix: skip only when NO user MessageEvent exists in the page).
+  - Added `test_user_message_at_later_index_stamped` — mirrors the Colossus 5-event interleave, expects sha stamped on `ev-user-msg` at index 3.
+  - Added `test_scan_takes_first_user_message_only` — multiple user MessageEvents in page, expects anchor on the first.
+  - Added `test_new_user_message_scans_past_interleaved_status` — send_run_message equivalent with DESC-order interleaved status event newer than the user msg.
+- **Verify script** (`scripts/stage-6.4c-verify.sh`): anchor-polling heredoc reads `d.get('data') or d.get('items') or []` (was `items` only) — matches BFF envelope `{"data": [...], "nextPageId": ...}` from `get_run_events`.  Bash syntax check passes.
+- **Contract preserved**: graceful downgrade on ledger-not-ready / worktree-not-provisioned / head_sha=None / record_sha raises — all existing defensive skips intact.
+- **DoD status**: code + tests + verify harness aligned with real agent-server behavior.  Awaiting Colossus rerun to confirm PASSED.
+- **Files touched**:
+  - `bff/routers/runs.py`
+  - `bff/tests/test_runs_sha_capture.py`
+  - `scripts/stage-6.4c-verify.sh`

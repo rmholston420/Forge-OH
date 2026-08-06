@@ -202,10 +202,14 @@ ANCHOR_SHA=""
 deadline=$((SECONDS + EVENTS_WAIT_S))
 while (( SECONDS < deadline )); do
   ev_resp="$(curl -sS "$BFF/api/runs/$SOURCE_ID/events?limit=20" || true)"
+  # BFF envelope: {"data": [normalized events], "nextPageId": ...}.
+  # Normalized events use 'type' (not 'kind') — e.g. 'message' for
+  # MessageEvent — and 'source' is preserved.  See
+  # bff/routers/runs.py::get_run_events + normalize_events.
   ANCHOR_EVENT_ID="$(printf '%s' "$ev_resp" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-for it in (d.get('items') or []):
+for it in (d.get('data') or d.get('items') or []):
     if it.get('type') == 'message' and it.get('source') == 'user':
         print(it.get('id') or '')
         break
@@ -213,7 +217,7 @@ for it in (d.get('items') or []):
   ANCHOR_SHA="$(printf '%s' "$ev_resp" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-for it in (d.get('items') or []):
+for it in (d.get('data') or d.get('items') or []):
     if it.get('type') == 'message' and it.get('source') == 'user':
         print(it.get('commit_sha_at_time_of_event') or '')
         break

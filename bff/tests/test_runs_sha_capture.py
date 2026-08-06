@@ -343,12 +343,19 @@ class TestCreateRunCapturesSha:
         assert r.status_code == 200
         record.assert_not_awaited()
 
-    def test_assistant_first_event_skips_record(self) -> None:
-        """Guard: if the first event isn't a user MessageEvent, don't capture."""
+    def test_no_user_message_in_page_skips_record(self) -> None:
+        """Step 1e: page contains agent + status events but no user
+        MessageEvent — nothing to anchor, so no capture."""
         upstream = _FakeUpstream()
         self._wire_common_mocks(
             upstream,
-            events_body={"items": [{"id": "ev-1", "kind": "MessageEvent", "source": "agent"}]},
+            events_body={
+                "items": [
+                    {"id": "ev-a", "kind": "ConversationStateUpdateEvent", "source": "environment"},
+                    {"id": "ev-b", "kind": "SystemPromptEvent", "source": "agent"},
+                    {"id": "ev-c", "kind": "MessageEvent", "source": "agent"},
+                ]
+            },
         )
         record = AsyncMock()
         app = _build_app_with_ledger_ready()
@@ -385,6 +392,117 @@ class TestCreateRunCapturesSha:
             )
         assert r.status_code == 200
         record.assert_not_awaited()
+
+    def test_user_message_at_later_index_stamped(self) -> None:
+        """Step 1e regression: agent-server 1.40 interleaves
+        ConversationStateUpdateEvent + SystemPromptEvent BEFORE the user's
+        MessageEvent in the initial event page.  §3b must scan past them
+        and stamp the first user MessageEvent — verified live on
+        Colossus 2026-08-06 with the user event at index 3."""
+        upstream = _FakeUpstream()
+        self._wire_common_mocks(
+            upstream,
+            events_body={
+                "items": [
+                    {"id": "ev-status-1", "kind": "ConversationStateUpdateEvent", "source": "environment"},
+                    {"id": "ev-status-2", "kind": "ConversationStateUpdateEvent", "source": "environment"},
+                    {"id": "ev-sysprompt", "kind": "SystemPromptEvent", "source": "agent"},
+                    {"id": "ev-user-msg", "kind": "MessageEvent", "source": "user"},
+                    {"id": "ev-another-status", "kind": "ConversationStateUpdateEvent", "source": "environment"},
+                ]
+            },
+        )
+        record = AsyncMock()
+        app = _build_app_with_ledger_ready()
+        cli = TestClient(app)
+        with patch("bff.routers.runs.get_client", return_value=upstream), \
+             patch(
+                 "bff.routers.runs.provision_worktree",
+                 return_value=type("W", (), {"path": "/tmp/fake-wd"})(),
+             ), \
+             patch("bff.routers.runs.head_sha", return_value="e" * 40), \
+             patch("bff.routers.runs.seed_sidecar"), \
+             patch("bff.routers.runs.start_relay"), \
+             patch("bff.routers.runs.route_by_role") as mock_route, \
+             patch("bff.routers.runs.event_commit_ledger.record_sha", record):
+            mock_route.return_value = type(
+                "R",
+                (),
+                {
+                    "base_url": "http://x",
+                    "backend": "ollama",
+                    "max_tokens": 2048,
+                    "model": "m",
+                    "tagged": "ok",
+                },
+            )()
+            r = cli.post(
+                "/api/runs",
+                json={
+                    "title": "t",
+                    "taskPrompt": "hi",
+                    "workspaceId": "ws-1",
+                    "agentPresetId": "ap-1",
+                },
+            )
+        assert r.status_code == 200, r.text
+        record.assert_awaited_once()
+        kwargs = record.await_args.kwargs
+        assert kwargs["run_id"] == "conv-1"
+        assert kwargs["event_id"] == "ev-user-msg"
+        assert kwargs["commit_sha"] == "e" * 40
+
+    def test_scan_takes_first_user_message_only(self) -> None:
+        """Step 1e: if the page contains multiple user MessageEvents (rare
+        but possible on race with a fast follow-up POST), §3b must anchor
+        on the FIRST one — that's the initial task prompt."""
+        upstream = _FakeUpstream()
+        self._wire_common_mocks(
+            upstream,
+            events_body={
+                "items": [
+                    {"id": "ev-status", "kind": "ConversationStateUpdateEvent", "source": "environment"},
+                    {"id": "ev-first-user", "kind": "MessageEvent", "source": "user"},
+                    {"id": "ev-second-user", "kind": "MessageEvent", "source": "user"},
+                ]
+            },
+        )
+        record = AsyncMock()
+        app = _build_app_with_ledger_ready()
+        cli = TestClient(app)
+        with patch("bff.routers.runs.get_client", return_value=upstream), \
+             patch(
+                 "bff.routers.runs.provision_worktree",
+                 return_value=type("W", (), {"path": "/tmp/fake-wd"})(),
+             ), \
+             patch("bff.routers.runs.head_sha", return_value="f" * 40), \
+             patch("bff.routers.runs.seed_sidecar"), \
+             patch("bff.routers.runs.start_relay"), \
+             patch("bff.routers.runs.route_by_role") as mock_route, \
+             patch("bff.routers.runs.event_commit_ledger.record_sha", record):
+            mock_route.return_value = type(
+                "R",
+                (),
+                {
+                    "base_url": "http://x",
+                    "backend": "ollama",
+                    "max_tokens": 2048,
+                    "model": "m",
+                    "tagged": "ok",
+                },
+            )()
+            r = cli.post(
+                "/api/runs",
+                json={
+                    "title": "t",
+                    "taskPrompt": "hi",
+                    "workspaceId": "ws-1",
+                    "agentPresetId": "ap-1",
+                },
+            )
+        assert r.status_code == 200
+        record.assert_awaited_once()
+        assert record.await_args.kwargs["event_id"] == "ev-first-user"
 
     def test_record_sha_raises_does_not_fail_create(self) -> None:
         """Defensive: a ledger insert exception must not break run creation."""
@@ -469,6 +587,46 @@ class TestSendRunMessageCapturesSha:
         assert kwargs["run_id"] == "run-1"
         assert kwargs["event_id"] == "ev-new-1"
         assert kwargs["commit_sha"] == "b" * 40
+
+    def test_new_user_message_scans_past_interleaved_status(self) -> None:
+        """Step 1e regression: agent-server may emit a
+        ConversationStateUpdateEvent between our POST /events and this
+        follow-up GET.  On sort_order=CREATED_AT_DESC the newest is the
+        status event, so index 0 would miss the user message we just
+        inserted.  §3b must scan the DESC page for the first user
+        MessageEvent."""
+        upstream = _FakeUpstream()
+        upstream.on_post("/events", _mk_response(200, {"success": True}))
+        upstream.on_get(
+            "/api/conversations/run-1",
+            _mk_response(200, {"workspace": {"working_dir": "/tmp/wd"}}),
+        )
+        upstream.on_get(
+            "/events/search",
+            _mk_response(
+                200,
+                {
+                    "items": [
+                        # DESC — newest first, status event fired after our POST
+                        {"id": "ev-status-newer", "kind": "ConversationStateUpdateEvent", "source": "environment"},
+                        {"id": "ev-user-just-posted", "kind": "MessageEvent", "source": "user"},
+                        {"id": "ev-older-agent", "kind": "MessageEvent", "source": "agent"},
+                    ]
+                },
+            ),
+        )
+        record = AsyncMock()
+        app = _build_app_with_ledger_ready()
+        cli = TestClient(app)
+        with patch("bff.routers.runs.get_client", return_value=upstream), \
+             patch("bff.routers.runs.head_sha", return_value="c" * 40), \
+             patch("bff.routers.runs.event_commit_ledger.record_sha", record):
+            r = cli.post("/api/runs/run-1/message", json={"message": "hi"})
+        assert r.status_code == 200, r.text
+        record.assert_awaited_once()
+        kwargs = record.await_args.kwargs
+        assert kwargs["event_id"] == "ev-user-just-posted"
+        assert kwargs["commit_sha"] == "c" * 40
 
     def test_conversation_get_fails_downgrades(self) -> None:
         upstream = _FakeUpstream()

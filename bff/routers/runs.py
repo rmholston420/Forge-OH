@@ -561,8 +561,13 @@ async def create_run(request: Request, body: CreateRunRequest) -> dict:
     # 3b) Stage 6.4c (ADR-026 §Storage) — capture HEAD sha for the
     #     initial user MessageEvent so a future "Restart from here" can
     #     branch from the same tree state.  Best-effort P1 pattern:
-    #       - GET /events?limit=1&sort_order=TIMESTAMP  (asc order via TIMESTAMP)
-    #       - if the first event is a user MessageEvent, record its id + HEAD sha.
+    #       - GET /events?limit=20&sort_order=TIMESTAMP  (asc)
+    #       - scan for the FIRST kind=MessageEvent source=user event.
+    #         On agent-server 1.40 the initial page interleaves
+    #         ConversationStateUpdateEvent + SystemPromptEvent BEFORE the
+    #         user's MessageEvent — verified live on Colossus 2026-08-06.
+    #         Step 1d shipped with limit=1 which never hit the user event
+    #         in practice; step 1e fixes that.
     #     Any failure is logged and swallowed — downgrades gracefully to
     #     "no restart button on this event" per ADR-026.  The read path
     #     hides the button when no ledger row exists.
@@ -571,36 +576,38 @@ async def create_run(request: Request, body: CreateRunRequest) -> dict:
         if ledger_ready and worktree_provisioned is not None:
             events_resp = await client.get(
                 f"/api/conversations/{cid}/events/search",
-                params={"limit": 1, "sort_order": "TIMESTAMP"},
+                params={"limit": 20, "sort_order": "TIMESTAMP"},
             )
             if events_resp.status_code < 400:
                 epl = events_resp.json() or {}
-                first_items = (
+                items = (
                     epl if isinstance(epl, list)
                     else (epl.get("items") or epl.get("data") or epl.get("events") or [])
                 )
-                if first_items:
-                    ev0 = first_items[0] or {}
-                    ev0_id = ev0.get("id") or ev0.get("event_id")
-                    ev0_kind = ev0.get("kind") or ev0.get("type")
-                    ev0_source = ev0.get("source")
+                anchor_id: str | None = None
+                for ev in items:
+                    if not isinstance(ev, dict):
+                        continue
                     if (
-                        ev0_id
-                        and ev0_kind == "MessageEvent"
-                        and ev0_source == "user"
+                        ev.get("kind") == "MessageEvent"
+                        and ev.get("source") == "user"
                     ):
-                        sha = head_sha(working_dir)
-                        if sha:
-                            await event_commit_ledger.record_sha(
-                                request.app,
-                                run_id=cid,
-                                event_id=ev0_id,
-                                commit_sha=sha,
-                            )
-                            log.info(
-                                "create_run: captured sha for initial user event %s on run %s",
-                                ev0_id, cid,
-                            )
+                        anchor_id = ev.get("id") or ev.get("event_id")
+                        if anchor_id:
+                            break
+                if anchor_id:
+                    sha = head_sha(working_dir)
+                    if sha:
+                        await event_commit_ledger.record_sha(
+                            request.app,
+                            run_id=cid,
+                            event_id=anchor_id,
+                            commit_sha=sha,
+                        )
+                        log.info(
+                            "create_run: captured sha for initial user event %s on run %s",
+                            anchor_id, cid,
+                        )
     except Exception as exc:  # pragma: no cover - defensive
         log.warning("create_run: sha capture failed: %s", exc)
 
@@ -1072,12 +1079,16 @@ async def send_run_message(
                     (conv_resp.json() or {}).get("workspace") or {}
                 ).get("working_dir") or ""
             if working_dir:
-                # sort_order=CREATED_AT_DESC returns newest first; limit=1
-                # is the event we just POSTed (agent-server orders inserts
-                # sequentially by created_at).
+                # sort_order=CREATED_AT_DESC returns newest first.  Step 1d
+                # trusted latest[0] to be the user MessageEvent we just
+                # POSTed, but agent-server 1.40 may emit a follow-up
+                # ConversationStateUpdateEvent between our POST and this
+                # GET — same trap as create_run §3b.  Step 1e scans the
+                # top of the DESC page for the first user MessageEvent
+                # instead of blindly taking index 0.
                 events_resp = await client.get(
                     f"/api/conversations/{run_id}/events/search",
-                    params={"limit": 1, "sort_order": "CREATED_AT_DESC"},
+                    params={"limit": 20, "sort_order": "CREATED_AT_DESC"},
                 )
                 if events_resp.status_code < 400:
                     epl = events_resp.json() or {}
@@ -1090,28 +1101,30 @@ async def send_run_message(
                             or []
                         )
                     )
-                    if latest:
-                        ev = latest[0] or {}
-                        ev_id = ev.get("id") or ev.get("event_id")
-                        ev_kind = ev.get("kind") or ev.get("type")
-                        ev_src = ev.get("source")
+                    anchor_id: str | None = None
+                    for ev in latest:
+                        if not isinstance(ev, dict):
+                            continue
                         if (
-                            ev_id
-                            and ev_kind == "MessageEvent"
-                            and ev_src == "user"
+                            ev.get("kind") == "MessageEvent"
+                            and ev.get("source") == "user"
                         ):
-                            sha = head_sha(working_dir)
-                            if sha:
-                                await event_commit_ledger.record_sha(
-                                    request.app,
-                                    run_id=run_id,
-                                    event_id=ev_id,
-                                    commit_sha=sha,
-                                )
-                                log.info(
-                                    "send_run_message: captured sha for %s on run %s",
-                                    ev_id, run_id,
-                                )
+                            anchor_id = ev.get("id") or ev.get("event_id")
+                            if anchor_id:
+                                break
+                    if anchor_id:
+                        sha = head_sha(working_dir)
+                        if sha:
+                            await event_commit_ledger.record_sha(
+                                request.app,
+                                run_id=run_id,
+                                event_id=anchor_id,
+                                commit_sha=sha,
+                            )
+                            log.info(
+                                "send_run_message: captured sha for %s on run %s",
+                                anchor_id, run_id,
+                            )
     except Exception as exc:  # pragma: no cover - defensive
         log.warning("send_run_message: sha capture failed: %s", exc)
 
