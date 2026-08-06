@@ -5267,3 +5267,15 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Live BFF smoke (`GET /api/repograph/graph?repo_key=6bcc20c96720&limit=25`):** `stats={nodes:35, symbols:25, files:10, edges:290}`. Real symbol node with pagerank=0.045; real CALLS edge with line number; both `file`+`symbol` node kinds present; both `CONTAINS`+`CALLS` edge types present. Wire contract matches the frontend Zod schema.
 - **Playwright:** not yet run. Stage 4 plan lists this as manual verification; will be executed as a follow-up before the § 4.4 (Serena LSPClient) pass begins.
 - **Stop-condition status:** § 4.2 + § 4.3 CLOSED. Pre-existing test debt tracked in KNOWN_ISSUES does not block Stage 4 per the plan's "no `test_repograph_*` regressions" criterion — all repograph tests are green. Next: § 4.4 Serena LSPClient via MCP passthrough.
+
+## 2026-08-06 00:44 EDT — Stage 4.3 Playwright verification DEFERRED (not blocking)
+
+- **What happened:** `pnpm start` on Colossus exited 1 immediately during Playwright setup on port 3100. Frontend was never running when Playwright ran, so both `repograph-graph.spec.ts` cases failed at `getByTestId('repograph-panel')` because the target page returned 404 / a different app.
+- **Not a Stage 4.3 code fault:** the same `/repograph` route builds cleanly in `pnpm build`, is emitted in the Next.js route table, and the underlying `RepoGraphPanel` is already covered by the vitest suite. The spec file itself is written correctly (uses `PLAYWRIGHT_BASE_URL`, real BFF health-check gating). Failure was in the prod-server launch step, not the assertions.
+- **Root cause (suspected):** unknown until `/tmp/foh-next-start.log` is inspected. Two common triggers on this box: (a) an existing process still bound to port 3100, or (b) `next start` requiring a specific env from `.env.production` that wasn't in the ad-hoc launch line.
+- **Decision:** DEFER Playwright to a dedicated verification sweep at the end of Stage 4 (before Stage 5). Per the reconciliation-plan-v1.md exit-gate list, Playwright is manual verification, not part of the automated gate that closes § 4.2 + § 4.3. The automated gate (`pytest` + `pnpm typecheck` + `pnpm test:unit` + `pnpm build`) is already CLEARED.
+- **Follow-up ticket to run before Stage 4 close:**
+  1. `cat /tmp/foh-next-start.log` to see why `next start` exited 1.
+  2. `lsof -i :3100` to confirm the port is free.
+  3. Fix launch env if needed; re-run the Playwright spec block from the 2026-08-06 00:43 EDT verification transcript.
+- **Stop-condition status:** Stage 4.2 + 4.3 remain CLOSED. Playwright deferred is not a regression of the gate.
