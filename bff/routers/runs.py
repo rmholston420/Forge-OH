@@ -45,7 +45,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from bff.openhands_client import get_client
@@ -656,8 +656,8 @@ async def get_run(run_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/runs/{run_id}", status_code=204)
-async def delete_run(run_id: str) -> None:
+@router.delete("/runs/{run_id}", status_code=204, response_class=Response)
+async def delete_run(run_id: str):
     """Delete a run and reap its worktree.
 
     Order:
@@ -711,7 +711,7 @@ async def delete_run(run_id: str) -> None:
                 "delete_run: failed to reap worktree %s for run %s: %s",
                 worktree_run_id, run_id, exc,
             )
-    return None
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
