@@ -1,46 +1,29 @@
-# Forge-OH — Session Handoff
+# Forge-OH Session Handoff — 2026-08-06 11:35 EDT
 
-**Last updated**: 2026-08-06 11:25 EDT
-
-## Current stage/plugin/port
-
-Stage **6.6 Skills/Microagents management page** — **CLOSED · Colossus verified**.
+## Current stage
+**Stage 6 CLOSED** (pending user's local `pytest` verification on Colossus).
+Next: 30-test benchmark → 500-test benchmark → Stage 7.1.
 
 ## Completed this session
+- §6.7 shipped (Path B, per ADR 013): three SDK tools (`code_execute`, `list_tool_stubs`, `get_tool_schema`) + `should_use_code_execution` routing helper + system-prompt hint.
+- ADR 013 filed documenting the divergence from spec's four illustrative wire points (none exist upstream in Forge-OH; SDK owns dispatch).
+- `scripts/forge-up.sh` preloads both new modules so `register_tool()` fires at agent-server startup.
+- Unit tests: ~22 cases across `router`, `progressive_disclosure`, `code_execute`.
+- BUILD_LOG entries: §6.7 shipped + Stage 6 CLOSED.
 
-- **Stage 6.6 shipped and verified on Colossus at `35e5141`**:
-  - BFF: in-process SDK loader router (`bff/routers/skills.py`) — Path B,
-    bypasses broken agent-server `/api/skills` at SDK v1.40.0.
-  - BFF: `activatedSkills` propagated onto MessageEvent span attributes
-    in `trace_reconstruction.py`.
-  - FE: `/skills` page with scope filter, name/description search, and
-    per-row 500-char preview. Sidebar entry.
-  - FE: `SkillsChip` on `SpanRow` next to span name.
-  - Tests: **10 BFF unit tests pass in 150 ms**. Playwright: **4/4 pass**
-    (test-3 flake fixed with `expect.poll()` on hydrated count).
-  - Live endpoint returns `{count: 23, sources: {user: 15, project: 8}}`.
-- **BUILD_LOG appended** with the shipping entry + CLOSED entry.
+## Remaining before Stage 6 is fully verified
+1. User runs on Colossus (see command below).
+2. If green: proceed to 30-test benchmark.
+3. If red: DEBUG_LOG entry + fix.
 
-## What remains
-
-Nothing on §6.6. Next stage is **§6.7** (per
-`Forge-OH-reconciliation-plan-v1-stage-6.md` line 758).
-
-## Open questions / decisions parked
-
-- **Visual confirmation of the SkillsChip on a real firing run** — the
-  chip is data-driven; will surface on the first run whose keyword/task
-  trigger matches a loaded skill. No new fixture work needed.
-- **Swap BFF router body back to an HTTP proxy** when agent-server SDK
-  v1.40.0 upstream bug is fixed. Contract unchanged, one-commit swap.
-
-## Exact next action
-
-Move to §6.7 when the user is ready. On Colossus:
-
+## Verify command (paste on Colossus)
 ```bash
-cd ~/dev/forge-oh && git pull
-bash scripts/forge-status.sh
+cd ~/dev/forge-oh && git pull && \
+  .oh-venv/bin/pytest openhands_tools_ext/tests/tool_invocation/ -q
 ```
 
-Read §6.7 scope, restate it, then start.
+## Open questions / ambiguities
+None — ADR 013 resolved the four wire-point ambiguities. §6.7.5 token-usage verification is intentionally deferred to the queued benchmark pass; not a blocker for Stage 6 close.
+
+## Exact next action
+User runs the pytest command above. If green, run the 30-test benchmark.

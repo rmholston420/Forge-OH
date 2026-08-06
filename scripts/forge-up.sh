@@ -102,6 +102,8 @@ else
       --import-modules openhands_tools_ext.memory.tools.consult_memory \
       --import-modules openhands_tools_ext.search.tools.search_web \
       --import-modules openhands_tools_ext.write.tools.write_note \
+      --import-modules openhands_tools_ext.tool_invocation.code_exec_mode \
+      --import-modules openhands_tools_ext.tool_invocation.progressive_disclosure \
       >>"$LOG_DIR/agent-server.log" 2>&1 &
   echo $! > "$AGENT_PID_FILE"
   wait_for_port "$AGENT_PORT" "agent-server" 60 || true

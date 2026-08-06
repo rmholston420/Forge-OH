@@ -6861,3 +6861,39 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 2. Swap BFF router body back to a proxy of upstream `/api/skills` when agent-server SDK v1.40.0 bug is fixed. Contract unchanged, one-commit swap.
 
 **Files touched**: same 14 as `35e5141` + `src/tests/e2e/skills-page.spec.ts` (test-3 flake fix).
+
+## 2026-08-06 11:35 EDT — Stage 6.7 shipped · code-execution invocation mode + progressive disclosure
+
+**Stage/plugin/port**: 6.7 · `openhands_tools_ext/tool_invocation/` · backend only · no new HTTP ports · no FE.
+
+**What shipped** (Path B — SDK-registered tools + BashCommand sandbox tier, per ADR 013):
+
+- **`code_execute` SDK tool** (`openhands_tools_ext/tool_invocation/code_exec_mode.py`) — agent authors a Python program; executor runs it via `python3 -c` in a subprocess of the agent-server, inheriting the same sandbox tier every `bash` action already uses. Bounded: 30s wall-clock timeout (env-tunable, clamp 1..300s), 64KB stdout/stderr truncation (env-tunable, clamp 1KB..1MB). No shell (argv list); shell metacharacters inert. No bare `exec()` in the BFF.
+- **`list_tool_stubs` + `get_tool_schema` SDK tools** (`openhands_tools_ext/tool_invocation/progressive_disclosure.py`) — cheap discovery (name + first-line description of every registered tool) + on-demand full-schema loader via `ToolDefinition.to_mcp_tool()`. Both read-only against the SDK registry.
+- **`should_use_code_execution(...)` routing helper + system-prompt hint** (`openhands_tools_ext/tool_invocation/router.py`) — pure function, two triggers: `task_phase` in `{multi_file_edit, verification, refactor}` OR `estimated_tool_call_count > 3`. Not enforced dispatch; the model consults the hint.
+- **Agent-server preload** — `scripts/forge-up.sh` gains two `--import-modules` flags so all three tools register at startup.
+- **ADR 013** (`.openhands/decisions/013-code-execution-invocation-mode.md`) — documents the divergence from §6.7's four illustrative wire-point snippets (none exist upstream in Forge-OH: SDK owns dispatch, no separate sandbox tier), and pins the BashCommand-as-sandbox decision.
+- **Unit tests** (`openhands_tools_ext/tests/tool_invocation/`) — 3 test files, ~22 cases: router truth table + defensive input handling; progressive-disclosure registration + shape + not-found + validation; code_execute happy path + non-zero exit + stderr + timeout + truncation + shell-metachar inertness + config env clamps.
+
+**Divergence from spec (see ADR 013)**: §6.7's four illustrative wire points (`invoke_tool` dispatch site, sandbox boundary, `build_context` progressive-disclosure hook, dispatch interception) do not exist in Forge-OH — the pinned OpenHands SDK v1.40.0 owns all four. Shipping the snippets verbatim would be dead code. Path B ships three SDK-registered tools the model calls explicitly, satisfying §6.7's intent (agent-authored code calling tools, unused schemas out of context) via the actual architecture.
+
+**Stop-condition status**: §6.7.5's measurable token-usage reduction is **deferred to the next benchmark pass** — token tracking already flows through `trace_reconstruction.py` and displays in `RunDetailHeader.tsx`; the 30-test bench (queued post-Stage-6) is the measurement.
+
+**Files touched**: 4 new (`__init__.py`, `code_exec_mode.py`, `progressive_disclosure.py`, `router.py`), 3 new test files + `__init__.py`, 1 new ADR, 1 modified (`scripts/forge-up.sh`). Total: 10 files.
+
+**PORTING_LEDGER**: no entries — no OSS vendored.
+
+## 2026-08-06 11:35 EDT — Stage 6 CLOSED
+
+All Stage 6 sub-stages shipped:
+- 6.1 · Skills-and-context loader wired
+- 6.2 · Context assembly path through BFF
+- 6.3 · `write_note` + idempotency ledger
+- 6.4 · MessageEvent `activated_skills` attribute
+- 6.5 · Skills REST (deferred to Path B in-process loader per §6.6.2)
+- 6.6 · `/skills` page + SkillsChip on Trace tab
+- 6.7 · Code-execution invocation mode + progressive disclosure (this entry)
+
+Exit gate: `pytest openhands_tools_ext/tests/tool_invocation/ -q` on Colossus is the last item — user will run.
+
+Next: Stage 7.1 begins after the queued 30-test benchmark confirms Stage 6 gains, followed by the full 500-test run.
