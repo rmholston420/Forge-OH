@@ -45,7 +45,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from bff.openhands_client import get_client
@@ -54,6 +54,7 @@ from bff.services.action_reconstruction import (
     build_commands,
     build_plan,
 )
+from bff.services import event_commit_ledger
 from bff.services.event_normalize import normalize_events
 from bff.services.event_relay import start_relay
 from bff.services.file_diff_reconstruction import build_file_diff, build_summaries
@@ -66,6 +67,7 @@ from bff.services.model_router import (
 from bff.services.sidecar import seed_sidecar
 from bff.services.worktree import (
     WorktreeError,
+    head_sha,
     provision_worktree,
     remove_worktree,
 )
@@ -285,7 +287,7 @@ async def list_runs(
 
 
 @router.post("/runs")
-async def create_run(body: CreateRunRequest) -> dict:
+async def create_run(request: Request, body: CreateRunRequest) -> dict:
     task_complexity = body.taskComplexity or "agentic"
     context_length = (
         body.contextLength if body.contextLength is not None else len(body.taskPrompt or "")
@@ -551,6 +553,52 @@ async def create_run(body: CreateRunRequest) -> dict:
     except Exception as exc:
         log.warning("create_run: confirmation_policy call failed: %s", exc)
 
+    # 3b) Stage 6.4c (ADR-026 §Storage) — capture HEAD sha for the
+    #     initial user MessageEvent so a future "Restart from here" can
+    #     branch from the same tree state.  Best-effort P1 pattern:
+    #       - GET /events?limit=1&sort_order=TIMESTAMP  (asc order via TIMESTAMP)
+    #       - if the first event is a user MessageEvent, record its id + HEAD sha.
+    #     Any failure is logged and swallowed — downgrades gracefully to
+    #     "no restart button on this event" per ADR-026.  The read path
+    #     hides the button when no ledger row exists.
+    try:
+        ledger_ready = getattr(request.app.state, "event_commit_db", None) is not None
+        if ledger_ready and worktree_provisioned is not None:
+            events_resp = await client.get(
+                f"/api/conversations/{cid}/events/search",
+                params={"limit": 1, "sort_order": "TIMESTAMP"},
+            )
+            if events_resp.status_code < 400:
+                epl = events_resp.json() or {}
+                first_items = (
+                    epl if isinstance(epl, list)
+                    else (epl.get("items") or epl.get("data") or epl.get("events") or [])
+                )
+                if first_items:
+                    ev0 = first_items[0] or {}
+                    ev0_id = ev0.get("id") or ev0.get("event_id")
+                    ev0_kind = ev0.get("kind") or ev0.get("type")
+                    ev0_source = ev0.get("source")
+                    if (
+                        ev0_id
+                        and ev0_kind == "MessageEvent"
+                        and ev0_source == "user"
+                    ):
+                        sha = head_sha(working_dir)
+                        if sha:
+                            await event_commit_ledger.record_sha(
+                                request.app,
+                                run_id=cid,
+                                event_id=ev0_id,
+                                commit_sha=sha,
+                            )
+                            log.info(
+                                "create_run: captured sha for initial user event %s on run %s",
+                                ev0_id, cid,
+                            )
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("create_run: sha capture failed: %s", exc)
+
     # 3) Kick off in background.
     try:
         run_resp = await client.post(f"/api/conversations/{cid}/run")
@@ -657,7 +705,7 @@ async def get_run(run_id: str) -> dict:
 
 
 @router.delete("/runs/{run_id}", status_code=204, response_class=Response)
-async def delete_run(run_id: str):
+async def delete_run(request: Request, run_id: str):
     """Delete a run and reap its worktree.
 
     Order:
@@ -711,6 +759,23 @@ async def delete_run(run_id: str):
                 "delete_run: failed to reap worktree %s for run %s: %s",
                 worktree_run_id, run_id, exc,
             )
+
+    # 4) Stage 6.4c (ADR-026 §Storage) — cascade-delete every event_commit_shas
+    #    row keyed to this run.  Idempotent; missing table / db-not-initialised
+    #    both downgrade to a warning without failing the delete.
+    if getattr(request.app.state, "event_commit_db", None) is not None:
+        try:
+            rows = await event_commit_ledger.delete_run(request.app, run_id)
+            log.info(
+                "delete_run: purged %d event_commit_shas rows for run %s",
+                rows, run_id,
+            )
+        except Exception as exc:
+            log.warning(
+                "delete_run: event_commit_ledger.delete_run(%s) failed: %s",
+                run_id, exc,
+            )
+
     return Response(status_code=204)
 
 
@@ -721,6 +786,7 @@ async def delete_run(run_id: str):
 
 @router.get("/runs/{run_id}/events")
 async def get_run_events(
+    request: Request,
     run_id: str,
     page_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=100),
@@ -740,10 +806,40 @@ async def get_run_events(
     resp.raise_for_status()
     payload = resp.json() or {}
     if isinstance(payload, list):
-        return {"data": normalize_events(payload), "nextPageId": None}
-    items = payload.get("items") or payload.get("data") or payload.get("events") or []
-    next_page = payload.get("next_page_id") or payload.get("nextPageId")
-    return {"data": normalize_events(items), "nextPageId": next_page}
+        items = payload
+        next_page = None
+    else:
+        items = payload.get("items") or payload.get("data") or payload.get("events") or []
+        next_page = payload.get("next_page_id") or payload.get("nextPageId")
+
+    # Stage 6.4c (ADR-026 §Storage) — batch-hydrate commit shas for user
+    # MessageEvents in this page.  Best-effort: ledger unavailable / empty
+    # lookup downgrades to the pre-ADR-026 shape (no commit_sha_at_time_of_event
+    # key), which hides the "Restart from here" button on those events.
+    sha_lookup = None
+    ledger_ready = getattr(request.app.state, "event_commit_db", None) is not None
+    if ledger_ready and items:
+        event_ids = [
+            (it.get("id") or it.get("event_id"))
+            for it in items
+            if isinstance(it, dict)
+        ]
+        event_ids = [eid for eid in event_ids if eid]
+        if event_ids:
+            try:
+                sha_map = await event_commit_ledger.bulk_get_shas(
+                    request.app, event_ids
+                )
+                sha_lookup = sha_map.get
+            except Exception as exc:  # pragma: no cover - defensive
+                log.warning(
+                    "get_run_events: bulk_get_shas(%s) failed: %s", run_id, exc
+                )
+
+    return {
+        "data": normalize_events(items, sha_lookup=sha_lookup),
+        "nextPageId": next_page,
+    }
 
 
 @router.get("/runs/{run_id}/plan")
@@ -932,12 +1028,22 @@ class SendMessageRequest(BaseModel):
 
 
 @router.post("/runs/{run_id}/message")
-async def send_run_message(run_id: str, body: SendMessageRequest) -> dict:
+async def send_run_message(
+    request: Request, run_id: str, body: SendMessageRequest
+) -> dict:
     """Send a user message into a running (or paused) conversation.
 
     Mirrors the exact contract of agent-server 1.40.0's
     ``POST /api/conversations/{cid}/events`` with a fixed
     ``role='user'`` and a single ``TextContent`` payload.
+
+    Stage 6.4c (ADR-026 §Storage): after the POST succeeds we do a
+    best-effort follow-up GET with sort_order=CREATED_AT_DESC limit=1
+    to discover the id agent-server assigned to the fresh event and
+    stamp its HEAD sha in ``event_commit_ledger``.  Any capture failure
+    logs and returns — the POST succeeded, the user’s message is
+    persisted, and the "Restart from here" button simply won’t appear
+    for that event.
     """
     result = await _call_lifecycle(
         run_id,
@@ -948,6 +1054,62 @@ async def send_run_message(run_id: str, body: SendMessageRequest) -> dict:
             "run": False,
         },
     )
+
+    # Best-effort sha capture on the just-created user MessageEvent.
+    try:
+        ledger_ready = getattr(request.app.state, "event_commit_db", None) is not None
+        if ledger_ready:
+            client = get_client()
+            conv_resp = await client.get(f"/api/conversations/{run_id}")
+            working_dir = ""
+            if conv_resp.status_code < 400:
+                working_dir = (
+                    (conv_resp.json() or {}).get("workspace") or {}
+                ).get("working_dir") or ""
+            if working_dir:
+                # sort_order=CREATED_AT_DESC returns newest first; limit=1
+                # is the event we just POSTed (agent-server orders inserts
+                # sequentially by created_at).
+                events_resp = await client.get(
+                    f"/api/conversations/{run_id}/events/search",
+                    params={"limit": 1, "sort_order": "CREATED_AT_DESC"},
+                )
+                if events_resp.status_code < 400:
+                    epl = events_resp.json() or {}
+                    latest = (
+                        epl if isinstance(epl, list)
+                        else (
+                            epl.get("items")
+                            or epl.get("data")
+                            or epl.get("events")
+                            or []
+                        )
+                    )
+                    if latest:
+                        ev = latest[0] or {}
+                        ev_id = ev.get("id") or ev.get("event_id")
+                        ev_kind = ev.get("kind") or ev.get("type")
+                        ev_src = ev.get("source")
+                        if (
+                            ev_id
+                            and ev_kind == "MessageEvent"
+                            and ev_src == "user"
+                        ):
+                            sha = head_sha(working_dir)
+                            if sha:
+                                await event_commit_ledger.record_sha(
+                                    request.app,
+                                    run_id=run_id,
+                                    event_id=ev_id,
+                                    commit_sha=sha,
+                                )
+                                log.info(
+                                    "send_run_message: captured sha for %s on run %s",
+                                    ev_id, run_id,
+                                )
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("send_run_message: sha capture failed: %s", exc)
+
     return {"ok": True, "run_id": run_id, "agent_server": result}
 
 

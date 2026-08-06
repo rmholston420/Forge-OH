@@ -287,6 +287,48 @@ def remove_worktree(run_id: str, *, missing_ok: bool = False) -> None:
     )
 
 
+def head_sha(worktree_path: str | Path) -> str | None:
+    """Return the full 40-char HEAD sha of the worktree, or ``None`` on failure.
+
+    Stage 6.4c (ADR-026 §Storage): used by the runs router right after
+    it hands a user-message text to agent-server, so the returned sha can
+    be recorded in ``event_commit_ledger`` keyed by the fresh event id.
+
+    Failure modes (all return ``None``, none raise):
+      * ``worktree_path`` does not exist or is not a directory.
+      * ``worktree_path`` is not a git worktree / repo.
+      * ``git`` is not on PATH.
+      * ``git rev-parse HEAD`` exits non-zero (detached-HEAD before any
+        commit, corrupt repo, etc.).
+      * Timeout.
+
+    Callers treat ``None`` as a capture failure and skip the ledger
+    insert; the frontend simply hides the "Restart from here" button on
+    that event, matching the graceful-downgrade contract in ADR-026.
+    """
+    path = Path(worktree_path).expanduser()
+    if not path.is_dir():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT_SEC,
+        )
+    except FileNotFoundError:
+        return None
+    except subprocess.TimeoutExpired:
+        return None
+    if result.returncode != 0:
+        return None
+    sha = result.stdout.strip()
+    # Guard against unexpected shapes (empty string, short sha, etc.).
+    if len(sha) != 40 or not all(c in "0123456789abcdef" for c in sha):
+        return None
+    return sha
+
+
 def list_worktrees() -> list[Path]:
     """Return every worktree directory currently under WORKTREE_ROOT.
 
