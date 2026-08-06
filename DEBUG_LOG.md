@@ -1465,3 +1465,12 @@ ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than
   5. Re-ordered route-mocks so the more-specific `/events` glob is registered before the parent `/api/runs/{id}` glob (Playwright evaluates in registration order).
 - **Files changed:** `src/tests/e2e/risk-badge.spec.ts`.
 - **Search keys:** `page.route`, `route.fulfill`, `getByText timeout`, `fetchRunEvents`, `json.data`, `envelope`, `RunSummarySchema`, `useRunEvents empty`.
+
+## 2026-08-05 23:37 EDT — Playwright strict-mode: role=alert matches Next.js route announcer
+
+- **Symptom:** `hitl-approval.spec.ts` tests 1 + 3 failed with `strict mode violation: getByRole('alert') resolved to 2 elements`. First match was the real `ApprovalBanner`. Second match was `<div role="alert" aria-live="assertive" id="__next-route-announcer__">` — an empty div Next.js injects to announce route changes to screen readers. Both are valid semantic alerts.
+- **Affected stage/plugin/port:** Stage 3.2 · Playwright HITL spec.
+- **Root cause:** Playwright locators default to strict mode; any locator resolving to multiple elements fails even if one clearly matches intent. Next.js 16 route-announcer is baseline on every page and can't be turned off.
+- **Fix applied:** Scope the banner locator with `.filter({ hasText: /awaiting your approval/i })`. For the click-flow tests, wait for the labeled Approve/Reject button instead of role=alert since that's what the test actually acts on.
+- **Files changed:** `src/tests/e2e/hitl-approval.spec.ts`.
+- **Search keys:** `strict mode violation`, `role="alert"`, `__next-route-announcer__`, `getByRole alert`, `Next.js announcer`, `Playwright filter hasText`.

@@ -116,7 +116,9 @@ test.describe('Stage 3.2 HITL ApprovalBanner', () => {
     await expect(page.getByText('terminal: rm -rf /tmp/scratch')).toBeVisible({ timeout: 15_000 });
 
     // ApprovalBanner announces via role=alert + aria-live=assertive.
-    const banner = page.getByRole('alert');
+    // Scope by hasText to avoid strict-mode collision with Next.js's
+    // built-in `__next-route-announcer__` (also role=alert, aria-live).
+    const banner = page.getByRole('alert').filter({ hasText: /awaiting your approval/i });
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('Agent is awaiting your approval');
 
@@ -139,7 +141,9 @@ test.describe('Stage 3.2 HITL ApprovalBanner', () => {
     });
 
     await page.goto(`${FRONTEND_URL}/runs/${FAKE_RUN_ID}`);
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+    // Wait for the ApprovalBanner Approve button rather than role=alert
+    // (Next.js route announcer also uses role=alert).
+    await expect(page.getByLabel('Approve agent action')).toBeVisible({ timeout: 15_000 });
 
     await page.getByLabel('Approve agent action').click();
 
@@ -163,7 +167,7 @@ test.describe('Stage 3.2 HITL ApprovalBanner', () => {
     });
 
     await page.goto(`${FRONTEND_URL}/runs/${FAKE_RUN_ID}`);
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('Reject agent action')).toBeVisible({ timeout: 15_000 });
 
     await page.getByLabel('Reject agent action').click();
 
