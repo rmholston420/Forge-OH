@@ -1,46 +1,58 @@
 # Forge-OH Session Handoff
 
 ## Current stage
-Stage 5.6a — **CODE COMPLETE ON SANDBOX**, awaiting Colossus pull + verify.
-Committed and pushed to `origin/main`; user runs the verify block below.
+Stage 5.6a — code + tests COMPLETE on Colossus (54 backend + 7 frontend green, prod build clean).
+Playwright visual pass (live DozerDB seed) queued — awaiting user run.
 
 ## Completed this session
-- Extended `MemoryPort` with `MemoryEventRecord` + `list_recent_writes(*, limit)`.
-- Implemented `list_recent_writes` on `DozerDbMemoryAdapter` for both InMemoryGraphBackend (label-shortcut) and DozerDbGraphBackend (real Cypher with newest-first `ORDER BY e.written_at DESC LIMIT $limit`).
-- Extended `bff/services/event_normalize.py` with `MemoryConsultationEvent → memory_consultation` mapping + `_memory_consultation_summary` helper.
-- New `bff/services/memory_events.py`: pure factory `build_memory_consultation_event` + emit wrapper `emit_memory_consultation` (library-only, no caller yet — ADR-023 D7 precedent).
-- New `bff/deps/memory_port.py`: lazy singleton composed via `openhands_tools_ext.memory.composition.make_memory_adapter`; non-fatal when `NEO4J_PASSWORD` unset.
-- New `bff/routers/memory.py`: `GET /api/memory/recent-writes?limit=50` (1–200). 503 when port unavailable; camelCase wire fields.
-- `bff/main.py`: router mounted, singleton closed in lifespan.
-- Frontend: `memory_consultation` in `EventTypeSchema`, brain icon in `EVENT_ICONS`, new `memory-inspector` feature module + dashboard route + sidebar entry + `memoryKeys` in `query-keys.ts`. TanStack refetch 15 s; 503 short-circuits retry.
-- ADR-024 filed (Ratified) + README row added.
-- Sandbox tests all green (165 passed, 1 skipped on touched files; 118/1 full memory suite).
+- Stage 5.6a full plumbing (ADR-024): `MemoryConsultationEvent → memory_consultation` projector, `list_recent_writes` port + adapter, BFF singleton (K1), memory router, memory-inspector page + sidebar entry, event-normalize + memory-events + memory-router + inspector + EventCard tests.
+- Colossus verify green (2026-08-06 03:25 EDT):
+  - 54 backend tests (list_recent_writes 7 · event_normalize 25 · memory_router 5 · memory_events 17)
+  - `pnpm typecheck` clean · `pnpm build` clean (`/memory-inspector` prerendered)
+  - 7 frontend tests (EventCard-memory 3 · MemoryInspectorPage 4)
+- Playwright visual spec authored (`src/tests/e2e/memory-inspector.spec.ts`) + seed helper (`scripts/seed_memory_event.py`) for LIVE DozerDB pass.
 
-## Next action on Colossus (user, single block)
+## Next action on Colossus (user)
+Live-DozerDB Playwright pass. Full runbook in BUILD_LOG 2026-08-06 03:26 EDT entry, condensed:
 
 ```
 cd ~/dev/forge-oh && git pull
-PYTHONPATH=. python -m pytest bff/tests/memory/test_list_recent_writes_contract.py bff/tests/test_event_normalize.py bff/tests/test_memory_router.py bff/tests/test_memory_events.py -v
-pnpm typecheck
-pnpm build
-pnpm vitest run src/tests/unit/EventCard-memory.test.tsx src/tests/unit/MemoryInspectorPage.test.tsx
+
+# BFF must have NEO4J_PASSWORD in env. If not, source .env.neo4j and
+# restart the BFF per forge-oh-colossus-ops.
+curl -s -o /dev/null -w "memory=%{http_code}\n" \
+  http://127.0.0.1:8081/api/memory/recent-writes?limit=1
+# Expect 200. If 503, restart BFF with the memory env before proceeding.
+
+fuser -k 3100/tcp 2>/dev/null; sleep 2
+npm --prefix src run build
+NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \
+  nohup npx --prefix src next start -H 127.0.0.1 -p 3100 \
+  >~/.forge-oh/next-prod.log 2>&1 &
+sleep 6
+curl -s -o /dev/null -w "prod=%{http_code}\n" http://127.0.0.1:3100/runs
+
+cd src
+PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
+PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+  npx playwright test tests/e2e/memory-inspector.spec.ts --reporter=list
 ```
 
-Expect all green. Then a Playwright visual pass against the production build (`pnpm start`) to confirm the timeline brain marker (fixture MemoryConsultationEvent) and the `/memory-inspector` page render with a MemoryPort composed against DozerDB.
+Expect: two screenshots (`screenshots/memory-inspector-page.png`, `screenshots/memory-inspector-sidebar.png`) auto-committed + pushed to `origin/main` by the spec's own git-push tail.
 
 ## Open questions
-None blocking. Stage 5.6b (real `consult_memory` OpenHands tool + agent-server registration) is the next planned work.
+None blocking.
 
-## Definition of Done for 5.6a (from Forge-OH-Action-Plan-v4 §5.6)
-- [x] `MemoryConsultationEvent` raw kind projected to normalized `memory_consultation` event type with tier/query/result_count summary.
-- [x] Timeline renders a distinct marker (brain icon) for `memory_consultation`.
-- [x] `/memory-inspector` dashboard page with triple-shape (subject/predicate/object) table of recent MemoryPort writes.
-- [x] BFF exposes recent-writes endpoint via a MemoryPort method (not direct Cypher).
-- [x] BFF composes a lazy MemoryPort singleton at startup; degrades to 503 when `NEO4J_PASSWORD` unset.
-- [x] ADR-024 filed and index updated.
-- [ ] Colossus verify (pending user pull).
-- [ ] Playwright visual verification against production build (pending user pull).
+## Definition of Done for 5.6a
+- [x] `MemoryConsultationEvent → memory_consultation` normalizer + timeline brain-icon marker (unit-tested).
+- [x] `/memory-inspector` dashboard route + triple-shape recent-writes table.
+- [x] MemoryPort recent-writes endpoint (`list_recent_writes` port method, not direct Cypher).
+- [x] Lazy BFF MemoryPort singleton (K1) with non-fatal missing-password path.
+- [x] ADR-024 filed + index updated.
+- [x] Colossus test verify (54 backend + typecheck + build + 7 frontend green).
+- [ ] Colossus Playwright visual pass (queued — spec + seed helper committed).
 
 ## Deferred to Stage 5.6b
-- `consult_memory` OpenHands tool wired to `emit_memory_consultation` in agent-server.
-- Live-task DoD from plan §5.6.4 (real task run triggers memory event).
+- `consult_memory` OpenHands tool wired to `emit_memory_consultation`.
+- Timeline brain-marker screenshot (requires a real caller — belongs to 5.6b's live-task DoD).
+- Plan §5.6.4 live-task DoD.

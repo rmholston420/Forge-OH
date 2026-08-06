@@ -5667,3 +5667,36 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   Expect: 39 backend tests passing on the touched files (+ full 118/1 memory suite if extended), typecheck + build clean, 7 frontend tests passing.
 - **DoD status:** 5.6a plumbing complete on sandbox. Live Colossus verification (DozerDB Bolt path + Playwright visual pass on production build) pending user pull.
 - **Deferred to Stage 5.6b:** `consult_memory` OpenHands tool implementation and agent-server registration so a real task run drives `emit_memory_consultation` end-to-end.
+
+## 2026-08-06 03:26 EDT — Stage 5.6a: Playwright visual spec + seed helper
+
+- **Purpose:** live-DozerDB Playwright pass for the /memory-inspector page (per user directive "Inspector page against LIVE DozerDB (seed real data)").
+- **What shipped:**
+  1. `scripts/seed_memory_event.py` — composes the same `MemoryPort` (`openhands_tools_ext.memory.composition.make_memory_adapter`) the BFF uses and writes one canonical `(colossus, runs, dozerdb)` triple with `provenance="playwright-seed"`, `confidence=0.95`, `pii_tier="Public"`. Exits 0 without writing when `NEO4J_PASSWORD` is unset (sandbox / CI). Idempotency: append; each invocation adds one row.
+  2. `src/tests/e2e/memory-inspector.spec.ts` — visual spec that (a) fail-fast probes the live BFF (`/api/memory/recent-writes` must be 200; 503 skips with an actionable NEO4J_PASSWORD hint), (b) invokes `scripts/seed_memory_event.py`, (c) hits the prod frontend on :3100, screenshots the sidebar with the 🧠 Memory entry, then the full /memory-inspector page. Auto-commits + pushes via `PLAYWRIGHT_GPU_STRIP_PUSH=1` (same env flag as gpu-strip).
+- **Timeline brain marker screenshot:** intentionally not covered by this spec. No caller emits `MemoryConsultationEvent` yet — that's Stage 5.6b (`consult_memory` OpenHands tool). Marker rendering is asserted by `src/tests/unit/EventCard-memory.test.tsx` (3 passed on Colossus 2026-08-06 03:25 EDT).
+- **Files touched:**
+  - `scripts/seed_memory_event.py` (new)
+  - `src/tests/e2e/memory-inspector.spec.ts` (new)
+  - `BUILD_LOG.md`, `SESSION_HANDOFF.md`
+- **Verification path (user, on Colossus):**
+  ```
+  cd ~/dev/forge-oh && git pull
+  # 1. BFF must have NEO4J_PASSWORD in its env. If the current BFF was
+  #    started without it, restart:
+  #        source .env.neo4j && (restart bff per forge-oh-colossus-ops)
+  # 2. Prod frontend build + serve:
+  fuser -k 3100/tcp 2>/dev/null; sleep 2
+  npm --prefix src run build
+  NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \
+    nohup npx --prefix src next start -H 127.0.0.1 -p 3100 \
+    >~/.forge-oh/next-prod.log 2>&1 &
+  sleep 6
+  curl -s -o /dev/null -w "prod=%{http_code}\n" http://127.0.0.1:3100/runs
+  # 3. Visual pass (auto-push screenshots to origin/main):
+  cd src
+  PLAYWRIGHT_FRONTEND_URL=http://127.0.0.1:3100 \
+  PLAYWRIGHT_GPU_STRIP_PUSH=1 \
+    npx playwright test tests/e2e/memory-inspector.spec.ts --reporter=list
+  ```
+  Expect: `screenshots/memory-inspector-page.png` + `screenshots/memory-inspector-sidebar.png` committed and pushed. Spec skips with a NEO4J_PASSWORD hint if the BFF returned 503.
