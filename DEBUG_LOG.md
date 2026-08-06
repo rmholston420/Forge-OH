@@ -1759,3 +1759,42 @@ Two independent problems this caused:
   ```
 - **Cross-refs:** consider updating `forge-oh-colossus-ops` skill so future
   sessions never launch `bff.main:app` again.
+
+## 2026-08-06 06:48 EDT — Pre-existing gitDiff.test.tsx failure (NOT Stage 6.4)
+
+- **Symptom:** `pnpm test:unit` reports 2 failed / 872 passed on Colossus.
+  Both failures inside `src/tests/unit/gitDiff.test.tsx`, at line 127:
+  ```
+  await waitFor(() =>
+    expect(screen.getByTestId('diff-source-toggle')).toBeInTheDocument(),
+  );
+  ```
+  `waitFor` times out — the `diff-source-toggle` testid never renders.
+- **Affected:** Frontend · GitDiff panel · Step 7 slice C.2 (`17dcb1b`).
+  NOT Stage 6.4. `gitDiff.test.tsx` is untouched in this session
+  (`git diff --stat c0a1e3f..HEAD -- src/tests/unit/gitDiff.test.tsx`
+  is empty).
+- **Root cause:** Not yet diagnosed. Regression predates Stage 6.4.
+  Baseline probe: checked out `c0a1e3f` (last commit before Stage 6.4
+  work began), ran `pnpm exec vitest run src/tests/unit/gitDiff.test.tsx`
+  → 1 failed / 4 passed with the same trace. So the failure was already
+  present when Stage 6.4 opened.
+- **Blame candidate:** `17dcb1b step 7 slice C.2: real git diff wiring`.
+  That's the most recent commit touching the git diff surface.
+  Suspected causes to investigate (in order of likelihood):
+  1. Component now waits on a real `/api/git/diff` fetch that the test
+     doesn't mock, so the toggle never mounts.
+  2. `diff-source-toggle` testid moved or was renamed to a semantic role.
+  3. Component was gated behind a feature flag or a resolved-file
+     precondition that the test setup doesn't satisfy.
+- **Fix applied:** none yet. Filed here so future sessions grep
+  `diff-source-toggle` and land on the baseline evidence and blame
+  candidate instead of re-diagnosing.
+- **Suggested next action:** open a micro-slice
+  `Stage 7-C.2-hotfix — gitDiff.test.tsx regression` to investigate.
+- **Files:**
+  - Failing test: `src/tests/unit/gitDiff.test.tsx:127`
+  - Component under test: `src/components/**/GitDiff*.tsx`
+    (path glob didn't match with the git-shell glob; use vitest's
+    module resolution to find the exact file — `import` statements
+    inside gitDiff.test.tsx are the ground truth).

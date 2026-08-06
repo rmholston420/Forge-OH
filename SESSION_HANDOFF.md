@@ -49,7 +49,15 @@ Expected: Vitest = 10 passed for the fork-from-here suite (+ everything else gre
 
 ## Open questions awaiting user
 
-**None blocking.** All three questions from the previous handoff have been decided per the "make the optimal choice" directive and are now landed on `main` (commits `2231245`, `f77cf38`) plus the `forge-oh-colossus-ops` skill update.
+**None blocking.** All three questions from the previous handoff have been decided per the "make the optimal choice" directive and are now landed on `main` (commits `2231245`, `f77cf38`, `a12bc6b`) plus the `forge-oh-colossus-ops` skill update.
+
+**Out-of-scope finding logged (not blocking Stage 6.4):**
+- `src/tests/unit/gitDiff.test.tsx` has 1 pre-existing failure at line 127
+  (`waitFor(getByTestId('diff-source-toggle'))`). Baseline probe against
+  `c0a1e3f` (pre-session HEAD) reproduces the failure. Blame candidate:
+  `17dcb1b step 7 slice C.2: real git diff wiring`. Full evidence in
+  DEBUG_LOG 2026-08-06 06:48 EDT. Recommend opening
+  `Stage 7-C.2-hotfix` as a separate micro-slice.
 
 - If Stage 6.4b (per-run worktrees + D3 file revert) should be next, confirm and I'll open it against `docs/reconciliation-plan-v1.md` §6.4b.
 - Otherwise, name the next stage from the reconciliation plan and I'll restate scope and start.
