@@ -1673,3 +1673,21 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
   With this order, `http_task` is scheduled at t0. When the loop yields, `relay_task` runs first (FIFO), busy-spins for 200ms, then `http_task` records latency ≈ 200ms.
 - **Impact:** Diagnostic-only test. The three real tests in the same file (`test_update_from_event_runs_in_worker_thread`, `test_slow_producer_does_not_block_event_loop`, and the wrapped version) still pass. The event_relay production code is correct.
 - **Do NOT block Stage 5 on this.** Move to KNOWN_ISSUES.
+
+
+## 2026-08-06 05:00 EDT — E2E spec REPO_ROOT + ESM/CJS bugs (Stage 6.1)
+
+- **Symptom (bug 1):** `search-timeline-marker.spec.ts` — test assertions and screenshot succeeded, but auto-push hook errored:
+  ```
+  Error: Command failed: git add -f screenshots/search-timeline-marker.png
+  fatal: not a git repository (or any of the parent directories): .git
+  ```
+- **Affected stage/plugin/port:** Stage 6.1 · Playwright E2E harness · N/A (test-only)
+- **Root cause:** `REPO_ROOT = resolve(process.cwd(), '..')` walked one level *above* the repo. Playwright's `cwd` is the repo root (since `playwright.config.ts` lives there), not `src/`, so `../` pointed at `/home/rmholston/dev/`.
+- **Fix applied (commit `3fdfafb`):** derive REPO_ROOT from the spec file's own filesystem location (three levels up from `src/tests/e2e/*.spec.ts`). Also correct `APP_DIR = REPO_ROOT` since `package.json` is at repo root.
+- **Symptom (bug 2, introduced by bug-1 fix):** `SyntaxError: Cannot use 'import.meta' outside a module` — Playwright refused to load the spec.
+- **Root cause:** Forge-OH's `package.json` has no `"type": "module"` field, so Playwright's `ts-node` compiles specs to CommonJS. `import.meta.url` is ESM-only.
+- **Fix applied (commit `2175c51`):** drop `fileURLToPath(import.meta.url)`, use CJS `__dirname` directly.
+- **Files changed:** `src/tests/e2e/search-timeline-marker.spec.ts` (both commits).
+- **Same bugs latent in:** `src/tests/e2e/memory-timeline-marker.spec.ts` (identical structural copy) — fix if/when re-run.
+- **Prevention:** Any future E2E spec that needs REPO_ROOT must use `resolve(__dirname, '..', '..', '..')`. Do NOT rely on `process.cwd()`. Do NOT use `import.meta` until `package.json` gains `"type": "module"` (which would require broader migration).

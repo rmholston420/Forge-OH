@@ -5928,3 +5928,37 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - Verify end-to-end (agent → SearXNG → provenance visible on timeline): ⏳ pending user pull + `docker compose up` + E2E DoD screenshot on Colossus.
 
 **Next up:** Stage 6.2 — Condensation visibility (per reconciliation-plan-stage-6.md).
+
+
+## 2026-08-06 05:00 EDT — Stage 6.1 DoD MET on Colossus
+
+**Verification results:**
+- SearXNG bring-up: `docker compose -f ops/compose/searxng.yml up -d` → `forge-oh-searxng` container Started; `curl http://127.0.0.1:18888/search?q=probe&format=json` → 200 with `.query == "probe"`.
+- Restart via `forge-restart.sh`: agent-server on :8090 (ready 4s), BFF on :8081 (ready 1s), Next.js dev on :3000 (ready 1s). All three healthy.
+- Backend tests: `pytest openhands_tools_ext/tests/search/ bff/tests/test_search_emit_endpoint.py` → **26 passed in 2.56s**.
+- Frontend: `pnpm typecheck` → clean; `pnpm test:unit src/tests/unit/EventCard-web-search.test.tsx` → **3 passed**; `pnpm build` → success (23 routes, Next.js 16.2.10).
+- E2E DoD screenshot: `PLAYWRIGHT_START_PROD=1 PLAYWRIGHT_GPU_STRIP_PUSH=1 pnpm test:e2e src/tests/e2e/search-timeline-marker.spec.ts` → **1 passed in 6.3s**. Screenshot at `screenshots/search-timeline-marker.png` auto-committed and pushed by the spec's post-test hook.
+- Auto-commit SHA: `0c60df0` "Stage 6.1 screenshot: search-timeline-marker (magnifier icon on run-detail)".
+
+**Bugs found + fixed during verification:**
+- **Symptom 1:** E2E test itself passed but auto-push hook failed with `fatal: not a git repository (or any of the parent directories): .git`.
+  **Root cause:** `REPO_ROOT = resolve(process.cwd(), '..')` walked one level *above* the repo (Playwright cwd = repo root since `playwright.config.ts` is there, not `src/`).
+  **Fix (commit `3fdfafb`):** derive REPO_ROOT from the spec file's own location, three levels up. Also corrected `APP_DIR = REPO_ROOT` since `package.json` is at repo root, not under `src/`.
+- **Symptom 2:** After the first fix, spec failed to load: `SyntaxError: Cannot use 'import.meta' outside a module`.
+  **Root cause:** Playwright's `ts-node` here compiles specs to CommonJS; `import.meta` is ESM-only, and `package.json` has no `"type": "module"`.
+  **Fix (commit `2175c51`):** use CJS `__dirname` directly instead of `fileURLToPath(import.meta.url)`.
+- Both bugs also apply to `src/tests/e2e/memory-timeline-marker.spec.ts` (identical structure) — not fixed here; will be addressed if that spec is re-run.
+
+**Files added by DoD run:**
+- `screenshots/search-timeline-marker.png` (via commit `0c60df0`)
+
+**Ports/adapters affected:** SearchPort (verified live via SearxngAdapter → `http://127.0.0.1:18888`).
+
+**Stop-condition status:** ✅ MET.
+
+**Follow-ups noted (not blockers):**
+- Frontend spec bugs (REPO_ROOT + CJS) still latent in the memory E2E spec — fix opportunistically when 5.6b spec is re-run.
+- `forge-restart.sh` started dev Next.js on :3000, then the E2E spec started prod on :3100. First DoD-style run had leftover :3100 from prior attempt → `EADDRINUSE` — harmless (spec detected existing FE on :3100 and reused it) but ideally the spec should reuse regardless.
+- Two orphan Kosmos compose containers (`kosmos-qdrant`, `kosmos-dozerdb`) flagged by `docker compose` in the Forge-OH project — cosmetic only.
+
+**Next up:** Stage 6.2 — Condensation visibility (per `docs/reconciliation-plan-stage-6.md` §6.2).
