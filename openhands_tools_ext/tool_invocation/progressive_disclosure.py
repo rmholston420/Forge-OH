@@ -202,7 +202,7 @@ class GetToolSchemaObservation(Observation):
     name: str
     found: bool
     description: str = ""
-    schema_json: dict[str, Any] = Field(default_factory=dict)
+    mcp_schema: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def agent_observation(self) -> Sequence[Any]:  # pragma: no cover
@@ -225,7 +225,7 @@ class GetToolSchemaExecutor(ToolExecutor[GetToolSchemaAction, GetToolSchemaObser
             name=action.name,
             found=True,
             description=tool.description or "",
-            schema_json=tool.to_mcp_tool(),
+            mcp_schema=tool.to_mcp_tool(),
         )
 
 
@@ -239,7 +239,7 @@ start burns tokens on schemas you never use.
 Parameters:
 - name: The exact registered name of the tool (from ``list_tool_stubs``).
 
-Returns {name, found, description, schema_json}.  ``found=false`` and an
+Returns {name, found, description, mcp_schema}.  ``found=false`` and an
 empty schema mean the tool is not currently registered.
 """
 

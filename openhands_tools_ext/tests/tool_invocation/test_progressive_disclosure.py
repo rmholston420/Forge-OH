@@ -50,10 +50,10 @@ def test_get_tool_schema_returns_canonical_shape_for_known_tool() -> None:
     assert obs.name == "list_tool_stubs"
     assert obs.description  # non-empty
     # Canonical MCP shape from ToolDefinition.to_mcp_tool()
-    assert obs.schema_json.get("name") == "list_tool_stubs"
-    assert "inputSchema" in obs.schema_json
+    assert obs.mcp_schema.get("name") == "list_tool_stubs"
+    assert "inputSchema" in obs.mcp_schema
     # readOnlyHint is set True in the tool's annotations
-    annotations = obs.schema_json.get("annotations")
+    annotations = obs.mcp_schema.get("annotations")
     if annotations is not None:  # SDK may return the pydantic model or a dict
         read_only = (
             annotations.readOnlyHint
@@ -70,7 +70,7 @@ def test_get_tool_schema_returns_not_found_for_unknown_tool() -> None:
         conversation=None,
     )
     assert obs.found is False
-    assert obs.schema_json == {}
+    assert obs.mcp_schema == {}
     assert obs.description == ""
 
 
