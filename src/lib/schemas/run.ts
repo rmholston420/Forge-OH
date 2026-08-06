@@ -71,6 +71,17 @@ export type RunListResponse = z.infer<typeof RunListResponseSchema>;
 
 // Canonical create-run request shape — aligns with BFF CreateRunRequest.
 // Single source of truth: features/runs/schemas.ts re-exports this type.
+// Stage 2.1 backend ids — mirrors bff/services/inference_backends/registry.py.
+export const BackendIdSchema = z.enum([
+  'ollama',
+  'vllm-coder',
+  'vllm-planner',
+  'vllm-legacy',
+  'llamacpp',
+  'sglang',
+]);
+export type BackendId = z.infer<typeof BackendIdSchema>;
+
 export const CreateRunRequestSchema = z.object({
   title: z.string().min(1, 'Task description is required'),
   agentPresetId: z.string().min(1),
@@ -81,6 +92,10 @@ export const CreateRunRequestSchema = z.object({
   // Stage 1E — when true, agent pauses before every tool call for HITL
   // approve/reject. UI toggle is gated by the APPROVAL_GATE feature flag.
   requireApproval: z.boolean().optional(),
+  // Stage 2.1 — explicit backend pin. Overrides the preset's backendId
+  // when set. When omitted, the BFF falls back to the preset (or the
+  // default role-based route if the preset has no backendId either).
+  backendId: BackendIdSchema.nullish(),
 });
 
 export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;

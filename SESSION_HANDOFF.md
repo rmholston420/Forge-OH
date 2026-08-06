@@ -1,48 +1,42 @@
-# Forge-OH Session Handoff — 2026-08-05 22:15 EDT
+# Session Handoff
 
-## Current build-sequencing position
+**Last updated:** 2026-08-05 22:38 EDT
 
-- **Stage / phase:** Stage 2 (Inference-Backend Flexibility) — backend layer COMPLETE, frontend layer next.
-- **Plugin / kernel component:** kernel · BFF · `bff/services/inference_backends` (new package) · `bff/services/model_router.py` (additive extension only) · `bff/routers/inference_backends.py` (new) · `bff/routers/agent_presets.py` (widened) · `bff/routers/runs.py` (threading + echo).
-- **Port(s) in progress:** `InferenceBackend` protocol landed as a health-inventory + selection layer ABOVE `route_by_role()`. Additive; default behavior byte-for-byte preserved.
+## Current stage / plugin / port in progress
+
+- **Stage:** Stage 2.2 — frontend `BackendSelector` + `HealthBadge` + preset-card badge fix (amended plan `docs/reconciliation-plan-stage-2.md § 2.2`).
+- **Layer:** frontend only (Next.js UI + React Query). Stage 2.1 BFF layer is unchanged.
+- **Adjacent:** Stage 2 completes when this ships and passes the visual-verification paste block on Colossus. No new ports; no ADR.
 
 ## Completed this session
 
-- **C then A executed in order.**
-  - **C (plan reconciliation, prior commit `cb23905`):** amended Stage 2 plan (`docs/reconciliation-plan-stage-2.md`, canonical) to match the live `model_router.py` (dual vLLM roles per ADR-009 §3a, `RoleRoute`, supervisor coalescing, request-cap short-circuit). Rewrote Stage 2 section of `docs/reconciliation-plan-v1.md` as a summary + pointer.
-  - **A (Stage 2.1 backend layer, this commit):** new `bff/services/inference_backends/` package (six adapters + registry + protocol + shared probes), new `GET /api/inference-backends` router, additive `backend_id: str | None = None` on `route_by_role`, widened `AgentPreset` types + reseeded with three local presets (ap-1 coder vLLM canonical, ap-2 planner vLLM, ap-3 Ollama fallback), `CreateRunRequest.backendId` threading, and `agentPresetId` echo on run responses.
-- **Two KNOWN_ISSUES entries closed** and moved to `DEBUG_LOG.md` with fix details:
-  - "Agent-preset `ModelId` is a static Literal, no local endpoints wired" (2026-08-05).
-  - "`GET /api/runs/{id}` returns `agentPresetId: null` on succeeded runs" (2026-08-05).
-- **36/36 targeted BFF tests pass** in the sandbox venv (`bff/tests/test_model_router.py` + `bff/tests/test_inference_backends.py`). The `backend_id=None` regression test locks the invariant that the default path is unchanged.
+1. Diagnosed Stage 2.1 Colossus verification: Ollama had auto-stopped between checks (unrelated to our code). User restarted with `sudo systemctl start ollama`. Endpoint returned correct per-entry health after that.
+2. Confirmed Option B for Stage 2.2 (`:8080` collision between llama.cpp default and openhands-workspace HTML is documented-deferred — degraded state is the honest signal).
+3. Fresh clone at commit `98763c6` (Stage 2.1 tip on main).
+4. Frontend schema layer widened:
+   - `src/lib/schemas/run.ts` — `BackendIdSchema` + `backendId` on `CreateRunRequestSchema`.
+   - `src/features/agent-presets/schemas.ts` — `ModelIdSchema` → `z.string()`, added `BackendIdSchema` / `RoleHintSchema` / `backendId` / `role`.
+   - `src/features/runs/schemas.ts` — optional `backendId` + `role` on loose preset.
+   - `src/lib/api/endpoints.ts` — `INFERENCE_BACKENDS.list()`.
+   - `src/lib/query/query-keys.ts` — `inferenceBackendKeys` + registration in `QUERY_KEYS` aggregate.
+5. New feature folder `src/features/inference-backends/` with `schemas.ts`, `api.ts`, `hooks.ts` (10s refetch), `HealthBadge.tsx` (state→variant map), `BackendSelector.tsx` + `.module.css` (radio group, role-incompatible options disabled), `index.ts`.
+6. Fixed `src/features/agent-presets/AgentPresetCard.tsx` — replaced hardcoded cloud MODEL_BADGES with dynamic model + backend + role chips (`data-testid="backend-chip-<id>"`).
+7. Wired `BackendSelector` into `src/components/domain/NewRunComposer.tsx` via `Controller`; role passed from the selected preset so incompatible backends render disabled.
+8. Added `src/tests/unit/HealthBadge.test.tsx` (6 cases) and `src/tests/e2e/backend-selector.spec.ts` (two live-BFF tests).
+9. Static sanity in-sandbox: all `@/` imports resolve to real exports; all CSS tokens exist in `src/styles/tokens.css`.
+10. BUILD_LOG entry appended (this session's full changeset).
 
-## Remaining before current Definition of Done
+## What remains before DoD
 
-Amended Stage 2 DoD, remaining items:
+- **User runs the Colossus verification paste block** (produced next by the assistant): `pnpm typecheck`, `pnpm test:unit -- HealthBadge`, then `pnpm test:e2e -- backend-selector.spec.ts` against the prod frontend on `:3100`.
+- If any of those fail, iterate before declaring Stage 2 DoD met.
+- Preset edit drawer is explicitly **out of scope** (deferred to Stage 3 UX slice — no consumer exists in the current UI beyond the Zustand action).
+- `:8080` llama.cpp collision remains documented-deferred.
 
-1. **Stage 2.2 (frontend `HealthBadge` + `BackendSelector` + wiring):**
-   - `HealthBadge` reusing existing `badge badge--success/warning/muted/error` CSS classes (verified in `src/features/mcp/McpServerCard.tsx`; do NOT introduce new Tailwind bg-* classes).
-   - `BackendSelector` as a radio group (not `<select>`) with per-item badge + latency + error tooltip. Renders in the order of `BACKEND_REGISTRY.keys()`.
-   - Wired into Agent Presets editor (existing pages: `src/features/agent-presets/AgentPresetsPage.tsx`, `AgentPresetCard.tsx`) and the run-creation form.
-   - React Query hook `useInferenceBackends()` following the same pattern as `src/features/agent-presets/hooks.ts` (queryKey + fetch + auto-refresh cadence to be decided in 2.2).
-   - `AgentPreset` schema on the frontend needs to grow `backendId?: BackendId | null` and `role?: RoleHint | null` (see `src/features/agent-presets/schemas.ts`).
-2. **Stage 2.3 (docs-only):** `docs/colossus-inference-setup.md` with SM_120 flag matrix for llama.cpp / vLLM / SGLang. No new builds on Colossus.
-3. **Stage 2.4 (VRAM-aware quant + concurrency):** `bff/services/hardware.py`, `bff/services/quant_selector.py`, `bff/services/concurrency.py`, `GET /api/inference-backends/concurrency-limit`, `ConcurrencyLimitDisplay` on the Settings page (`src/app/(dashboard)/settings/page.tsx`).
-4. **Exit gate:** full manual checklist in `docs/reconciliation-plan-stage-2.md` § "Stage 2 exit gate", including an F.3 SWE-bench 5-task smoke re-run to confirm additive `backendId` did not regress role-based routing (must land inside the smoke-30 v2 regression band: 22–38% raw pass@1).
+## Open questions / ambiguity awaiting the user
 
-## Open questions / awaiting user answer
-
-- **AgentPreset SQLite persistence** (Stage 1.5 leftover): still in-memory. Deferred to Stage 3. Not blocking Stage 2 exit. If a preset created via the UI must survive a BFF restart before Stage 3 lands, flag it and we roll it into Stage 2.
-- **Playwright coverage timing for Stage 2.2:** amended plan has a `BackendSelector` visual check in the exit gate. Confirm whether to author the spec inside Stage 2.2 or as a separate F.16-style visual slice.
+None. Everything in scope is on `main` after the push.
 
 ## Exact next action
 
-Execute **Stage 2.2** per `docs/reconciliation-plan-stage-2.md` § 2.2, starting with:
-
-1. On Colossus, verify the new backend package loads cleanly under the live BFF venv and the `GET /api/inference-backends` endpoint returns 200 (Ollama should probe healthy since it's currently holding the GPU per the 22:07 EDT `nvidia-smi` snapshot; every vLLM role should be `unhealthy` since `live_role: none`).
-2. Sync the frontend `AgentPreset` schema in `src/features/agent-presets/schemas.ts` with the widened backend contract (`backendId`, `role`, free-form `model`).
-3. Author `src/features/inference-backends/` (feature folder): `api.ts` + `hooks.ts` + `HealthBadge.tsx` + `BackendSelector.tsx` + `schemas.ts` mirroring the agent-presets feature layout.
-4. Wire `BackendSelector` into `AgentPresetCard.tsx` (edit surface) and the run-creation form.
-5. Playwright spec: assert `/agent-presets` renders the three seed presets (ap-1 default, ap-2 planner, ap-3 Ollama) with the correct backend badges.
-
-Colossus is on `main` at the Stage 2.1 landing commit; working tree expected clean after next `git pull`. Do NOT touch `bff/services/model_router.py` beyond the additive `backend_id` param already landed. Do NOT delete or simplify the supervisor path, `_supervisor_ensure` locks, `_vllm_role_health`, or the Ollama fallback logic. Every code path listed under "Do NOT delete or simplify" in the amended plan § 2.0 is protected by tests and ADR-009 §3a.
+Run the Colossus verification paste block delivered in the assistant's message. On green, Stage 2 is DONE.

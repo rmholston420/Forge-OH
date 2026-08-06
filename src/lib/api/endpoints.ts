@@ -95,6 +95,12 @@ export const ENDPOINTS = {
   // ------------------------------------------------------------------
   // Agent presets (bff/routers/agent_presets.py)
   // ------------------------------------------------------------------
+  // Stage 2.1 — inference backend health inventory
+  // (bff/routers/inference_backends.py)
+  INFERENCE_BACKENDS: {
+    list: () => `${BASE}/inference-backends`,
+  },
+
   AGENTS: {
     listPresets: () => `${BASE}/agent-presets`,
     getPreset: (id: string) => `${BASE}/agent-presets/${id}`,

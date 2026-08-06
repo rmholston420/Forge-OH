@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/core/Button';
 import { Banner } from '@/components/core/Banner';
@@ -8,6 +8,8 @@ import { useCreateRun } from '@/features/runs/hooks';
 import { useAgentPresets } from '@/features/runs/hooks';
 import { useWorkspaces } from '@/features/workspaces/hooks';
 import { CreateRunRequestSchema, type CreateRunRequest } from '@/features/runs/schemas';
+import { BackendSelector } from '@/features/inference-backends/BackendSelector';
+import type { RoleHint } from '@/features/inference-backends/schemas';
 import { useFeatureFlag, FEATURE_FLAGS } from '@/lib/feature-flags';
 import styles from './NewRunComposer.module.css';
 
@@ -34,6 +36,7 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
     handleSubmit,
     setValue,
     watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CreateRunRequest>({
     resolver: zodResolver(CreateRunRequestSchema),
@@ -45,6 +48,7 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
       taskComplexity: 'agentic',
       contextLength: 0,
       requireApproval: false,
+      backendId: null,
     },
   });
 
@@ -52,6 +56,13 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
   const selectedWorkspaceId = watch('workspaceId');
   const titleValue = watch('title') ?? '';
   const estimatedContextLength = estimateContextLength(titleValue);
+
+  // Look up the selected preset's role so BackendSelector can disable
+  // role-incompatible options. Runs feature's loose AgentPreset shape
+  // (features/runs/schemas.ts) carries `role` since Stage 2.1.
+  const selectedPreset = presets.find((p) => p.id === selectedPresetId);
+  const presetRole: RoleHint | null =
+    (selectedPreset?.role as RoleHint | undefined) ?? null;
 
   useEffect(() => {
     if (!selectedPresetId && presets.length > 0) {
@@ -164,6 +175,26 @@ export const NewRunComposer: React.FC<NewRunComposerProps> = ({ onSuccess, onCan
 
       <input type="hidden" {...register('taskPrompt')} />
       <input type="hidden" {...register('contextLength', { valueAsNumber: true })} />
+
+      <div className={styles.field}>
+        <Controller
+          name="backendId"
+          control={control}
+          render={({ field }) => (
+            <BackendSelector
+              value={field.value ?? null}
+              onChange={field.onChange}
+              role={presetRole}
+              label="Inference backend (override)"
+              idPrefix="newrun-backend"
+            />
+          )}
+        />
+        <span className={styles.helpText}>
+          Leave on <em>Use preset default</em> to route via the preset's <code>backendId</code>.
+          Selecting one here overrides the preset for this run only.
+        </span>
+      </div>
 
       {approvalGateOn && (
         <div className={styles.field}>

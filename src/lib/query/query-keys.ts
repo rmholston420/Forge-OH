@@ -18,6 +18,12 @@ export const agentKeys = {
   detail: (id: string) => ['agents', id] as const,
 };
 
+// Stage 2.1 — inference backend health inventory
+export const inferenceBackendKeys = {
+  all: ['inference-backends'] as const,
+  list: () => ['inference-backends', 'list'] as const,
+};
+
 export const workspaceKeys = {
   all: ['workspaces'] as const,
   lists: () => ['workspaces', 'list'] as const,
@@ -60,6 +66,8 @@ export const QUERY_KEYS = {
   runs: runKeys,
   runKeys,
   agentKeys,
+  inferenceBackends: inferenceBackendKeys,
+  inferenceBackendKeys,
   workspaces: workspaceKeys,
   workspaceKeys,
   secrets: secretKeys,

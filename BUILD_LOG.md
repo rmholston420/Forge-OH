@@ -4878,3 +4878,41 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Ports / adapters affected:** new `InferenceBackend` port added ABOVE the existing role-routing core; `model_router` behavior unchanged when `backend_id=None`. ADR-009 §3a topology preserved.
 - **PORTING_LEDGER / ADR updated:** none. No external code vendored — the adapters are thin OpenAI-compat probes; the port + protocol are direct implementations of the amended Stage 2 plan.
 - **Stop-condition status:** Stage 2.1 (backend health-inventory + preset widening + `backendId` threading) COMPLETE per amended plan § 2.1. Ready for Stage 2.2 (frontend `HealthBadge` + `BackendSelector` + presets/run-form wiring).
+
+## 2026-08-05 22:38 EDT — Stage 2.2: frontend BackendSelector + HealthBadge + preset card fix
+
+- **What:** Stage 2.2 of the amended reconciliation plan (`docs/reconciliation-plan-stage-2.md § 2.2`). Frontend now surfaces the inference-backend health inventory and lets a run override its preset's `backendId` pin. Also fixes the Stage 2.1 preset-card badge regression (all new local seeds fell through to a "muted" pill because MODEL_BADGES only knew about the removed cloud IDs).
+- **Scope executed:** Option B from the plan approval — standalone `BackendSelector` wired into `NewRunComposer` only; preset edit drawer deferred (does not exist in the current UI beyond a Zustand action).
+- **Frontend schema layer:**
+  - `src/lib/schemas/run.ts`: added `BackendIdSchema` (6-value enum matching BFF), added `backendId: BackendIdSchema.nullish()` on `CreateRunRequestSchema`.
+  - `src/features/agent-presets/schemas.ts`: `ModelIdSchema` widened from cloud `z.enum` to `z.string().min(1)`; added `BackendIdSchema` + `RoleHintSchema` (`'coder' | 'planner'`); added `backendId` and `role` as `.nullish()` fields on `AgentPresetSchema`.
+  - `src/features/runs/schemas.ts`: loose runs-side `AgentPreset` gained optional `backendId` + `role` fields.
+- **New feature folder:** `src/features/inference-backends/`
+  - `schemas.ts` — mirrors BFF `BackendMeta.as_dict()` (`HealthStateSchema = healthy | degraded | unhealthy | muted`, `RoleHintSchema = coder | planner | any | probe`, `InferenceBackendSchema`, wire envelope).
+  - `api.ts` — `fetchInferenceBackends()` via `bffGet` + `unwrap`.
+  - `hooks.ts` — `useInferenceBackends()` with `refetchInterval: 10_000` (matches DoD § 2.2.7: Ollama flip visible within one poll).
+  - `HealthBadge.tsx` — wraps core `Badge`; state → variant map `healthy→success | degraded→warning | unhealthy→error | muted→muted`; renders `state · Nms` when latency present and state != unhealthy.
+  - `BackendSelector.tsx` + `BackendSelector.module.css` — radio group (per plan § 2.2.4 note preferring custom listbox over disabled `<option>`). Shows six registry entries plus a "Use preset default" option at top. Disables role-incompatible options (e.g. a `coder` preset blocks the `vllm-planner` radio) with an accessible title hint. Loading + error states rendered inline. Uses design tokens from `src/styles/tokens.css`; no Tailwind.
+  - `index.ts` — barrel export.
+- **Query-keys:** `src/lib/query/query-keys.ts` gained `inferenceBackendKeys = { all, list, health(id) }` and both `inferenceBackends` + `inferenceBackendKeys` aliases in the `QUERY_KEYS` aggregate.
+- **Endpoints registry:** `src/lib/api/endpoints.ts` gained `INFERENCE_BACKENDS.list()` above `AGENTS`.
+- **Preset card fix:** `src/features/agent-presets/AgentPresetCard.tsx` — removed the hardcoded cloud MODEL_BADGES map. Now renders a best-effort model chip via `classifyModel(preset.model)` plus a separate `BACKEND_BADGES[preset.backendId]` chip, and a role chip when `preset.role` is set. Each chip has a `data-testid="backend-chip-<id>"` for the Playwright spec.
+- **Run form wiring:** `src/components/domain/NewRunComposer.tsx` — added `Controller`-wrapped `<BackendSelector>` between the hidden fields and the approval-gate section. Reads the selected preset's `role` from the loose runs-side `AgentPreset` shape (available since Stage 2.1) so role-incompatible backends render disabled. `backendId` defaults to `null` and flows to `createRun()` unchanged — the BFF already handles both request-level pin (Stage 2.1) and preset-level pin resolution.
+- **Tests:**
+  - Unit: `src/tests/unit/HealthBadge.test.tsx` — six vitest cases covering variant mapping + latency rendering rules.
+  - E2E: `src/tests/e2e/backend-selector.spec.ts` — Playwright spec against the prod frontend on :3100 asserting (a) `/agents` renders the three Stage 2.1 seed presets with the expected `backend-chip-<id>` testids, and (b) `/runs` shows the `BackendSelector` fieldset with the "Use preset default" radio plus the six canonical backend rows.
+- **Verification path:** static sanity done in-sandbox (all `@/` imports resolve to real exports, CSS tokens all exist in `src/styles/tokens.css`). Sandbox has no cached `node_modules` — full `pnpm typecheck` + `pnpm test:unit` + Playwright run on Colossus (warm cache). Paste block delivered separately.
+- **Files touched:**
+  - `src/features/inference-backends/{schemas,api,hooks,HealthBadge,BackendSelector,index}.{ts,tsx}` (new) + `BackendSelector.module.css` (new)
+  - `src/features/agent-presets/{schemas.ts,AgentPresetCard.tsx}`
+  - `src/features/runs/schemas.ts`
+  - `src/lib/schemas/run.ts`
+  - `src/lib/api/endpoints.ts`
+  - `src/lib/query/query-keys.ts`
+  - `src/components/domain/NewRunComposer.tsx`
+  - `src/tests/unit/HealthBadge.test.tsx` (new)
+  - `src/tests/e2e/backend-selector.spec.ts` (new)
+- **Ports / adapters affected:** none — this is a pure UI slice. The Stage 2.1 `InferenceBackend` port and `model_router` behavior are unchanged. The Stage 2.1 preset badge visual regression is closed.
+- **PORTING_LEDGER / ADR updated:** none. No external code vendored.
+- **KNOWN_ISSUES:** "Preset card badges hardcoded to cloud IDs" (introduced by Stage 2.1 seed swap) now closed by dynamic backend chip rendering. Preset edit drawer remains deferred (Stage 3 UX slice).
+- **Stop-condition status:** Stage 2.2 (frontend backend visibility + per-run pin override) COMPLETE per amended plan § 2.2. Stage 2 as a whole exits Definition-of-Done pending the Colossus visual-verification paste block returned by the user.

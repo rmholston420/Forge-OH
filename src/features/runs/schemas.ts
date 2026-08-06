@@ -12,11 +12,18 @@ export { RunSummarySchema, RunStatusSchema, CreateRunRequestSchema };
 export type { RunSummary } from '@/lib/schemas/run';
 export type CreateRunRequest = import('@/lib/schemas/run').CreateRunRequest;
 
+// Loose AgentPreset shape used by the runs feature. The strict schema lives
+// in src/features/agent-presets/schemas.ts. Fields marked optional on the
+// wire so pre-Stage-2 presets still parse.
 export const AgentPresetSchema = z.object({
   id: z.string(),
   name: z.string(),
   model: z.string(),
   description: z.string().optional(),
+  backendId: z
+    .enum(['ollama', 'vllm-coder', 'vllm-planner', 'vllm-legacy', 'llamacpp', 'sglang'])
+    .nullish(),
+  role: z.enum(['coder', 'planner']).nullish(),
 });
 
 export type AgentPreset = z.infer<typeof AgentPresetSchema>;
