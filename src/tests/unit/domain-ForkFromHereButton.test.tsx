@@ -47,7 +47,12 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
+const originalEnv = { ...process.env };
+
 beforeEach(() => {
+  // Stage 6.4 close-out: feature flag defaults ON. Individual tests can
+  // flip it off to assert the gate.
+  process.env = { ...originalEnv, NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED: 'true' };
   pushMock.mockReset();
   mutateMock.mockReset();
   resetMock.mockReset();
@@ -58,6 +63,15 @@ beforeEach(() => {
 // --- tests ------------------------------------------------------------------
 
 describe('ForkFromHereButton', () => {
+  it('renders null when feature flag is disabled', () => {
+    process.env.NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED = 'false';
+    const { container } = render(
+      <ForkFromHereButton runId="src-1" eventId="ev-42" />,
+      { wrapper },
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
   it('renders the trigger button', () => {
     render(
       <ForkFromHereButton runId="src-1" eventId="ev-42" />,

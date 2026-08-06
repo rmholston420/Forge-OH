@@ -23,6 +23,15 @@ import { useForkRun } from '@/features/runs/hooks';
 import { Modal } from '@/components/core/Modal';
 import { Banner } from '@/components/core/Banner';
 
+// Stage 6.4 close-out: gate under the same flag as ForkRunModal so the
+// entire fork/compare surface toggles as one. Default-on unless the env
+// var is explicitly set to the string 'false'. Evaluated per-render so
+// tests can mutate the env without reloading the module (mirrors
+// ForkRunModal's isFeatureEnabled).
+function isForkCompareEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED !== 'false';
+}
+
 interface Props {
   /** The source run's id. */
   runId: string;
@@ -39,6 +48,12 @@ export function ForkFromHereButton({ runId, eventId, eventLabel }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { mutate, isPending, error, reset } = useForkRun();
+
+  // Feature-flag gate. Evaluated AFTER all hooks (rules-of-hooks). When the
+  // flag is disabled the whole surface — button + modal — is hidden.
+  if (!isForkCompareEnabled()) {
+    return null;
+  }
 
   const handleClose = useCallback(() => {
     reset();
