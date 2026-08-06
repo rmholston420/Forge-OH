@@ -1,39 +1,82 @@
-# Forge-OH Session Handoff — 2026-08-06 15:00 EDT
+# Forge-OH Session Handoff — 2026-08-06 15:12 EDT
 
 ## Current build-sequencing position
 
-- **Stage / phase:** Stage 8 initialization **complete**. Clear to open Slice 8.0.
-- **Plugin / kernel component:** none in progress (Stage 8 initialization was docs-only).
-- **Port(s) in progress:** none. Anticipated first port to land in Stage 8: `ports/verify.py` (Slice 8.1).
+- **Stage / phase:** Stage 8 · Slice 8.0 (vLLM serving-infra config bundle) · **kickoff DRAFT complete**, awaiting one Colossus-side probe before flag block is written into `scripts/vllm_start.sh`.
+- **Plugin / kernel component:** vLLM launcher config. Config-only slice per ADR-029 §D5 (no capability code).
+- **Port(s) in progress:** none (Slice 8.0 introduces no new port). Slice 8.0's only new file is a ~20-LoC compose helper `bff/services/agent_compose.py` for condenser APC-block alignment.
 
 ## Completed this session
 
-- **Stage 7 DoD verification passed on Colossus (2026-08-06 14:47 EDT).** `docker compose up -d --build` green after two fix commits landed (`365ec15` + `fe833b9`). Socket.IO polling probe = 200; Qdrant probe = "ok". BUILD_LOG entry at 2026-08-06 14:47 EDT.
-- **Two non-blocking findings filed to `KNOWN_ISSUES.md`** (Dockerfile `/health` HEALTHCHECK 404; trajectory drain `/home/bff` permission denied). Both cosmetic; defer to a follow-up Docker-image-polish slice.
-- **ADR-029 filed and ratified (2026-08-06 15:00 EDT)** — Stage 8 SDK-native adoption. Investigation spike (mandated by ADR-028 §4) read `OpenHands/software-agent-sdk@v1.40.0` source and produced per-slice adoption vs hand-build decisions:
-  - Slice 8.1: HYBRID — adopt `openhands.sdk.workspace.RemoteWorkspace` + hand-build pytest outcome schema.
-  - Slice 8.2: HYBRID — adopt Workspace + hand-build bounded-N repair loop.
-  - Slice 8.6: ADOPT SDK `openhands.sdk.skills` wholesale + hand-build token-budget gate. **Reduces §8.6 from 2 slices to 1.**
-  - Cross-cutting: adopt `LLMSummarizingCondenser` at compose time (D4); condenser `keep_first` aligned to vLLM APC prefix boundary.
-  - Remaining slices (8.0, 8.0.5, 8.3, 8.4, 8.5, 8.7, 8.8, 8.9) decisions codified in ADR-029 §D5.
-- **Stage 8 total slice count reduced from 12 to 11** as a direct consequence of D3.
-- **Files landed:** `docs/adr/029-sdk-native-adoption-for-stage-8.md` (new), `docs/adr/README.md` (index row), `BUILD_LOG.md` (append), `SESSION_HANDOFF.md` (overwrite — this file).
+- **Stage 7 DoD verification** on Colossus (2026-08-06 14:47 EDT) — BUILD_LOG.
+- **ADR-029 filed and ratified** (2026-08-06 15:00 EDT) — SDK-native adoption decisions for §8.1 / §8.2 / §8.6; Stage 8 total slice count 12 → 11.
+- **Slice 8.0 kickoff drafted** (2026-08-06 15:12 EDT) — new `docs/reconciliation-plan-stage-8.md` with the full flag matrix, VRAM math, condenser-alignment plan, and rollback bisect. Optimal choices ratified on the 4 delegated open questions.
+
+## Slice 8.0 flag matrix — summary
+
+Full detail: `docs/reconciliation-plan-stage-8.md` §Flag matrix.
+
+**Delta from current `scripts/vllm_start.sh` at `f5eff7b`:**
+
+Added flags:
+- `--kv-cache-dtype fp8`
+- `--enable-chunked-prefill`
+- `--long-prefill-token-threshold 4096`
+- `--speculative-config '{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}'`
+
+Modified flags:
+- `--gpu-memory-utilization 0.85 → 0.90`
+- `--max-model-len 32768 → 65536`
+
+Unchanged: APC (already on), max-num-seqs=8, dtype float16, all env vars.
+
+Condenser side: `LLMSummarizingCondenser(keep_first=4)` + ~20-LoC compose helper padding preserved prefix to vLLM's 16-token APC blocks.
 
 ## Remaining before current Definition of Done
 
-None for Stage 8 initialization. The mandated SDK-native investigation spike is complete.
+**Requires one Colossus-side action from user (or a shell command relay through me).** DoD item 3 requires a smoke-30 re-run; I cannot run it. Steps 1–2 below are what unblocks me writing the exact `scripts/vllm_start.sh` change:
+
+1. Confirm vLLM version pinned on Colossus:
+   ```bash
+   ~/venv/vllm-new/bin/vllm --version
+   ```
+   - If `≥ 0.10.0`: I write the full 4-flag addition into `scripts/vllm_start.sh` as drafted.
+   - If `< 0.10.0`: I drop `--long-prefill-token-threshold` (chunked prefill defaults to a reasonable threshold) and rewrite `--speculative-config` to the pre-0.10 `--num-speculative-tokens 5 --speculative-model '[ngram]'` syntax.
+
+2. After I land the `scripts/vllm_start.sh` change:
+   ```bash
+   cd ~/dev/forge-oh
+   git pull
+   bash scripts/vllm_stop.sh 8500
+   nohup bash scripts/vllm_start.sh > ~/.forge-oh/vllm.log 2>&1 &
+   # Wait for /v1/models
+   for i in $(seq 1 450); do
+     if curl -sf http://127.0.0.1:8500/v1/models >/dev/null 2>&1; then
+       echo "READY"; break
+     fi
+     sleep 2
+   done
+   curl -s http://127.0.0.1:8500/v1/models | python3 -m json.tool
+   ```
+
+3. Re-run smoke-30 from `bench/pathF_swebench/` against baseline 30 tasks. Attest DoD item 4 (regression ≤ 1 task from 33.3% baseline) and DoD item 5 (the 4 context-budget-skipped tasks — `django-15629`, `matplotlib-26208`, `sphinx-7590`, `sympy-14248` — now load through the model).
+
+4. On green attestation: I add the compose helper (`bff/services/agent_compose.py`) + wire condenser `keep_first=4`, then mark §8.0 status → Ratified in `docs/reconciliation-plan-stage-8.md`, close the slice in BUILD_LOG, and open Slice 8.0.5.
 
 ## Open questions / awaiting user answer
 
-- Slice 8.0 has one open question that ADR-029 flags but does not answer: **which vLLM APC prefix token count** to align `LLMSummarizingCondenser.keep_first` against. Depends on the vLLM launch flags Slice 8.0 selects. Will surface as a spec-question at Slice 8.0 kickoff, not now.
+**Q1 (blocking Slice 8.0 execution but not drafting):** vLLM version on Colossus. Answers Q1, Q2, Q3 from `docs/reconciliation-plan-stage-8.md` §Open questions in one probe.
 
 ## Exact next action
 
-At the start of the next session, before doing anything else:
+Paste this on Colossus and return the output:
 
-1. Read this file (`SESSION_HANDOFF.md`) first — this is the entry point per Kosmos custom instructions.
-2. Read `docs/adr/029-sdk-native-adoption-for-stage-8.md` §D5 for the per-slice adoption decisions that govern Slice 8.0's dependencies.
-3. Read `docs/reconciliation-plan-v1.md` §Stage 8 kickoff scope (or its stage-8 companion when it lands) and restate scope for Slice 8.0 (vLLM serving-infra bundle: APC + speculative decoding + fp8 KV-cache + chunked prefill).
-4. Open Slice 8.0. First concrete unit of work: draft the vLLM launch flag matrix for coder (:8501) and planner (:8511) — APC on, chunked prefill on, spec-decode target/draft pair TBD, fp8 kv-cache — and open the flag choice for user confirmation before running any bench.
+```bash
+cd ~/dev/forge-oh && git pull && ~/venv/vllm-new/bin/vllm --version
+```
 
-**Do not open any Stage 8 slice other than 8.0 first.** The Council-Synthesis dependency chain (8.0 → 8.0.5 → 8.1 → 8.2 → …) is unchanged by ADR-029; only slice contents shifted.
+Once I have the version, I:
+1. Write the correct flag block into `scripts/vllm_start.sh` (with graceful degradation if < 0.10.0).
+2. Add `bff/services/agent_compose.py` compose helper.
+3. Commit and push both under one commit `Slice 8.0: vLLM serving-infra config bundle`.
+4. Hand back to you for the launcher restart + smoke-30 re-baseline (DoD steps 4–5 above).

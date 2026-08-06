@@ -7119,3 +7119,54 @@ Both are Docker-image-polish issues, not topology issues. Both defer to a follow
 **Stop-condition status:** ADR-028 §4 SDK-native spike DoD **MET**. Stage 8 initialization complete — clear to proceed to Slice 8.0.
 
 **Next action:** Slice 8.0 kickoff (vLLM serving-infra bundle: APC + speculative decoding + fp8 KV-cache + chunked prefill), with condenser `keep_first` alignment added to the compose-time configuration.
+
+## 2026-08-06 15:12 EDT — Slice 8.0 kickoff · vLLM flag matrix drafted in Stage 8 companion
+
+**Stage / plugin / port:** Stage 8 · Slice 8.0 (vLLM serving-infra config bundle). Config-only slice per ADR-029 §D5.
+
+**What changed:** Drafted `docs/reconciliation-plan-stage-8.md` — new Stage 8 companion doc. Contains only §8.0 at present; §8.0.5–§8.9 are placeholders inheriting from Council-Synthesis and ADR-029 until each slice's own kickoff.
+
+**Slice 8.0 flag matrix** (delta from current `scripts/vllm_start.sh` at `f5eff7b`):
+
+Added:
+- `--kv-cache-dtype fp8` — halves KV memory per token; proven on Colossus SM_120 via `bench/pathE_qwen36_27b/vllm_launch.sh:195`.
+- `--enable-chunked-prefill` — Council-Synthesis §8.0 direct requirement.
+- `--long-prefill-token-threshold 4096` — pairs with chunked prefill for the 4/30 context-budget-skipped tasks.
+- `--speculative-config '{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}'` — zero-VRAM n-gram spec-decode.
+
+Modified:
+- `--gpu-memory-utilization 0.85 → 0.90` (matches pathE launcher; ~1.6 GiB extra usable).
+- `--max-model-len 32768 → 65536` (targets KNOWN_ISSUES §68 4/30 context-budget-skip ceiling; native 131072 rejected as needing max-num-seqs cut).
+
+Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype float16` (GGUF-required), `VLLM_USE_FLASHINFER_SAMPLER=0`, `VLLM_ATTENTION_BACKEND=FLASH_ATTN`.
+
+**Optimal choices made (per user delegation "make optimal choice" on 4 open questions)**:
+1. **Topology**: Single :8500 baseline (coder+planner pair defers — not zero-code).
+2. **Quantization**: Stay on GGUF (weight-format switch invalidates F.3 baseline; AWQ migration a later slice).
+3. **Spec-decode**: n-gram only (VRAM preserved for context-ceiling raise).
+4. **Context ceiling**: 65536 (2x, smallest ceiling that closes the 4-task skip; 131072 courts long-context regressions §8.0 warns about).
+
+**VRAM budget verified feasible**: fp8 KV @ ~12k avg ctx × 8 seqs = ~9.0 GiB steady-state, fits inside 9.8 GiB post-weights envelope. Peak-load contingency = `--max-num-seqs 4` fallback.
+
+**Condenser alignment (ADR-029 §D4)**: `LLMSummarizingCondenser.keep_first=4` with a compose-time `pad_prefix_to_apc_block` helper (~20 LoC, `bff/services/agent_compose.py` new) to align preserved prefix to vLLM's 16-token APC blocks.
+
+**Files touched**:
+- `docs/reconciliation-plan-stage-8.md` (new, 160 lines).
+
+**Ports / adapters affected**: none yet. Slice 8.0 execution will add `bff/services/agent_compose.py` (new, ~20 LoC).
+
+**PORTING_LEDGER / ADR updated**: none. ADR-029 already covers the decisions this matrix instantiates.
+
+**Non-blocking execution-time checks flagged in the companion doc**:
+- Q1: confirm vLLM ≥ 0.10.0 on Colossus (`--long-prefill-token-threshold` syntax requirement).
+- Q2: `--speculative-config` JSON vs old `--num-speculative-tokens` syntax (falls out of Q1).
+- Q3: `--block-size` default (16 tokens assumed; §8.0.5 will verify).
+
+**Stop-condition status**: Slice 8.0 kickoff **DRAFT complete**. Next step is operator-side execution on Colossus:
+1. `~/venv/vllm-new/bin/vllm --version` (Q1 answer).
+2. Update `scripts/vllm_start.sh` with the flag block from `docs/reconciliation-plan-stage-8.md` §Flag matrix.
+3. `nohup ./scripts/vllm_start.sh > ~/.forge-oh/vllm.log 2>&1 &` and wait for `/v1/models`.
+4. Re-run smoke-30 (`bench/pathF_swebench/` against baseline 30 tasks).
+5. Attest DoD item 4 (regression ≤ 1 task) + DoD item 5 (the 4 context-skip tasks now execute).
+
+**Next action**: user runs the Colossus-side probe for Q1 and the smoke re-baseline; I then update `scripts/vllm_start.sh` with the exact flag block once the vLLM version answer is in.
