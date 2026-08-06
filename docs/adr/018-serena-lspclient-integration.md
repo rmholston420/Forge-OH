@@ -1,3 +1,5 @@
+> **STATUS AMENDMENT (2026-08-06 01:07 EDT):** D1's original registration path (calling BFF's own `POST /api/mcp` during lifespan) is not viable — uvicorn hasn't bound the listen socket yet when the FastAPI lifespan startup phase runs, so `httpx` gets "All connection attempts failed". Amended path: talk to agent-server directly via the shared `openhands_client` initialized by `oh_startup()`. Uses the exact same upstream endpoints (`GET /api/settings`, `POST /api/settings/mcp/{name}`) that `bff/routers/mcp.py` uses, so the passthrough is still exercised at first user click. Recorded in BUILD_LOG 2026-08-06 01:08 EDT.
+
 # ADR-018 — Serena LSPClient integration via MCP passthrough
 
 **Status:** Accepted
@@ -19,17 +21,19 @@ Rather than either silently adapt to what the plan literally says (which would s
 
 ## Decision
 
-### D1 — Registration path: idempotent bootstrap coroutine calling the existing `POST /api/mcp`
+### D1 — Registration path: idempotent bootstrap coroutine calling agent-server directly (amended)
 
 Add `bff/services/mcp_bootstrap.py::register_serena_if_missing()`. On BFF startup (lifespan hook, after `oh_startup()`), if `SERENA_ENABLED=true`:
 
-1. `GET /api/mcp` (BFF's own MCP router, which passes through to agent-server).
-2. If no entry has `id == "serena"`, `POST /api/mcp` with a `RegisterMcpRequest`-shaped body containing the Serena launch verb (see D2).
+1. `GET /api/settings` on agent-server via the shared `openhands_client` (initialized by `oh_startup()`). Walk `agent_settings.mcp_config` for a key `"serena"`.
+2. If absent, `POST /api/settings/mcp/serena` with an agent-server-shaped MCPServer body containing the Serena launch verb (see D2). This is the same endpoint `bff/routers/mcp.py::register_mcp` calls.
 3. If any step fails, log a warning and continue. BFF startup must never crash on Serena bootstrap failure.
 
-**Why not the plan's `MCP_SERVERS = {...}` in a config file:** that file does not exist and MCP state lives upstream, not in BFF. Reusing the production wire (`POST /api/mcp`) means we exercise the exact reshape + upstream POST that the UI depends on — if it's broken, we find out at boot.
+**Original design (superseded 2026-08-06 01:07 EDT):** call BFF's own `POST /api/mcp` during lifespan. Failed on first Colossus verification with `All connection attempts failed` because uvicorn hasn't bound the listen socket yet when the lifespan startup phase runs. See amendment banner and BUILD_LOG 2026-08-06 01:08 EDT.
 
-**Rejected alternative:** call agent-server's `POST /api/settings/mcp/{name}` directly, bypassing BFF's router. Rejected because it silently degrades our test surface — a broken passthrough would still allow "startup success" while the UI shows an empty list.
+**Why not the plan's `MCP_SERVERS = {...}` in a config file:** that file does not exist and MCP state lives upstream, not in BFF. Reusing the production wire (agent-server's `/api/settings/mcp/{name}`) means the first click that hits our own `/api/mcp` router will find the same server the bootstrap wrote — no shadow state.
+
+**Rejected alternative:** an out-of-band registration file the router reads on every request. Rejected because it duplicates MCP state and gives users no single source of truth for MCP configuration.
 
 ### D2 — Serena launch verb: `uvx` with a pinned commit SHA
 
@@ -87,7 +91,7 @@ If Serena in practice returns confusing errors on unsupported languages, revisit
 
 ### Negative
 
-- BFF startup depends on itself (BFF calls its own `/api/mcp` endpoint before the app is fully bound to a port). Mitigated by: (a) the call is wrapped in try/except; (b) `httpx.ConnectError` is a known-swallowed failure mode; (c) test suite mocks the transport and covers connection-refused explicitly.
+- Startup depends on agent-server being reachable at the moment `oh_startup()` finishes. In practice `oh_startup()` already initialized the shared client, so any connectivity problem is a pre-existing issue that would break the rest of BFF too. Any transient failure here is swallowed (try/except) so the rest of the app still boots.
 - First-run `uvx` on Colossus will resolve and cache the pinned Serena commit. If Serena upstream force-pushes and rewrites history, our pin becomes unresolvable and Serena registration silently fails until we bump the pin.
 - No language gate means an agent could try `find_symbol` on a `.md` file. Serena will return an error; the agent will observe and retry. Acceptable UX for a Stage 4.4 pass; revisit if it becomes noisy.
 

@@ -5322,3 +5322,16 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - **Ports/adapters affected:** `LSPClient` port is satisfied via MCP passthrough — Serena is one MCP server among many, not a special-cased adapter. `EventNormalizer` gains an LSP-aware branch.
 - **ADR/ledger updates:** ADR-018 filed. `PORTING_LEDGER.md` gains the Serena entry. `docs/adr/README.md` extended to include ADR-015..018.
 - **Stop-condition status:** Pass 3 CODE COMPLETE and pushed. Stage 4.4 automated exit gate (pytest + typecheck + test:unit + build all clean, `SERENA_ENABLED=true` boot check green, `POST /api/mcp/serena/ping` returns `ok:true`) is the next verification step — awaits Colossus run.
+
+## 2026-08-06 01:08 EDT — Stage 4.4 Pass 3 hotfix (bootstrap must not self-HTTP)
+
+- **Symptom:** on Colossus verification (2026-08-06 01:06 EDT), `SERENA_ENABLED=true` did not register Serena. `curl /api/mcp` still showed only the pre-existing `my-mcp`. bff.log contained `Serena registration failed (All connection attempts failed); continuing.` `POST /api/mcp/serena/ping` returned 404 `mcp server not found: serena`.
+- **Root cause:** BFF lifespan's startup phase runs BEFORE uvicorn binds the listen socket, so any attempt by BFF to connect to its own `http://127.0.0.1:8081/api/mcp` fails with a connection error. The try/except correctly swallowed the failure (BFF still booted), but the intended registration never happened.
+- **Fix (ADR-018 D1 amended):** `register_serena_if_missing()` now talks to agent-server directly via the shared `openhands_client.get_client()` — the exact same endpoints `bff/routers/mcp.py::register_mcp` uses (`GET /api/settings`, `POST /api/settings/mcp/{name}`). No self-HTTP loop; the shared client is already initialized by `oh_startup()`, which runs before us in the lifespan chain.
+- **Files touched:**
+  - `bff/services/mcp_bootstrap.py` — rewritten to inject the shared client; new helpers `_build_serena_upstream_server()` and `_mcp_config_from_settings()`.
+  - `bff/tests/test_mcp_bootstrap.py` — rewritten to inject a `MockTransport`-backed `httpx.AsyncClient` via the new `client=` kwarg; 7 cases (added `test_handles_missing_agent_settings_block` and `test_reports_get_failure`).
+  - `docs/adr/018-serena-lspclient-integration.md` — status amendment prepended; D1 rewritten; Consequences updated.
+- **Ports/adapters affected:** none. The public MCP contract (`POST /api/mcp/{id}/ping`, `GET /api/mcp`) is unchanged; only the internal registration path moved from BFF-self-HTTP to agent-server-direct.
+- **Verification pending:** re-run the same Colossus block from the 01:04 EDT session; expected `curl /api/mcp | jq '.[] | select(.id=="serena")'` returns a non-empty object and `POST /api/mcp/serena/ping` returns `{"ok":true, ...}` on first call (30–60s while `uvx` resolves the pinned commit).
+- **Stop-condition status:** Pass 3 CODE COMPLETE (v2). Colossus smoke test next.
