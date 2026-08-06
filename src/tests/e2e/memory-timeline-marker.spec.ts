@@ -145,19 +145,23 @@ test.afterAll(() => {
 /**
  * Resolve a real agent-server conversation id to use as the ``runId``.
  *
- * The BFF's ``GET /api/runs/{id}`` proxies to agent-server
- * ``/api/conversations/{id}``, so any existing conversation makes
- * ``/runs/{id}`` render fully. We deliberately do NOT go through the
- * BFF's ``POST /api/runs`` here — that path requires vLLM/Ollama
- * routing to be up, which is orthogonal to the memory-marker DoD.
+ * Strategy:
+ *  1. Prefer reusing an existing agent-server conversation — fastest
+ *     and free of side effects.
+ *  2. Otherwise, create a fresh run through the BFF using the Ollama
+ *     fallback preset (``ap-3``). Ollama runs on :11434 and is always
+ *     up on Colossus; this decouples the DoD from vLLM state without
+ *     requiring an extra debug endpoint on the BFF.
  */
+const OLLAMA_PRESET_ID = process.env.FORGE_TEST_OLLAMA_PRESET_ID || 'ap-3';
+
 async function pickOrCreateConversation(
   request: import('@playwright/test').APIRequestContext,
 ): Promise<string> {
+  // 1. Try to reuse.
   const listResp = await request.get(`${AGENT_URL}/api/conversations`).catch(() => null);
   if (listResp && listResp.ok()) {
     const body = await listResp.json();
-    // agent-server may return a bare list, {items:[...]}, or {data:[...]}.
     const items: Array<{ id?: string }> = Array.isArray(body)
       ? body
       : (body?.items ?? body?.data ?? []);
@@ -169,16 +173,40 @@ async function pickOrCreateConversation(
       }
     }
     // eslint-disable-next-line no-console
-    console.log(
-      '[memory-timeline] no existing conversations — raw list body:',
-      JSON.stringify(body).slice(0, 400),
+    console.log('[memory-timeline] no existing conversations; falling back to create-run.');
+  }
+
+  // 2. Create via BFF using the Ollama fallback preset (ap-3).
+  const res = await request.post(`${BFF_URL}/api/runs`, {
+    data: {
+      title: 'Stage 5.6b memory-timeline-marker',
+      agentPresetId: OLLAMA_PRESET_ID,
+      workspaceId: WORKSPACE_ID,
+      taskPrompt: 'idle: this run only exists to receive a memory_consultation event.',
+    },
+  });
+  const text = await res.text();
+  let body: any = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    /* non-JSON body */
+  }
+  const id: string | undefined = body?.data?.id;
+  const status: string | undefined = body?.data?.status;
+  if (!res.ok() || !id) {
+    throw new Error(
+      `Could not synthesize a conversation via preset ${OLLAMA_PRESET_ID}. ` +
+      `HTTP ${res.status()} status=${status ?? 'n/a'} body=${text.slice(0, 400)}`,
     );
   }
-  throw new Error(
-    `No existing agent-server conversation found on ${AGENT_URL}/api/conversations. ` +
-    'Create one first (e.g. from the UI once vLLM coder on :8501 is up) or ' +
-    'run any Forge-OH run through the normal flow, then re-run this spec.',
+  // eslint-disable-next-line no-console
+  console.log(
+    '[memory-timeline] created new conversation via preset',
+    OLLAMA_PRESET_ID,
+    'id:', id, 'status:', status,
   );
+  return id;
 }
 
 async function emitConsultation(

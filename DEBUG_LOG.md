@@ -1622,3 +1622,17 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
 - **Fix applied:** spec no longer goes through BFF `POST /api/runs`. Added `pickOrCreateConversation()` which reads `GET /api/conversations` on agent-server and reuses any existing conversation id. The BFF's `GET /api/runs/{id}` proxies to agent-server `/api/conversations/{id}`, so `/runs/{id}` renders fully regardless of vLLM state. If no conversation exists, spec fails loud with instructions.
 - **Files changed:** `src/tests/e2e/memory-timeline-marker.spec.ts`.
 - **Follow-up:** the BFF `blocked` path returning `data.id=""` is a real UX bug (frontend can't render a blocked run). Track separately — out of Stage 5.6b scope. Recommended follow-on: BFF should either persist a blocked-run shell with a synthesized id or return 503, not a 200 with empty id.
+
+## 2026-08-06 04:04 EDT — registry stores resolver closure, not class (Stage 5.6b)
+- **Symptom:** `_REG['consult_memory']` is `<function _resolver_from_subclass.<locals>._resolve>`, not `ConsultMemoryTool`, so `is`/`isinstance` assertions fail.
+- **Affected stage/plugin/port:** Stage 5.6b tool registration test.
+- **Root cause:** SDK's `register_tool` wraps the class in `_resolver_from_subclass(cls)` before storing — the registry value is a resolver closure that, when called with a Tool spec + ConversationState, returns the built Sequence[ToolDefinition]. Never a direct class reference.
+- **Fix applied:** relaxed the value assertion to `callable(resolved) or resolved is cm.ConsultMemoryTool`. Presence of the key is the actual proof of registration; the wrapped value is an implementation detail we don't own.
+- **Files changed:** `openhands_tools_ext/tests/memory/test_consult_memory_tool.py`.
+
+## 2026-08-06 04:04 EDT — no existing conversations on fresh agent-server (Stage 5.6b)
+- **Symptom:** `pickOrCreateConversation` throws "No existing agent-server conversation found" because `GET /api/conversations` is empty on this box.
+- **Affected stage/plugin/port:** Stage 5.6b Playwright DoD.
+- **Root cause:** Fresh install / never ran a real run on this Colossus session. Nothing to reuse.
+- **Fix applied:** extended `pickOrCreateConversation` with a fallback that creates a conversation via BFF `POST /api/runs` using the Ollama fallback preset (`ap-3`) — Ollama on :11434 is always up on Colossus, avoiding the vLLM coder dependency. Overridable via `FORGE_TEST_OLLAMA_PRESET_ID`.
+- **Files changed:** `src/tests/e2e/memory-timeline-marker.spec.ts`.
