@@ -148,15 +148,17 @@ async function pickOrCreateConversation(
 ): Promise<string> {
   // 1. Try to reuse any existing conversation on agent-server. A terminal
   //    or failed conversation still works as a socket room — we just want
-  //    a valid conversationId to inject events into.
-  const listResp = await request.get(`${AGENT_URL}/api/conversations`).catch(() => null);
+  //    a valid conversationId to inject events into. Agent-server 1.40.0
+  //    LIST route is /api/conversations/search (paginated), not
+  //    /api/conversations (which is a batch-get by ids, 422 without them).
+  const listResp = await request.get(`${AGENT_URL}/api/conversations/search?limit=25`).catch(() => null);
   if (listResp && listResp.ok()) {
     const body = await listResp.json();
     const items: Array<{ id?: string }> = Array.isArray(body)
       ? body
-      : (body?.items ?? body?.data ?? []);
+      : (body?.results ?? body?.items ?? body?.data ?? []);
     // eslint-disable-next-line no-console
-    console.log('[fork-from-here] agent /api/conversations items=', items.length);
+    console.log('[fork-from-here] agent /api/conversations/search items=', items.length);
     for (const it of items) {
       if (it && typeof it.id === 'string' && it.id.length > 0) {
         // eslint-disable-next-line no-console
@@ -167,16 +169,24 @@ async function pickOrCreateConversation(
   } else {
     // eslint-disable-next-line no-console
     console.log(
-      '[fork-from-here] agent /api/conversations list failed status=',
+      '[fork-from-here] agent /api/conversations/search failed status=',
       listResp?.status(),
     );
   }
 
-  // 2. Try creating a bare conversation directly on agent-server (no BFF
-  //    routing pre-check, no LLM required). This is the surface used by
-  //    the SDK's own tests — POST /api/conversations with an empty body.
+  // 2. Create a bare conversation directly on agent-server. Agent-server
+  //    1.40.0 requires ``workspace: {working_dir, kind: 'LocalWorkspace'}``
+  //    (see bff/routers/runs.py create_body). No LLM call is triggered
+  //    when initial_message is empty and we don't POST /run afterwards,
+  //    so we bypass the vLLM/Ollama routing block entirely.
+  const workingDir = process.env.FORGE_TEST_WORKING_DIR || process.cwd();
   const agentCreate = await request.post(`${AGENT_URL}/api/conversations`, {
-    data: {},
+    data: {
+      workspace: {
+        working_dir: workingDir,
+        kind: 'LocalWorkspace',
+      },
+    },
   }).catch(() => null);
   if (agentCreate && agentCreate.ok()) {
     const body = await agentCreate.json().catch(() => null);
@@ -186,6 +196,11 @@ async function pickOrCreateConversation(
       console.log('[fork-from-here] created bare conversation on agent-server id:', id);
       return id;
     }
+    // eslint-disable-next-line no-console
+    console.log(
+      '[fork-from-here] agent POST /api/conversations OK but no id in body:',
+      JSON.stringify(body).slice(0, 200),
+    );
   } else if (agentCreate) {
     // eslint-disable-next-line no-console
     console.log(
