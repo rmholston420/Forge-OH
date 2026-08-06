@@ -25,21 +25,26 @@
  *   screenshots/memory-timeline-marker.png  run-detail with 🧠 event card
  */
 import { test, expect, type Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import net from 'node:net';
 
 const BFF_URL = process.env.PLAYWRIGHT_BFF_URL || 'http://127.0.0.1:8081';
 const AGENT_URL = process.env.PLAYWRIGHT_AGENT_URL || 'http://127.0.0.1:8090';
-const FRONTEND_URL =
-  process.env.PLAYWRIGHT_BASE_URL ||
-  process.env.PLAYWRIGHT_FRONTEND_URL ||
-  'http://127.0.0.1:3100';
+const START_PROD = process.env.PLAYWRIGHT_START_PROD === '1';
+const PROD_PORT = Number(process.env.PLAYWRIGHT_PROD_PORT || 3100);
+const FRONTEND_URL = START_PROD
+  ? `http://127.0.0.1:${PROD_PORT}`
+  : process.env.PLAYWRIGHT_BASE_URL ||
+    process.env.PLAYWRIGHT_FRONTEND_URL ||
+    `http://127.0.0.1:${PROD_PORT}`;
 const WORKSPACE_ID =
   process.env.FORGE_TEST_WORKSPACE_ID || '18c99443b23c452899010095abd5f29b';
 const PRESET_ID = process.env.FORGE_TEST_PRESET_ID || 'ap-1';
 
 const REPO_ROOT = resolve(process.cwd(), '..');
+const APP_DIR = process.cwd(); // <repo>/src
 const SCREENSHOT_DIR = join(REPO_ROOT, 'screenshots');
 const MARKER_PNG = join(SCREENSHOT_DIR, 'memory-timeline-marker.png');
 const SHOULD_PUSH = process.env.PLAYWRIGHT_GPU_STRIP_PUSH === '1';
@@ -48,9 +53,46 @@ const CONSULT_QUERY = 'stage-5.6b timeline marker probe';
 const CONSULT_TIER = 'semantic';
 const CONSULT_RESULT_COUNT = 2;
 
+let nextProc: ChildProcess | null = null;
+
+function waitForPort(port: number, host = '127.0.0.1', timeoutMs = 60_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolveP, reject) => {
+    const tryOnce = () => {
+      const socket = net.createConnection({ port, host });
+      socket.once('connect', () => {
+        socket.end();
+        resolveP();
+      });
+      socket.once('error', () => {
+        socket.destroy();
+        if (Date.now() > deadline) {
+          reject(new Error(`port ${host}:${port} not ready after ${timeoutMs}ms`));
+        } else {
+          setTimeout(tryOnce, 500);
+        }
+      });
+    };
+    tryOnce();
+  });
+}
+
 test.beforeAll(async ({ request }) => {
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
   const missing: string[] = [];
+
+  if (START_PROD) {
+    // eslint-disable-next-line no-console
+    console.log('[memory-timeline] START_PROD=1 — building + starting next start on :' + PROD_PORT);
+    execFileSync('npm', ['run', 'build'], { cwd: APP_DIR, stdio: 'inherit' });
+    nextProc = spawn('npx', ['next', 'start', '-p', String(PROD_PORT)], {
+      cwd: APP_DIR,
+      stdio: 'inherit',
+      env: { ...process.env, NEXT_PUBLIC_BFF_URL: BFF_URL },
+      detached: false,
+    });
+    await waitForPort(PROD_PORT);
+  }
 
   const emitProbe = await request
     .post(`${BFF_URL}/api/memory/emit-consultation`, {
@@ -79,10 +121,25 @@ test.beforeAll(async ({ request }) => {
 
   const feProbe = await request.get(FRONTEND_URL).catch(() => null);
   // eslint-disable-next-line no-console
-  console.log('[memory-timeline] FE status:', feProbe ? feProbe.status() : 'null');
-  if (!feProbe || feProbe.status() >= 500) missing.push(`frontend ${FRONTEND_URL}`);
+  console.log('[memory-timeline] FE status:', feProbe ? feProbe.status() : 'null', 'URL=', FRONTEND_URL);
+  if (!feProbe || feProbe.status() >= 500) {
+    missing.push(
+      `frontend ${FRONTEND_URL} unreachable. Start prod frontend on :${PROD_PORT} (never next dev):\n` +
+      `  cd ~/dev/forge-oh && npm run build && \\\n` +
+      `    NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \\\n` +
+      `    nohup npx next start -H 127.0.0.1 -p ${PROD_PORT} >~/.forge-oh/next-prod.log 2>&1 &\n` +
+      `Or re-run with PLAYWRIGHT_START_PROD=1 to have the spec do it.`,
+    );
+  }
 
   test.skip(missing.length > 0, `preconditions unmet: ${missing.join(', ')}`);
+});
+
+test.afterAll(() => {
+  if (nextProc && !nextProc.killed) {
+    nextProc.kill('SIGTERM');
+    nextProc = null;
+  }
 });
 
 async function createRun(

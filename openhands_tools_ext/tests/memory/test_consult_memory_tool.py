@@ -79,9 +79,38 @@ def _reset_fake_http(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_tool_is_registered_under_consult_memory_name() -> None:
-    from openhands.sdk.tool.registry import resolve_tool
+    """The tool must be resolvable via the SDK registry after import.
 
-    resolved = resolve_tool("consult_memory")
+    Different SDK versions have exposed different resolver signatures
+    (some require ``conv_state``, some don't). We probe the registry
+    module for a public entry point and fall back to inspecting its
+    internal state so the assertion is version-tolerant.
+    """
+    from openhands.sdk.tool import registry as reg
+
+    resolved: object | None = None
+    # Try the current-SDK resolver signature (name, conv_state=None).
+    try:
+        resolved = reg.resolve_tool("consult_memory", None)  # type: ignore[misc]
+    except TypeError:
+        try:
+            resolved = reg.resolve_tool("consult_memory")  # type: ignore[misc]
+        except TypeError:
+            resolved = None
+
+    if resolved is None:
+        # Last-resort: peek at the module's registry dict directly.
+        for attr in ("_REGISTRY", "REGISTRY", "_tools", "TOOLS"):
+            container = getattr(reg, attr, None)
+            if isinstance(container, dict) and "consult_memory" in container:
+                resolved = container["consult_memory"]
+                break
+
+    assert resolved is not None, (
+        "consult_memory is not registered in openhands.sdk.tool.registry "
+        "after importing openhands_tools_ext.memory.tools.consult_memory"
+    )
+    # Accept either the class or an instance thereof.
     assert resolved is cm.ConsultMemoryTool or isinstance(
         resolved, cm.ConsultMemoryTool
     )

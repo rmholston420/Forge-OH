@@ -1593,3 +1593,17 @@ All four failures pre-date § 4.4 and § 4.5, none touch the paths modified in t
   - `.gitignore` — add `.serena/` with a rationale comment tying it to ADR-016.
 - **Files changed:** `scripts/seed_memory_event.py`, `.gitignore`.
 - **Verified:** sandbox edits only; Colossus re-run required.
+
+## 2026-08-06 03:54 EDT — resolve_tool signature drift breaks registration probe (Stage 5.6b)
+- **Symptom:** `test_tool_is_registered_under_consult_memory_name` fails with `TypeError: resolve_tool() missing 1 required positional argument: 'conv_state'`.
+- **Affected stage/plugin/port:** Stage 5.6b — OpenHands SDK tool registry consumer.
+- **Root cause:** OpenHands SDK v1.40.0 `openhands.sdk.tool.registry.resolve_tool(name, conv_state)` requires `conv_state` positionally. My probe called `resolve_tool("consult_memory")` — one arg — because I read the signature off memory of an earlier SDK version. FinishTool/ThinkTool never call `resolve_tool` themselves, so there was no template to copy.
+- **Fix applied:** made the probe version-tolerant. First try `resolve_tool(name, None)`, fall back to `resolve_tool(name)` on TypeError, then fall back to peeking at the module's private registry dict (`_REGISTRY`/`REGISTRY`/`_tools`/`TOOLS`). Any of the three paths satisfies the assertion; the underlying question ("is the name registered after import?") is what matters.
+- **Files changed:** `openhands_tools_ext/tests/memory/test_consult_memory_tool.py`.
+
+## 2026-08-06 03:54 EDT — Playwright memory-timeline spec skipped (FE=null, :3100 dead) (Stage 5.6b)
+- **Symptom:** Playwright output `[memory-timeline] FE status: null` → test skipped with `preconditions unmet: frontend http://127.0.0.1:3100`. `forge-restart.sh` had brought up Next.js on :3000 (dev), while the `next start -p 3100` prod process from an earlier session was killed (`Exit 143`) by the restart sequence.
+- **Affected stage/plugin/port:** Stage 5.6b live-task DoD — Playwright spec `memory-timeline-marker.spec.ts`.
+- **Root cause:** `forge-up.sh` starts Next.js on :3000 (`pnpm dev`) — the ADR-verified dev port. Playwright specs must run against `next start` on :3100 (never `next dev`, per `forge-oh-playwright-visual`). The original spec pointed at :3100 unconditionally and had no path to start the prod server if it wasn't already running.
+- **Fix applied:** adopted the same `PLAYWRIGHT_START_PROD=1` pattern the sibling `memory-inspector.spec.ts` uses. When the env var is set, `beforeAll` runs `npm run build` in `src/` and spawns `npx next start -p 3100` (killed in `afterAll`). Precondition-missing message now spells out the exact rebuild command so the operator can also start prod manually and rerun.
+- **Files changed:** `src/tests/e2e/memory-timeline-marker.spec.ts`.
