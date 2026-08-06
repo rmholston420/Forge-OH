@@ -5033,3 +5033,25 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **PORTING_LEDGER:** unchanged. No external code vendored.
 - **KNOWN_ISSUES:** none opened this slice.
 - **Stop-condition status:** Stage 3.4 (endpoints registry matches BFF wire contract) + Stage 3.5 (contract test guarding against future drift) COMPLETE per plan § 3.4 + 3.5 DoD. Pending Colossus live-run verification for the paste-block final check. This closes all Stage 3 sub-slices except the descoped Stage 3.3 DependencyGuard (see KNOWN_ISSUES 2026-08-05 23:15 EDT — belongs in agent-server tool observer, out of scope for Stage 3).
+
+## 2026-08-05 23:43 EDT — Stage 3.4/3.5 DoD verified green on Colossus + Stage 3 COMPLETE
+
+- **What:** Ran the Stage 3.4/3.5 verification paste block on Colossus. All checks green on first iteration.
+- **Results:**
+  - `.oh-venv/bin/pytest bff/tests/{test_run_compare_contract,test_run_compare,test_confirmation_policy,test_event_normalize}.py -q`: 30/30 pass in 0.18s (4 new contract + 10 compare service + 6 confirmation policy + 10 event normalize).
+  - `pnpm typecheck` (`tsc --noEmit`): clean.
+  - `pnpm vitest run src/tests/unit/api-endpoints.test.ts src/tests/unit/RiskBadge.test.tsx`: 79/79 pass in 485ms (71 endpoints + 8 RiskBadge).
+  - `bash scripts/forge-restart.sh` + `forge-status.sh`: all three healthy (agent-server :8090, BFF :8081, Next.js :3000).
+  - `npm run build` + `npx next start -p 3100`: `/runs` 200.
+  - `npx playwright test tests/e2e/{risk-badge,hitl-approval}.spec.ts`: 5/5 pass in 1.4s.
+- **Iteration:** zero — all green first pass.
+- **Stop-condition status:** Stage 3.4 + 3.5 COMPLETE per plan § 3.4 + 3.5 DoD.
+
+### Stage 3 rollup (§ 3 CLOSED)
+
+- **§ 3.1** Security-analyzer risk indicators — DONE (`5d6f779`, `9266aa7`, `707e938`; DoD 2026-08-05 23:26 EDT).
+- **§ 3.2** Real HITL / ConfirmRisky + ApprovalBanner wiring — DONE (`94237f9`, `5e4cd63`; DoD 2026-08-05 23:38 EDT).
+- **§ 3.3** DependencyGuard — DESCOPED (KNOWN_ISSUES 2026-08-05 23:15 EDT — belongs in agent-server tool observer, not the BFF layer; no upstream call sites in Forge-OH to gate).
+- **§ 3.4 + 3.5** compare-endpoint query-key contract fix — DONE (`be6f006`; DoD 2026-08-05 23:43 EDT).
+
+Five commits (`5d6f779`..`be6f006`), 79 vitest, 30 pytest (Stage 3 tests), 5 Playwright specs. Ready to start Stage 4.

@@ -6,51 +6,83 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
-## Last updated: 2026-08-05 23:40 EDT
+## Last updated: 2026-08-05 23:43 EDT
 
 ## Current build-sequencing stage / plugin / port in progress
 
-- **Stage:** Stage 3 · Security & Safety (reconciliation-plan-v1 § 3, stage companion `Forge-OH-reconciliation-plan-v1-stage-3.md`).
-- **Sub-slice just committed:** Stage 3.4 + 3.5 — compare-endpoint query-key contract fix (`?left=&right=` → `?base=&fork=`) + BFF contract test. Pushed; pending Colossus verification.
-- **Next stage after Colossus verification passes:** Stage 4 (per reconciliation-plan-v1 § 4). Restate scope from that document at the top of the next session.
+- **Stage 3 · Security & Safety — CLOSED.** All sub-slices (§ 3.1, § 3.2, § 3.4, § 3.5) verified green on Colossus. § 3.3 DependencyGuard descoped (see KNOWN_ISSUES 2026-08-05 23:15 EDT — belongs in agent-server tool observer, not the BFF layer).
+- **Next up:** Stage 4 (reconciliation-plan-v1 § 4). Scope has NOT been restated yet — do this before writing any code.
 
 ## What was completed this session
 
-**Three commits landed on origin/main:**
+**Five commits landed on `origin/main`:**
 
-1. **Stage 3.1 (`5d6f779` + `9266aa7` + `707e938`)** — `securityRisk` surfacing, `PatternSecurityAnalyzer` attach, RiskBadge + auto-collapse. Verified 10/10 pytest · 8/8 vitest · 2/2 Playwright.
-2. **Stage 3.2 (`94237f9` + `5e4cd63`)** — `ConfirmRisky(MEDIUM, confirm_unknown=True)` default (with `AlwaysConfirm` escalation via `requireApproval=true`); wired `onApprovalRequest` (missing today); real `ApprovalBanner` on run-detail; status normalizer for `awaiting_approval` drift. Verified 16/16 pytest · 8/8 vitest · 5/5 Playwright.
-3. **Stage 3.4 + 3.5 (pending push before this session ends)** — `ENDPOINTS.RUNS.compare` fixed to `?base=&fork=`; compare page migrated to helper; new BFF contract test.
+1. `5d6f779` feat(stage-3.1): risk indicators — `security_risk` surfacing + PatternSecurityAnalyzer attach
+2. `9266aa7` fix(stage-3.1): route-mock envelope in `risk-badge.spec` — match `fetchRunEvents` `json.data`
+3. `707e938` docs(stage-3.1): DoD verified green on Colossus
+4. `94237f9` feat(stage-3.2): real HITL — ConfirmRisky default + wire ApprovalBanner
+5. `5e4cd63` fix(stage-3.2): scope Playwright banner locator past Next.js route announcer
+6. `be6f006` feat(stage-3.4-3.5): fix compare-endpoint query-key contract + add BFF contract test
+
+Cumulative Stage 3 test coverage now green on Colossus: **30 pytest (Stage 3 tests) · 79 vitest · typecheck clean · 5 Playwright · prod build /runs=200**.
 
 ## What remains before the current Definition of Done is met
 
-**Commit 3 (Stage 3.4 + 3.5) — pending push + Colossus verification.**
+Stage 3 DoD is met. No outstanding work for Stage 3.
 
-Once pushed, run the paste block below on Colossus:
+**Stage 4 kickoff (next session):**
+
+1. Read this SESSION_HANDOFF first.
+2. Load `docs/reconciliation-plan-v1.md` — restate Stage 4 scope: which plugins/kernel components, which ports touched, what the DoD or "minimal working system" boundary is, exact stop condition to honor.
+3. Load the stage-4 companion if one exists (`docs/reconciliation-plan-v1-stage-4.md`). If missing, ask the user before proceeding.
+4. Flag any ambiguity for the user's review before starting.
+5. Vendor-first check per project instructions before writing code.
+
+## Open questions / ambiguity awaiting the user's answer
+
+**One decision before Stage 4:**
+
+Deferred hygiene items exist that could be picked up as a small commit before Stage 4, or left for a later cleanup pass:
+
+- **Status enum drift unification** — `awaiting_approval` (BFF underscore) vs `awaiting-approval` (frontend schema dash). Currently patched at the `fetchRun` boundary via `_normalizeRunStatus`. Full unification (pick canonical form, flip schema + components + tests + fixtures, add `.parse()` to detect future drift) is a ~30-min hygiene slice. KNOWN_ISSUES 2026-08-05 23:34 EDT.
+- **`event_relay.py` stream events not passed through `normalize_event`** — WebSocket-delivered events skip the shared normalizer. Not blocking any current feature. KNOWN_ISSUES 2026-08-05 23:15 EDT.
+- **`PatternSecurityAnalyzer` coverage audit** — current default `confirm_unknown=True` is fail-closed; a coverage audit would let us safely flip to `confirm_unknown=False`. Recommendation: revisit once Stage 4 exposes more real-world tool call patterns.
+
+**Recommendation:** proceed directly to Stage 4. Hygiene items are not blocking. Ask the user for a go/no-go on Stage 4 before restating scope.
+
+## Exact next action to take
+
+**When the user resumes:**
+
+1. Read this file.
+2. Ask: "Proceed with Stage 4 per `reconciliation-plan-v1.md` § 4, or pick up one of the deferred hygiene items first?"
+3. If Stage 4: read `reconciliation-plan-v1.md` § 4 (and stage-4 companion if it exists), restate scope, flag ambiguity, wait for confirmation.
+4. If hygiene first: state which one and its estimated size; wait for confirmation.
+
+## Reference — last commit landed
+
+- `be6f006` feat(stage-3.4-3.5): fix compare-endpoint query-key contract + add BFF contract test
+
+## Reference — Stage 3 verification commands (for reproducibility)
 
 ```bash
 cd ~/dev/forge-oh && git pull
 
-# Backend
 .oh-venv/bin/pytest \
   bff/tests/test_run_compare_contract.py \
   bff/tests/test_run_compare.py \
   bff/tests/test_confirmation_policy.py \
   bff/tests/test_event_normalize.py -q
 
-# Frontend
 pnpm typecheck
 pnpm vitest run \
   src/tests/unit/api-endpoints.test.ts \
   src/tests/unit/RiskBadge.test.tsx
 
-# Restart stack (only if you touched Python or want a clean baseline)
 bash scripts/forge-restart.sh && sleep 2 && bash scripts/forge-status.sh
 
-# Prod build + Playwright (regression of Stage 3.1 + 3.2 specs)
 fuser -k 3100/tcp 2>/dev/null; sleep 2
 npm run build 2>&1 | tail -8
-
 NEXT_PUBLIC_BFF_URL=http://127.0.0.1:8081 \
   nohup npx next start -H 127.0.0.1 -p 3100 >~/.forge-oh/next-prod.log 2>&1 &
 sleep 6
@@ -63,37 +95,4 @@ PLAYWRIGHT_GPU_STRIP_PUSH=1 \
   npx playwright test tests/e2e/risk-badge.spec.ts tests/e2e/hitl-approval.spec.ts --reporter=list
 ```
 
-Expected: full green — 4 pytest suites pass · typecheck clean · api-endpoints + RiskBadge vitest pass · all-green stack · `/runs` 200 · 5 Playwright.
-
-## Open questions / ambiguity awaiting the user's answer
-
-**One question before starting Stage 4:**
-
-Stage 3 sub-slices are all closed (or descoped, in the case of Stage 3.3 DependencyGuard). Stage 4 scope needs restatement from `reconciliation-plan-v1.md` § 4 before we start. Confirm which section is next:
-
-- **Stage 4 as declared in reconciliation-plan-v1** — restate scope, build sequencing, ports touched, DoD.
-- Or a targeted followup on one of the deferred items in KNOWN_ISSUES:
-  - Status enum drift unification (`awaiting_approval` underscore vs `awaiting-approval` dash across all frontend consumers) — logged 2026-08-05 23:34 EDT.
-  - `event_relay.py` stream events not passed through `normalize_event` — logged 2026-08-05 23:15 EDT.
-  - `PatternSecurityAnalyzer` coverage audit before flipping `confirm_unknown=False`.
-
-Recommendation: proceed to Stage 4. Deferred items are quality-of-life; Stage 4 is the plan's next required step. Ask the user for confirmation before restating scope.
-
-## Exact next action to take
-
-**When the user resumes:**
-
-1. Read this SESSION_HANDOFF.
-2. Run the Colossus verification paste block above for Commit 3.
-3. If green: mark Stage 3 completely DONE in BUILD_LOG; ask the user about Stage 4 vs deferred followups; then restate scope from `reconciliation-plan-v1.md` for whichever is picked.
-4. If red: capture the failure block. For the new contract test, the mock-patching of `_fetch_all_events` + `get_client` is the most likely fragile point; verify the AsyncMock chain matches the actual call sites.
-
-## Reference — last five commits (main)
-
-- `5d6f779` feat(stage-3.1): risk indicators — `security_risk` surfacing + `PatternSecurityAnalyzer` attach
-- `9266aa7` fix(stage-3.1): route-mock envelope in `risk-badge.spec` — match `fetchRunEvents` `json.data`
-- `707e938` docs(stage-3.1): DoD verified green on Colossus — pytest 10/10 · vitest 8/8 · playwright 2/2
-- `94237f9` feat(stage-3.2): real HITL — ConfirmRisky default + wire ApprovalBanner
-- `5e4cd63` fix(stage-3.2): scope Playwright banner locator past Next.js route announcer
-
-Pending commit for this session: `feat(stage-3.4-3.5): fix compare-endpoint query-key contract + add BFF contract test`.
+Expected (verified 2026-08-05 23:43 EDT): 30 pytest · 79 vitest · typecheck clean · stack healthy · prod=200 · 5 Playwright.
