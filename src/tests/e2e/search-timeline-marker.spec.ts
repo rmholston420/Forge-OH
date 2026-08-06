@@ -24,8 +24,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import net from 'node:net';
 
 const BFF_URL = process.env.PLAYWRIGHT_BFF_URL || 'http://127.0.0.1:8081';
@@ -42,10 +41,10 @@ const WORKSPACE_ID =
 const PRESET_ID = process.env.FORGE_TEST_PRESET_ID || 'ap-1';
 
 // Derive REPO_ROOT from this spec file's absolute location so the value is
-// stable no matter what cwd Playwright is invoked from.
+// stable no matter what cwd Playwright is invoked from. Playwright compiles
+// TS specs to CommonJS here so __dirname is available directly; import.meta
+// is not (see package.json — no "type": "module").
 // This file lives at <repo>/src/tests/e2e/ so REPO_ROOT is three levels up.
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
 const APP_DIR = REPO_ROOT; // Next.js app root (package.json lives at repo root)
 const SCREENSHOT_DIR = join(REPO_ROOT, 'screenshots');
