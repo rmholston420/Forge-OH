@@ -2132,3 +2132,24 @@ This avoids `--gpus all` (import path for `__version__` is not GPU-dependent whe
 
 **Files changed:** — (no code change; probe-command correction only)
 **Related BUILD_LOG entry:** 2026-08-06 15:24 EDT — Slice 8.0 kickoff DRAFT corrected.
+
+## 2026-08-06 15:37 EDT — Slice 8.0 smoke re-baseline: bench invocation wrong (script vs module)
+
+**Symptom:**
+```
+Traceback (most recent call last):
+  File "/home/rmholston/dev/forge-oh/bench/pathF_swebench/bench_pathF_swebench.py", line 49, in <module>
+    from bench.pathF_swebench.apply_and_test import normalize_patch
+ModuleNotFoundError: No module named 'bench'
+```
+
+**Affected:** Slice 8.0 DoD attestation · bench harness invocation.
+
+**Root cause:** SESSION_HANDOFF 2026-08-06 15:30 EDT gave the wrong invocation form (`python3 bench/pathF_swebench/bench_pathF_swebench.py ...`). The script's docstring (lines 22-33) and its comment on line 49 both say "runs from repo root under -m so relative imports work." Also confirmed by `bench/pathF_swebench/README.md` (lines 68, 87, 140, 144, 168) which use `python -m bench.pathF_swebench.bench_pathF_swebench`. There is no `bench/__init__.py` at the top, but `-m` invocation adds the CWD to `sys.path`, letting `bench.pathF_swebench.*` resolve as an implicit namespace package.
+
+Not a bench-code breakage; agent-side handoff error.
+
+**Fix applied:** invocation form corrected to `python -m bench.pathF_swebench.bench_pathF_swebench --tasks all --model c01 --concurrency 1`. SESSION_HANDOFF overwritten with the correct form. Verified against README.md canonical invocations.
+
+**Files changed:** — (no code change; handoff-command correction only)
+**Related BUILD_LOG entry:** 2026-08-06 15:30 EDT — Slice 8.0 EXECUTED.

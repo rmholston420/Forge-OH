@@ -67,8 +67,11 @@ for i in $(seq 1 90); do
 done
 
 # Re-run smoke-30 (matches F.3.0 concurrency=1 baseline conditions).
-python3 bench/pathF_swebench/bench_pathF_swebench.py \
-  --tasks all --model c01 --concurrency 1 2>&1 | tee ~/.forge-oh/bench_pathF_smoke30_slice8.0.log
+# Must run as a module from repo root (not as a script) so bench.pathF_swebench.*
+# imports resolve. See DEBUG_LOG 2026-08-06 15:37 EDT.
+cd ~/dev/forge-oh && \
+  python -m bench.pathF_swebench.bench_pathF_swebench \
+    --tasks all --model c01 --concurrency 1 2>&1 | tee ~/.forge-oh/bench_pathF_smoke30_slice8.0.log
 ```
 
 Return: (a) the `/v1/models` JSON, (b) the final pass@1 line from the smoke-30 run, (c) whether the 4 previously-context-skipped tasks now show a real pass/fail instead of `context-budget-skip`.
