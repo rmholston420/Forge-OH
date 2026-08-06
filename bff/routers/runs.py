@@ -62,6 +62,7 @@ from bff.services.hook_config import build_hook_config
 from bff.services.model_router import (
     ModelUnavailableError,
     RoleRoute,
+    is_model_compatible_with_role,
     route_by_role,
 )
 from bff.services.sidecar import seed_sidecar
@@ -1338,4 +1339,152 @@ async def restart_run(
         "from_event_id": result.from_event_id,
         "reset_to_sha": result.reset_to_sha,
         "worktree_path": result.worktree_path,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Stage 6.5.2 — Runtime model switching (ADR-027).
+# ---------------------------------------------------------------------------
+
+
+class SwitchModelRequest(BaseModel):
+    """Body for ``POST /runs/{run_id}/model``.
+
+    ADR-027 §1: only ``agentPresetId`` is accepted. Raw model strings and
+    LLM-Input blobs are rejected so credentials never enter via the wire
+    contract.
+    """
+
+    agentPresetId: str = Field(..., min_length=1)
+
+
+def _build_switch_llm_payload(preset: Any, route: RoleRoute) -> dict[str, Any]:
+    """Build the ``{"llm": LLM-Input}`` body for agent-server switch_llm.
+
+    Mirrors the LLM block that ``create_run`` sends at :func:`create_run`
+    (see ``create_body["agent"]["llm"]``) so the semantics of a mid-run
+    switch match the semantics of an initial run start. Credentials
+    (``api_key``) are the same ignored-by-server placeholders that
+    ``create_run`` uses (vLLM and Ollama both ignore api_key on their
+    OpenAI-compat surfaces).
+    """
+    return {
+        "llm": {
+            "model": _translate_model(route),
+            "base_url": route.base_url,
+            "api_key": "ollama" if route.backend == "ollama" else "vllm",
+            "max_tokens": route.max_tokens,
+            "usage_id": _USAGE_ID,
+            "is_subscription": False,
+            "native_tool_calling": False,
+        }
+    }
+
+
+@router.post("/runs/{run_id}/model")
+async def switch_run_model(run_id: str, body: SwitchModelRequest) -> dict:
+    """Switch the LLM of a running conversation (ADR-027 · Stage 6.5.2).
+
+    Forwards to agent-server's ``POST /api/conversations/{cid}/switch_llm``
+    with a preset-hydrated ``LLM-Input`` blob. Only preset-driven; raw
+    model strings are rejected at the Pydantic layer.
+
+    Behavior (ADR-027 §1):
+      * Unknown preset → 404.
+      * Preset↔role mismatch (per ADR-012 §3 / MODEL_ROUTER_CATALOG) → 422.
+      * Preset with unset ``role`` → 422 (mid-run switching requires an
+        explicit role to gate against; ``route_by_role`` needs a role and
+        this endpoint refuses to guess).
+      * Router says model unavailable (e.g. vLLM down + no Ollama fallback)
+        → 503 ``ModelUnavailableError``.
+      * Agent-server 404 → 404 (unknown run_id / conversation_id).
+      * Agent-server 5xx or transport error → 502.
+      * Happy path → 200 with the resolved model + base_url + agent-server
+        response echoed.
+
+    Credentials never leave the BFF; ``api_key`` sent to agent-server is
+    the same ignored placeholder ``create_run`` uses.
+    """
+    # Lazy import to avoid a circular dependency between runs.py and the
+    # preset registry at module-import time.
+    from bff.routers.agent_presets import _PRESETS
+
+    preset = _PRESETS.get(body.agentPresetId)
+    if preset is None:
+        raise HTTPException(status_code=404, detail=f"preset not found: {body.agentPresetId}")
+
+    if preset.role is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"preset {preset.id!r} has role=None; mid-run model switching "
+                "requires an explicit role on the target preset (ADR-027 §1)."
+            ),
+        )
+
+    if not preset.model:
+        raise HTTPException(
+            status_code=422,
+            detail=f"preset {preset.id!r} has empty model; nothing to switch to.",
+        )
+
+    if not is_model_compatible_with_role(preset.model, preset.role):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"preset_model_incompatible_for_role: "
+                f"preset={preset.id!r} model={preset.model!r} role={preset.role!r} "
+                f"not in MODEL_ROUTER_CATALOG[{preset.role!r}].compatible "
+                f"(ADR-012 §3 / ADR-027 §2)."
+            ),
+        )
+
+    # Resolve the RoleRoute against the swap-on-demand supervisor. This
+    # can raise ModelUnavailableError if neither vLLM nor Ollama can serve
+    # the role at all — treat as 503 since the switch is impossible now
+    # but may become possible later.
+    try:
+        route: RoleRoute = await route_by_role(
+            preset.role,
+            context_length=0,
+            backend_id=preset.backendId,
+        )
+    except ModelUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"model unavailable for role={preset.role!r}: {exc}",
+        ) from exc
+
+    # If the router resolved to a different served-model-name than the
+    # preset (e.g. Ollama fallback substituted), honor the router's
+    # resolution — that is by construction inside the compatible set for
+    # the role. But warn in the response so the caller sees the swap.
+    resolved_model_note = None
+    if route.model != preset.model:
+        resolved_model_note = (
+            f"router substituted resident model {route.model!r} for "
+            f"preset model {preset.model!r} (role={preset.role!r})."
+        )
+        log.info("switch_run_model: %s", resolved_model_note)
+
+    payload = _build_switch_llm_payload(preset, route)
+
+    # Reuse the lifecycle helper for uniform 404/422/5xx handling.
+    agent_server_response = await _call_lifecycle(
+        run_id, "switch_llm", json_body=payload
+    )
+
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "agentPresetId": preset.id,
+        "resolved": {
+            "role": preset.role,
+            "backend": route.backend,
+            "model": route.model,
+            "base_url": route.base_url,
+            "max_tokens": route.max_tokens,
+        },
+        "resolved_model_note": resolved_model_note,
+        "agent_server": agent_server_response,
     }

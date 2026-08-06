@@ -6747,3 +6747,21 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 **Stop-condition status**: Micro-slice complete pending green pytest on Colossus. Then Stage 6.5.2 proceeds.
 
 **Next action**: Push, verify tests green on Colossus, then implement Stage 6.5.2 `POST /api/runs/{run_id}/model`.
+
+## 2026-08-06 10:12 EDT — Stage 6.5.2 · POST /runs/{run_id}/model wired (ADR-027)
+
+- **Stage / plugin / port**: Stage 6.5.2 · BFF runs router · `POST /runs/{run_id}/model`
+- **Contract source**: ADR-027 (Ratified 2026-08-06 09:52 EDT), MODEL_ROUTER_CATALOG (0242347)
+- **Files touched**:
+  - `bff/routers/runs.py` — added `SwitchModelRequest`, `_build_switch_llm_payload`, `switch_run_model` route; imported `is_model_compatible_with_role`.
+  - `bff/tests/test_runs_model_switch.py` — new, 14 tests covering body contract, preset validation, compatibility gate, happy path, Ollama fallback, model substitution note, router unavailable (503), agent-server 404 / 500 / transport error.
+- **Wire contract**:
+  - Body: `{agentPresetId: str}` only. Raw `model` and `LLM-Input` blobs rejected at Pydantic layer.
+  - Agent-server call: `POST /api/conversations/{run_id}/switch_llm` with `{llm: LLM-Input}` hydrated from preset + inference_backends registry. `run_id === conversation_id` per runs.py docstring.
+  - Credentials never sourced from request body; `api_key` is the same ignored placeholder (`"vllm"` or `"ollama"`) that `create_run` uses.
+- **Compatibility gate**: `is_model_compatible_with_role(preset.model, preset.role)` — 422 with `preset_model_incompatible_for_role` on fail.
+- **Error paths**: 404 unknown preset · 422 role=None / empty model / incompatible model / bad body · 503 ModelUnavailableError · 404 agent-server unknown run · 502 agent-server 5xx or transport error · 200 happy.
+- **Router substitution surfacing**: When `route_by_role` returns a different served-model than preset.model (Ollama fallback path), response includes `resolved_model_note` explaining the swap. Both models must still be in the role's `MODEL_ROUTER_CATALOG.compatible` set (gate runs against `preset.model` before routing).
+- **ADR-027 helper discrepancy note**: ADR-027 §1 mentioned a `get_conversation_id_for_run` helper. Confirmed via `bff/routers/runs.py` module docstring that `run_id === conversation_id` in this codebase — helper is not needed. Endpoint forwards directly to `f"/api/conversations/{run_id}/switch_llm"`. May file an ADR-027 amendment note; keeping this BUILD_LOG entry as the paper trail for now.
+- **Sandbox verification**: 14/14 pytest green in `/tmp/forge-oh-work`; regression suite (`test_runs_fork`, `test_runs_restart`, `test_model_router_catalog`) 68/68 green together.
+- **Stop-condition status**: §6.5.2 code + tests landed. Awaiting Colossus verify pass.
