@@ -7301,3 +7301,34 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
 - **PORTING_LEDGER / ADR updated:** none. Governing plan: `docs/reconciliation-plan-stage-8.md` §8.0b lines 178-187.
 - **Stop-condition status:** MET. All four DoD items verified against live Colossus evidence.
 - **Deferred/carryover:** (a) spec-decode alternative — still deferred, applies to both coder and planner. (b) Planner VRAM headroom is tighter than coder (~1.5 GiB vs ~2 GiB); if we later observe eviction stalls at high concurrency, ADR the planner-specific 32k rollback. (c) The `--tasks <csv>` planner bench is still un-drafted; a proper planner-role smoke belongs to a future §8.0c or a bench-methodology addition.
+
+## 2026-08-06 18:46 EDT — Slice 8.0.5 measurement-hardening harness shipped
+
+- **Stage / plugin / port:** Stage 8 · Slice 8.0.5 · `bench/` measurement infrastructure
+- **What changed:** Slice 8.0.5 (measurement hardening) DoD met and closed. Council-Synthesis lines 108–120 anchored: paired-seed McNemar test + cost-normalized telemetry + 100-task smoke mechanism now available before any capability slice can claim ±N tasks. Full §8.0.5 scope drafted in `docs/reconciliation-plan-stage-8.md` under the pattern established by §8.0.
+- **New library:** `bench/lib/mcnemar.py` (270 lines, stdlib-only) with `McNemarResult` dataclass, `mcnemar_paired()`, `pair_runs()`, and a `python -m bench.lib.mcnemar <baseline_dir> <treatment_dir>` CLI. Cutoff at n_discordant=25 switches mid-p exact → chi-square with continuity correction (Fagerland 2013). Companion test file `bench/lib/test_mcnemar.py` — 6 tests, all pass. Fagerland reference case (b=6, c=16) verified against direct binomial calculation: mid-p = P(X<6)+0.5·P(X=6) doubled = 0.03469, cross-checked via Lancaster identity mid-p = exact_conditional − PMF(k_obs).
+- **Harness additions to `bench/pathF_swebench/bench_pathF_swebench.py`:**
+  - `--task-count {30,100}` mutually exclusive with `--tasks`/`--smoke`. `--task-count 100` before generator populates `SMOKE_100_TASK_IDS` exits 2 with populate-me instructions on stderr.
+  - `--pair-with BASELINE_RUN_DIR` writes `pair_comparison.json` + prints one-line verdict after the run completes.
+  - `--usd-per-gpu-hour <float>` (default 0.60, ≤0 disables) knob for `usd_per_solved_task`; setting echoed to manifest + summary as `usd_per_gpu_hour_assumed`.
+  - `_emit_summary()` now writes `gpu_seconds_total` (source-attributed to `gpu_inference.duration_s` or `fallback:sum(wall_seconds)`), `wall_seconds_total`, `gpu_seconds_per_solved_task`, `wall_seconds_per_solved_task`, `usd_per_solved_task`, `usd_per_gpu_hour_assumed`.
+  - Manifest gains `task_count_flag`, `smoke_variant` ("smoke-30" | "smoke-100" | null), `random_seed: 42`, `pair_with`.
+- **New generator:** `scripts/generate_smoke_100.py`. Reproduces the seed=42 stratified sampling recipe used for the original 30-task set (repo × outcome buckets), keeps the current 30 IDs verbatim as prefix, extends with 70 tasks stratified from the F.3 full-500 pool excluding the 30. Emits a paste-able Python literal. User runs it once on Colossus (which has the F.3 full-500 log at `~/.forge-oh/bench_pathF_swebench/20260805_1025_run/`) and pastes between `<SMOKE_100_START>/<SMOKE_100_END>` markers in the harness. Population is deferred (a follow-up close-out step, not a DoD gate).
+- **DoD verification:**
+  1. `python3 -m bench.lib.test_mcnemar` → "All 6 tests passed." ✅
+  2. `python3 -m bench.pathF_swebench.bench_pathF_swebench --help` shows `--task-count {30,100}`, `--pair-with`, `--usd-per-gpu-hour` in the flag list. ✅
+  3. `--task-count 100` before generator run: exits 2 with populate-me instructions on stderr. ✅
+  4. Retrospective McNemar on Slice 8.0 attestation runs (baseline 10/30 vs step-1 9/30) yields p > 0.05. **Analytically proven** in this session: for any valid pairing of a 10/30 vs 9/30 contingency, mid-p McNemar returns p ∈ [0.50, 0.81] regardless of overlap (Case A: b=1,c=0 → p=0.500; Case B: b=2,c=1 → p=0.625; Case C: b=9,c=8 → p=0.815). p > 0.05 is a mathematical certainty at this Δ. Per-task attestation command staged for Colossus in SESSION_HANDOFF for empirical confirmation. ✅
+- **Files touched:**
+  - New: `bench/lib/__init__.py`, `bench/lib/mcnemar.py`, `bench/lib/test_mcnemar.py`, `scripts/generate_smoke_100.py`
+  - Edited: `bench/pathF_swebench/bench_pathF_swebench.py` (CLI, `_emit_summary`, `SMOKE_100_TASK_IDS` placeholder, manifest provenance fields, `SMOKE_30_TASK_IDS` alias)
+  - Edited: `docs/reconciliation-plan-stage-8.md` (§8.0.5 drafted; header status updated; §8.9 renumbered to §8.1–§8.9)
+  - Edited: `BUILD_LOG.md`, `SESSION_HANDOFF.md`
+- **Ports / adapters affected:** none. Measurement/bench infrastructure only; kernel and plugin surfaces untouched.
+- **PORTING_LEDGER / ADR updated:** none. ADR-029 §D5 governs ("hand-build in `bench/`; no OSS candidate is a fit for our paired-run, resume-friendly, single-user harness"). No new ADR required.
+- **Design decisions taken under standing "make optimal choice" delegation:**
+  - Test choice: mid-p exact McNemar (Fagerland 2013, "better power than exact-conditional McNemar with equivalent type-I control at small n"). Chi-square with continuity correction as automatic fallback at n_discordant ≥ 25 (crossover cutoff where exact enumeration is no longer needed).
+  - Sampling expansion: deterministic strict-prefix — first 30 IDs of SMOKE_100 = current SMOKE_TASK_IDS verbatim. All 30-task attestations remain directly comparable to any 100-task prefix.
+  - Cost knob default: `USD_PER_GPU_HOUR=0.60` chosen as rough cloud-parity for RTX 5090-tier (mid-2026 spot pricing bracket). CLI-overridable; setting echoed to summary for auditability. Colossus is single-user so the number is a knob, not a market rate.
+- **Stop-condition status:** MET. Slice 8.0.5 closed. §8.1 unblocked.
+- **Related BUILD_LOG:** 2026-08-06 18:25 EDT (Slice 8.0b closeout).

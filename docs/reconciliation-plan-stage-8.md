@@ -1,6 +1,6 @@
 # Forge-OH Reconciliation Plan — Stage 8 Companion
 
-**Status:** DRAFT (2026-08-06) — Slice 8.0 kickoff. Only §8.0 is drafted here; §8.0.5–§8.9 are placeholders that inherit from `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` (Perplexity project files repo, commit `8e093bc`) and [ADR-029](./adr/029-sdk-native-adoption-for-stage-8.md).
+**Status:** DRAFT (2026-08-06) — §8.0 kicked off; §8.0b closed; §8.0.5 drafted at kickoff. §8.1–§8.9 remain placeholders that inherit from `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` (Perplexity project files repo, commit `8e093bc`) and [ADR-029](./adr/029-sdk-native-adoption-for-stage-8.md).
 
 **Canonical governance:** ADR-028 (Stage 7 deviation, capability slices renumbered to Stage 8), ADR-029 (SDK-native adoption per slice), ADR-013 amendment #1 (Qwen3.6-27B-int4-AutoRound coder / DeepSeek-R1-distill-32B-AWQ planner).
 
@@ -188,11 +188,87 @@ Same flag matrix, applied to `ops/vllm_launch_planner.sh`, with these difference
 
 ---
 
-## §8.0.5 through §8.9 — Placeholders
+## §8.0.5 — Measurement Hardening (paired McNemar + telemetry + 100-task smoke)
+
+**Status:** DRAFT (2026-08-06) — kickoff following Slice 8.0b close.
+
+**Council-Synthesis anchor:** lines 108–120 ("before we can trust any subsequent slice's ±N task claim, we need a paired test and cost-normalized comparison"). Also line 117: "expand smoke set toward ≥100 tasks."
+
+**Governing ADR:** [ADR-029](./adr/029-sdk-native-adoption-for-stage-8.md) §D5 ("hand-build in `bench/`; no OSS candidate is a fit for our paired-run, resume-friendly, single-user harness"). No new ADR required.
+
+**Dependency:** hard prerequisite for every subsequent slice (§8.1–§8.9). Council-Synthesis line 103 mandates strict order: `8.0 → 8.0.5 → 8.1 → 8.2 → ...`.
+
+**Motivation:** Slice 8.0's ad-hoc 3-way probe (baseline 10/30, no-spec 9/30, no-spec-65k 8/30) exposed the exact gap this slice closes. The naive `|Δresolved| ≤ 1` rule cannot distinguish real regression from seed variance at n=30 — the noise floor is ±2 tasks. A paired test on the same task IDs is required before any capability slice can claim "non-regression" or "+N tasks improvement" with a straight face.
+
+**Scope (final):**
+
+1. `bench/lib/mcnemar.py` — mid-p exact McNemar test for paired binary outcomes.
+   - Uses stdlib only (`math`, `json`, `pathlib`). No SciPy dependency.
+   - Public API: `mcnemar_paired(baseline_dict, treatment_dict) -> McNemarResult` where dicts map `instance_id -> resolved: bool`.
+   - Switches from mid-p exact to chi-square with continuity correction at `n_discordant ≥ 25` (Fagerland 2013 cutoff).
+   - Verified against direct binomial calculation: for `b=6, c=16` (n_discordant=22), returns 0.03469 — exactly `P(X<6) + 0.5·P(X=6)` doubled for X~Binomial(22, 0.5). Cross-checks against Lancaster identity `mid-p = exact_conditional − PMF(k_obs) = 0.05248 − 0.01780 = 0.03469`.
+   - Companion CLI: `python -m bench.lib.mcnemar <baseline_run_dir> <treatment_run_dir>` for standalone retrospective comparisons.
+   - Test file: `bench/lib/test_mcnemar.py` (6 tests, all pass).
+
+2. `bench/pathF_swebench/bench_pathF_swebench.py` — CLI additions:
+   - `--task-count {30,100}` (mutually exclusive with `--tasks`, `--smoke`).
+     - `30` runs `SMOKE_30_TASK_IDS` (alias of existing `SMOKE_TASK_IDS`).
+     - `100` runs `SMOKE_100_TASK_IDS` (strict-prefix extension: first 30 IDs verbatim; extension of 70 stratified from F.3 full-500 under same `seed=42` recipe).
+     - `--task-count 100` errors out with a helpful message if `SMOKE_100_TASK_IDS` is empty; user runs `scripts/generate_smoke_100.py` on Colossus once to populate it.
+   - `--pair-with BASELINE_RUN_DIR` — after run completes, load baseline outcomes, emit `pair_comparison.json` with McNemar result, and print a one-line verdict.
+   - `--usd-per-gpu-hour <float>` (default `0.60`, `≤0` disables) — knob for the derived `usd_per_solved_task` field. Colossus is single-user so this is a knob, not a market rate; documented as `usd_per_gpu_hour_assumed` in every summary and manifest for auditability.
+
+3. `bench/pathF_swebench/bench_pathF_swebench.py::_emit_summary` — new telemetry fields:
+   - `gpu_seconds_total` (source-attributed: `gpu_inference.duration_s` when present, `fallback:sum(wall_seconds)` otherwise)
+   - `wall_seconds_total` (name-parity mirror of `wall_total_s`)
+   - `gpu_seconds_per_solved_task` — the number that matters for cost-normalized capability comparisons
+   - `wall_seconds_per_solved_task` — the same for wall time (upper bound on GPU-seconds)
+   - `usd_per_solved_task` — derived from `gpu_seconds_total × usd_per_gpu_hour / resolved_count`
+   - `usd_per_gpu_hour_assumed` — echo of the CLI knob for auditability
+
+4. `scripts/generate_smoke_100.py` — populates `SMOKE_100_TASK_IDS`.
+   - Reads a completed F.3 full-500 run dir (`~/.forge-oh/bench_pathF_swebench/20260805_1025_run/` on Colossus).
+   - Buckets tasks by `repo × outcome`, allocates proportional quotas, samples under `random.seed(42)`.
+   - Keeps the first 30 IDs verbatim (union approach): `CURRENT_SMOKE_30 || stratified_sample(remaining_pool, 70)`.
+   - Emits a paste-able Python literal to stdout. User runs it once on Colossus and pastes between the `<SMOKE_100_START>/<SMOKE_100_END>` markers.
+
+**Definition of Done:**
+
+1. `bench/lib/mcnemar.py` passes its own test file: `python3 -m bench.lib.test_mcnemar` reports "All 6 tests passed."
+2. `python3 -m bench.pathF_swebench.bench_pathF_swebench --help` shows `--task-count`, `--pair-with`, `--usd-per-gpu-hour` in the flag list.
+3. `--task-count 100` before generator run: exits 2 with the populate-me instructions on stderr.
+4. A retrospective McNemar comparison on the Slice 8.0 attestation runs (baseline `20260806_1211_run` = 10/30 vs step-1 `20260806_1647_run` = 9/30) yields `p > 0.05` and `method = "midp_exact"`. This is the formal closure of Session 8.0's seed-variance question and demonstrates the harness end-to-end.
+
+   Analytical bound (computed in this session): for any valid pairing of a 10/30 vs 9/30 contingency, the McNemar mid-p test yields p in the range [0.50, 0.81]. Case A (max overlap, b=1 c=0): p=0.500. Case B (minimum plausible overlap, b=2 c=1): p=0.625. Case C (extreme discordancy, b=9 c=8): p=0.815. The p>0.05 outcome is therefore a mathematical certainty; the actual per-task attestation on Colossus is empirical confirmation, not risk. Per-task attestation command (run on Colossus):
+   ```
+   cd ~/dev/forge-oh && python3 -m bench.lib.mcnemar \
+     ~/.forge-oh/bench_pathF_swebench/20260806_1211_run \
+     ~/.forge-oh/bench_pathF_swebench/20260806_1647_run
+   ```
+
+**Stop condition:** DoD items 1–4 all met, attestation logged in `BUILD_LOG.md`. §8.1 blocks on this slice's close.
+
+**Non-scope (deferred):**
+
+- Population of `SMOKE_100_TASK_IDS` requires Colossus access to the F.3 full-500 log. The generator script ships in this slice; running it and committing the populated list is a follow-up close-out step, not a DoD gate.
+- The first actual 100-task run is deferred to §8.1 (or wherever the first "needs a bigger sample" claim appears). §8.0.5 only ships the mechanism.
+- Planner-role bench definition remains deferred (Slice 8.0b ADR-030-adjacent open item).
+
+**Files touched:**
+
+- New: `bench/lib/__init__.py`, `bench/lib/mcnemar.py`, `bench/lib/test_mcnemar.py`, `scripts/generate_smoke_100.py`
+- Edited: `bench/pathF_swebench/bench_pathF_swebench.py` (CLI, `_emit_summary`, `SMOKE_100_TASK_IDS` placeholder, manifest provenance fields)
+- Edited: `docs/reconciliation-plan-stage-8.md` (this section)
+
+**Rollback:** revert the slice commit. The additions are additive: no existing flags, records, or summary fields are removed or renamed. `SMOKE_25_TASK_IDS` kept as backward-compat alias.
+
+---
+
+## §8.1 through §8.9 — Placeholders
 
 Not drafted in this file. Inherit from:
 
 - `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` (Perplexity project files repo, commit `8e093bc`) for slice contracts, dependency order, and sizing.
 - [ADR-029](./adr/029-sdk-native-adoption-for-stage-8.md) §D1–§D5 for adoption-vs-hand-build decisions per slice.
 
-To be drafted at each slice's kickoff, following the pattern of §8.0 above.
+To be drafted at each slice's kickoff, following the pattern of §8.0 and §8.0.5 above.

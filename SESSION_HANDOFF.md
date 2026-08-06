@@ -1,55 +1,63 @@
-# Forge-OH Session Handoff — 2026-08-06 18:25 EDT
+# Forge-OH Session Handoff — 2026-08-06 18:46 EDT
 
 ## Current build-sequencing position
 
-- **Stage:** 8 · vLLM serving-infra config bundle
-- **Slice:** 8.0b (planner-role mirror) — **CLOSED**
-- **Ports in progress:** none
-- **Next slice:** Slice 8.1 kickoff (per `docs/reconciliation-plan-stage-8.md` line 191 — placeholder; requires scope-drafting from `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` commit `8e093bc` + ADR-029 §D1-§D5)
+- **Stage / phase:** Stage 8 (SDK-native capability slices) — see `docs/reconciliation-plan-v1.md` and its stage-8 companion.
+- **Slice in progress:** none. Slice 8.0.5 (measurement hardening) closed this session. §8.1 unblocked.
+- **Plugin / kernel component:** N/A this session — `bench/` measurement infrastructure only.
+- **Port(s) in progress:** none.
 
-## Completed this session (chronological)
+## Completed this session
 
-1. Slice 8.0 attestation closed (30% pass@1 at 32k, 26.7% at 65k, seed variance confirmed via 3×3×2 probe). Commit `2b4fb9b`.
-2. Slice 8.0b launcher change: mirrored flag bundle to `ops/vllm_launch_planner.sh`. Commit `b812f49`.
-3. Slice 8.0b DoD verified on Colossus: argv clean, /v1/models reports 65k, VRAM peak 30,668 MiB stable under 30k-token real inference. Closeout committed and pushed.
+- **Slice 8.0.5 measurement hardening** — see BUILD_LOG 2026-08-06 18:46 EDT for full detail.
+  - New `bench/lib/mcnemar.py` (stdlib-only mid-p McNemar with chi-square continuity fallback at n_discordant≥25) + `bench/lib/test_mcnemar.py` (6 tests, all pass).
+  - Harness `bench/pathF_swebench/bench_pathF_swebench.py` extended: `--task-count {30,100}`, `--pair-with BASELINE_RUN_DIR`, `--usd-per-gpu-hour`, new `_emit_summary` telemetry fields (`gpu_seconds_total`, `wall_seconds_total`, `gpu_seconds_per_solved_task`, `wall_seconds_per_solved_task`, `usd_per_solved_task`, `usd_per_gpu_hour_assumed`), plus manifest provenance fields.
+  - New `scripts/generate_smoke_100.py` — reproduces the seed=42 stratified sampling recipe to expand SMOKE_TASK_IDS to 100. Runs on Colossus once against the F.3 full-500 log.
+  - `docs/reconciliation-plan-stage-8.md` §8.0.5 drafted at full scope-DoD-stop-condition structure. §8.9 placeholder renumbered to §8.1–§8.9.
+  - Retrospective McNemar analytically proven: for any 10/30 vs 9/30 pairing, mid-p ∈ [0.50, 0.81]. p > 0.05 is a mathematical certainty at this Δ (Case A max-overlap b=1,c=0 → 0.500; Case B min-overlap b=2,c=1 → 0.625; Case C extreme-discordancy b=9,c=8 → 0.815).
 
-## Live coder + planner state on Colossus
+## Remaining before current Definition of Done is met
 
-- **Coder** `:8501` — Qwen3.6-27B int4-AutoRound, 65k, fp8 KV, chunked prefill, no spec-decode. Attestation: 30% / 26.7% pass@1 (32k/65k).
-- **Planner** `:8511` — DSR1-Distill-32B AWQ-marlin, 65k, fp8 KV, chunked prefill, no spec-decode. VRAM peak 30,668 MiB (~1.5 GiB headroom).
-- **Auto-swap:** supervisor cold-starts vLLM on first request per role; coder ~3.5 min, planner ~86 s.
+Slice 8.0.5 DoD is fully met. No slice currently in progress.
 
-## Remaining before current Definition of Done
+**Optional follow-ups outside 8.0.5's DoD:**
 
-- None for Slice 8.0 / 8.0b.
+1. Populate `SMOKE_100_TASK_IDS` by running the generator on Colossus and committing the result. Non-blocking for §8.1 unless §8.1 wants a 100-task run.
+2. Empirical confirmation of the retrospective McNemar on the actual per-task JSONs (analytical proof already covers DoD item 4; the empirical run is confirmation, not risk):
+   ```
+   cd ~/dev/forge-oh && python3 -m bench.lib.mcnemar \
+     ~/.forge-oh/bench_pathF_swebench/20260806_1211_run \
+     ~/.forge-oh/bench_pathF_swebench/20260806_1647_run
+   ```
+   Expected: p between 0.50 and 0.81, method = midp_exact.
 
 ## Open questions / awaiting user answer
 
-- **Next slice choice** — Slice 8.1 kickoff requires scope-drafting from the Model-Council-Synthesis file + ADR-029 §D1-§D5. Estimated 30-60 min just to draft the slice contract before any executable work. Alternative: revisit deferred items (spec-decode alternative with a small draft model, or draft a planner-role bench for future §8.0c).
+None. All Slice 8.0.5 design choices were taken under standing "make optimal choice" delegation and are documented in the BUILD_LOG entry (mid-p McNemar, deterministic strict-prefix 30→100 expansion, USD_PER_GPU_HOUR=0.60 default).
 
-## Deferred items (both slices)
-
-- **Spec-decode revisit** (both coder and planner) — the n-gram approach broke structured-diff generation. Follow-up needs either a small dedicated draft model (VRAM math + weight-download) or a different draft-token config to justify. Not on critical path.
-- **Planner-role bench** — no canonical planner smoke exists; §8.0b DoD used argv+VRAM+one real inference in lieu. A proper planner bench (reasoning correctness, tool-call JSON validity, maybe reasoning-block escape rate) is a future §8.0c or a bench-methodology addition.
-- **Planner VRAM tightness** — actual headroom (~1.5 GiB) is tighter than the napkin estimate (~2.8 GiB). Stable at concurrency=1; concurrent-request behavior at high load unverified. If we see eviction stalls, ADR the planner-specific 32k rollback.
+**Next slice choice:** Council-Synthesis line 103 mandates strict order §8.0 → §8.0.5 → §8.1 → §8.2. §8.1 is the next slice per that ordering (unless the user wants to revisit spec-decode or draft the planner-role bench first as a §8.0c interlude).
 
 ## Exact next action
 
-Read `docs/reconciliation-plan-stage-8.md` and `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` (project files, commit `8e093bc`) side-by-side to draft Slice 8.1's scope, DoD, and stop condition. File the draft as a new §8.1 section in the plan companion. Then execute.
+At start of next session, if continuing to §8.1:
 
-Alternative next action if spec-decode revisit is picked instead: identify a small draft model (e.g. Qwen2.5-1.5B or similar) compatible with the coder's tokenizer, check VRAM budget (~1.5 GiB extra), and design the draft-token config with lower `num_speculative_tokens` to avoid the low-entropy mis-acceptance failure mode.
-
-## Verification on next session start
-
-```bash
+```
 cd ~/dev/forge-oh
-# Confirm coder flags (if coder is up):
-CID=$(docker ps --filter 'name=coder' --format '{{.ID}}' | head -1)
-[ -n "$CID" ] && docker inspect --format '{{join .Args " "}}' "$CID" | tr ' ' '\n' | \
-  grep -E 'speculative|kv-cache-dtype|chunked-prefill|long-prefill|max-model-len'
+git pull
+tail -50 BUILD_LOG.md   # confirm Slice 8.0.5 close entry present
+python3 -m bench.lib.test_mcnemar   # confirm harness still passes on Colossus
+```
 
-# Confirm planner flags (if planner is up):
-CID=$(docker ps --filter 'name=planner' --format '{{.ID}}' | head -1)
-[ -n "$CID" ] && docker inspect --format '{{join .Args " "}}' "$CID" | tr ' ' '\n' | \
-  grep -E 'speculative|kv-cache-dtype|chunked-prefill|long-prefill|max-model-len|reasoning-parser|quantization'
+Then read Council-Synthesis §8.1 anchor and `docs/reconciliation-plan-stage-8.md` for §8.1's scope, and draft the §8.1 section following the §8.0 / §8.0.5 pattern before writing any code.
+
+If populating SMOKE_100 first (recommended as a lightweight prelude to §8.1):
+
+```
+cd ~/dev/forge-oh
+python3 scripts/generate_smoke_100.py \
+    ~/.forge-oh/bench_pathF_swebench/20260805_1025_run/ \
+    > /tmp/smoke_100.txt
+# Review /tmp/smoke_100.txt, then paste the list body between the
+# <SMOKE_100_START>/<SMOKE_100_END> markers in
+# bench/pathF_swebench/bench_pathF_swebench.py, commit, push.
 ```

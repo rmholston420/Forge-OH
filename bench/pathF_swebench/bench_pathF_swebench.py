@@ -222,6 +222,25 @@ SMOKE_TASK_IDS = [
 # Backward-compat alias. Prefer SMOKE_TASK_IDS.
 SMOKE_25_TASK_IDS = SMOKE_TASK_IDS
 
+# Alias for clarity when using --task-count 30.
+SMOKE_30_TASK_IDS = SMOKE_TASK_IDS
+
+# 100-task expanded smoke set (Slice 8.0.5 — Council-Synthesis line 117).
+# First 30 IDs are verbatim prefix of SMOKE_TASK_IDS so the 30-task set is
+# a strict prefix of the 100-task set (attestations remain directly comparable).
+# Extension of 70 tasks generated from the F.3 full-500 run at
+#   ~/.forge-oh/bench_pathF_swebench/20260805_1025_run/
+# using `python3 scripts/generate_smoke_100.py <full_500_run_dir>` with the
+# same seed=42 stratified sampling recipe used for the 30-task set.
+#
+# Populated by running the generator ONCE on Colossus (which has access to the
+# F.3 full-500 log) and pasting the output between the marker lines. If empty
+# at bench-invocation time, `--task-count 100` errors out with instructions.
+SMOKE_100_TASK_IDS: list[str] = [
+    # <SMOKE_100_START> — populate via `scripts/generate_smoke_100.py`
+    # <SMOKE_100_END>
+]
+
 # ---------- vLLM call ----------
 
 
@@ -566,8 +585,20 @@ def run_task(
 # ---------- entrypoint ----------
 
 
-def _emit_summary(out_dir: Path, records: list[dict], total_wall: float) -> None:
-    """Compute + write summary.json. Extracted so KeyboardInterrupt path can call it too."""
+def _emit_summary(out_dir: Path, records: list[dict], total_wall: float,
+                  usd_per_gpu_hour: float | None = None) -> None:
+    """Compute + write summary.json. Extracted so KeyboardInterrupt path can call it too.
+
+    Slice 8.0.5 additions to the summary JSON:
+      - gpu_seconds_total: sum of per-task GPU-active wall time (inference window)
+      - wall_seconds_total: sum of per-task wall (already tracked as wall_total_s;
+                            kept for name-parity with the per-solved-task derived fields)
+      - gpu_seconds_per_solved_task: gpu_seconds_total / resolved_count (or None)
+      - wall_seconds_per_solved_task: wall_seconds_total / resolved_count (or None)
+      - usd_per_solved_task: derived from --usd-per-gpu-hour (default 0.60)
+      - usd_per_gpu_hour_assumed: the setting used (documented in the summary for
+                                  auditability; single-user Colossus has no market rate)
+    """
     resolved = [r for r in records if r.get("resolved") is True]
     unresolved = [r for r in records if r.get("resolved") is False]
     unknown = [r for r in records if r.get("resolved") is None]
@@ -592,6 +623,35 @@ def _emit_summary(out_dir: Path, records: list[dict], total_wall: float) -> None
             "gpu_util_max_pct_across_tasks": max(g["gpu_util_max_pct"] for g in gpu_valid),
             "gpu_util_avg_pct_across_tasks": round(statistics.fmean(g["gpu_util_avg_pct"] for g in gpu_valid), 2),
         }
+    # Slice 8.0.5: cost/efficiency telemetry ------------------------------
+    # Sum GPU-active seconds across tasks. gpu_inference["duration_s"] is the
+    # accepted field; when missing we fall back to sum of wall_seconds (which
+    # overestimates GPU-active time by including sandbox setup, but keeps the
+    # summary computable).
+    gpu_seconds_per_task: list[float] = []
+    for r in records:
+        gi = r.get("gpu_inference", {}) or {}
+        dur = gi.get("duration_s") or gi.get("wall_s") or gi.get("elapsed_s")
+        if isinstance(dur, (int, float)) and dur > 0:
+            gpu_seconds_per_task.append(float(dur))
+    if gpu_seconds_per_task:
+        gpu_seconds_total = round(sum(gpu_seconds_per_task), 2)
+        gpu_seconds_source = "gpu_inference.duration_s"
+    else:
+        # Fallback: use wall as an upper bound. Marked in the summary for clarity.
+        gpu_seconds_total = round(sum(walls), 2) if walls else 0.0
+        gpu_seconds_source = "fallback:sum(wall_seconds)"
+
+    resolved_n = len(resolved)
+    wall_total = round(total_wall, 2)
+    gpu_seconds_per_solved = round(gpu_seconds_total / resolved_n, 2) if resolved_n else None
+    wall_seconds_per_solved = round(wall_total / resolved_n, 2) if resolved_n else None
+    if usd_per_gpu_hour is not None and resolved_n > 0 and gpu_seconds_total > 0:
+        usd_per_solved = round((gpu_seconds_total / 3600.0) * usd_per_gpu_hour / resolved_n, 4)
+    else:
+        usd_per_solved = None
+    # -----------------------------------------------------------------------
+
     summary = {
         "task_count": len(records),
         "resolved_true": len(resolved),
@@ -601,11 +661,19 @@ def _emit_summary(out_dir: Path, records: list[dict], total_wall: float) -> None
         "context_budget_skipped": len(ctx_skipped),
         "truncated_by_length": len(length_truncated),
         "pass_at_1": (len(resolved) / len(records)) if records else 0.0,
-        "wall_total_s": round(total_wall, 2),
+        "wall_total_s": wall_total,
         "wall_total_hms": _fmt_dur(total_wall),
         "wall_median_per_task_s": round(statistics.median(walls), 2) if walls else 0.0,
         "wall_mean_per_task_s": round(statistics.mean(walls), 2) if walls else 0.0,
         "estimated_full_500_wall_hours": round((statistics.mean(walls) * 500 / 3600), 2) if walls else 0.0,
+        # Slice 8.0.5 telemetry
+        "gpu_seconds_total": gpu_seconds_total,
+        "gpu_seconds_source": gpu_seconds_source,
+        "wall_seconds_total": wall_total,
+        "gpu_seconds_per_solved_task": gpu_seconds_per_solved,
+        "wall_seconds_per_solved_task": wall_seconds_per_solved,
+        "usd_per_solved_task": usd_per_solved,
+        "usd_per_gpu_hour_assumed": usd_per_gpu_hour,
         "gpu": gpu_summary,
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
@@ -622,6 +690,13 @@ def main(argv: list[str]) -> int:
                                  "full-500 ground truth (predicts full-500 pass@1 "
                                  "within ~3pt). --smoke-25 kept as alias for "
                                  "backward compat, but now runs the 30-task set.")
+    task_group.add_argument("--task-count", dest="task_count",
+                            choices=["30", "100"], default=None,
+                            help="Slice 8.0.5: run the smoke set of a specific "
+                                 "size. 30 = SMOKE_30_TASK_IDS (same as --smoke). "
+                                 "100 = SMOKE_100_TASK_IDS (strict-prefix extension "
+                                 "with 70 additional stratified tasks; requires the "
+                                 "list to be populated via scripts/generate_smoke_100.py).")
     ap.add_argument("--model", choices=list(CELLS.keys()), default="c01",
                     help="model cell to test (default: c01, the ratified coder)")
     ap.add_argument("--dry-plan-only", action="store_true",
@@ -631,11 +706,38 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--resume-run", metavar="DIR",
                     help="resume into an existing run dir; skip tasks whose "
                          "<instance_id>.json already contains a completed record")
+    # --- Slice 8.0.5 additions ---
+    ap.add_argument("--pair-with", metavar="BASELINE_RUN_DIR", default=None,
+                    help="Slice 8.0.5: after this run completes, load per-task "
+                         "outcomes from BASELINE_RUN_DIR and emit "
+                         "pair_comparison.json with a paired mid-p McNemar "
+                         "test result. Only paired tasks (present in both runs) "
+                         "contribute to the test.")
+    ap.add_argument("--usd-per-gpu-hour", type=float, default=0.60,
+                    help="Slice 8.0.5: assumed amortized GPU cost. Colossus is "
+                         "single-user so the number is a knob, not a fact. Default "
+                         "0.60 (rough cloud-parity for RTX 5090-tier). Set to 0 or "
+                         "a negative to disable usd_per_solved_task derivation.")
     args = ap.parse_args(argv)
 
     # Resolve task list.
     if args.smoke_25:
         ids = list(SMOKE_TASK_IDS)
+    elif args.task_count == "30":
+        ids = list(SMOKE_30_TASK_IDS)
+    elif args.task_count == "100":
+        if not SMOKE_100_TASK_IDS:
+            print(
+                "[F.3 Path A] --task-count 100 requires SMOKE_100_TASK_IDS to be "
+                "populated. On Colossus, run:\n"
+                "    python3 scripts/generate_smoke_100.py "
+                "~/.forge-oh/bench_pathF_swebench/20260805_1025_run/\n"
+                "and paste the output list into bench_pathF_swebench.py between "
+                "the <SMOKE_100_START>/<SMOKE_100_END> markers.",
+                file=sys.stderr, flush=True,
+            )
+            return 2
+        ids = list(SMOKE_100_TASK_IDS)
     elif args.tasks == "all":
         ids = ["all"]
     else:
@@ -681,6 +783,17 @@ def main(argv: list[str]) -> int:
         "smoke": bool(args.smoke_25),
         "smoke_task_count": len(SMOKE_TASK_IDS) if args.smoke_25 else 0,
         "resumed": bool(args.resume_run),
+        # Slice 8.0.5 provenance fields:
+        "task_count_flag": args.task_count,
+        "smoke_variant": (
+            "smoke-30" if (args.smoke_25 or args.task_count == "30")
+            else ("smoke-100" if args.task_count == "100" else None)
+        ),
+        "random_seed": 42,  # stratification seed for SMOKE_{30,100}_TASK_IDS
+        "usd_per_gpu_hour_assumed": (args.usd_per_gpu_hour
+                                     if args.usd_per_gpu_hour and args.usd_per_gpu_hour > 0
+                                     else None),
+        "pair_with": args.pair_with,
     }
     try:
         manifest["git_sha"] = subprocess.check_output(
@@ -773,7 +886,10 @@ def main(argv: list[str]) -> int:
         except KeyboardInterrupt:
             print("[F.3 Path A] interrupted; partial results in", out_dir, flush=True)
             _write_progress(time.time() - t0, i)
-            _emit_summary(out_dir, records, time.time() - t0)
+            _emit_summary(out_dir, records, time.time() - t0,
+                          usd_per_gpu_hour=(args.usd_per_gpu_hour
+                                            if args.usd_per_gpu_hour and args.usd_per_gpu_hour > 0
+                                            else None))
             return 130
         except Exception as e:
             print(f"[F.3 Path A] task {task['instance_id']} failed: {type(e).__name__}: {e}", flush=True)
@@ -784,7 +900,34 @@ def main(argv: list[str]) -> int:
 
     total_wall = time.time() - t0
     _write_progress(total_wall, len(remaining))
-    _emit_summary(out_dir, records, total_wall)
+    _emit_summary(out_dir, records, total_wall,
+                  usd_per_gpu_hour=(args.usd_per_gpu_hour
+                                    if args.usd_per_gpu_hour and args.usd_per_gpu_hour > 0
+                                    else None))
+
+    # Slice 8.0.5: optional paired McNemar against a prior run.
+    if args.pair_with:
+        baseline_dir = Path(args.pair_with).expanduser().resolve()
+        if not baseline_dir.is_dir():
+            print(f"[F.3 Path A] --pair-with dir not found: {baseline_dir}",
+                  file=sys.stderr, flush=True)
+        else:
+            try:
+                from bench.lib.mcnemar import pair_runs
+                comparison = pair_runs(baseline_dir, out_dir)
+                (out_dir / "pair_comparison.json").write_text(json.dumps(comparison, indent=2))
+                mc = comparison["mcnemar"]
+                print(
+                    f"[F.3 Path A] paired McNemar vs {baseline_dir.name}: "
+                    f"n={mc['n_paired']} b={mc['b']} c={mc['c']} "
+                    f"p={mc['p_value']} method={mc['method']} "
+                    f"effect={mc['effect_size_pct_points']:+.2f}pp \u2192 {mc['interpretation']}",
+                    flush=True,
+                )
+            except Exception as e:
+                print(f"[F.3 Path A] pair-with McNemar failed: {type(e).__name__}: {e}",
+                      file=sys.stderr, flush=True)
+
     print("[F.3 Path A] artifacts:", out_dir)
     return 0
 
