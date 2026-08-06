@@ -5749,3 +5749,17 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
     npx playwright test tests/e2e/memory-inspector.spec.ts --reporter=list
   ```
 - **Expected outcome:** seed step logs `[seed] wrote MemoryEvent id=...`; both screenshots auto-committed + pushed; pre-commit passes.
+
+## 2026-08-06 03:35 EDT — Stage 5.6a: CLOSED (Playwright visual pass green on live DozerDB)
+- **Purpose:** final DoD gate for Stage 5.6a — live-DozerDB Playwright visual verification.
+- **Result on Colossus (screenshot push commit 2526dc4):**
+  - `tests/e2e/memory-inspector.spec.ts` — 1 passed (3.3s)
+  - BFF `/api/memory/recent-writes?limit=50` — 200
+  - Prod frontend :3100 — 200
+  - Seed helper wrote `MemoryEvent id=eb46d1ce-0a08-4801-acf5-d012967c099d` (written_at=2026-08-06T07:35:32Z)
+  - Recent-writes rows rendered: 2 (playwright-seed triple + pre-existing stage-5.3b-smoke triple)
+  - ADR-016 pre-commit: Passed (.serena/ now ignored)
+  - Screenshots pushed: `screenshots/memory-inspector-page.png` (60666 B), `screenshots/memory-inspector-sidebar.png` (25332 B)
+- **Visual inspection (agent, in workspace):** sidebar highlights 🧠 Memory; H1 "Memory" + description "Recent MemoryPort writes (newest first, up to 50)."; table renders 7 columns (Subject, Predicate, Object, Provenance, Confidence, PII tier, Written) with both rows populated; GPU strip in topbar shows T 33°C · U 1% · V 96% · 21 W. No wrapped/truncated text.
+- **Files touched this closeout entry:** `BUILD_LOG.md`, `SESSION_HANDOFF.md`. Screenshots pushed by the spec's own tail.
+- **Stage 5.6a DoD:** ALL gates met. Stage closed. Stage 5.6b (`consult_memory` OpenHands tool + timeline brain-marker live verification) is the next slice.
