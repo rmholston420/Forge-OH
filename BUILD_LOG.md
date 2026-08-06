@@ -5369,3 +5369,24 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
   - `AGENTS.md` — new `## Graph Storage (DozerDB)` section anchored on ADR-019.
 - **Stop-condition status:** § 4.5 **RESOLVED**. Stage 4 exit gate item "DozerDB consolidation decision (4.5) explicitly confirmed by the project owner and logged" now green. All eight manual-verification items from the reconciliation plan's exit gate are complete.
 - **Next up:** Stage 4 close-out entry. Then Stage 5.1 — port `ports/memory.py`, `ports/vector.py`, `ports/embeddings.py` verbatim from Kosmos.
+
+## 2026-08-06 01:23 EDT — Stage 4 COMPLETE
+
+- All Stage 4 exit-gate checks passed on Colossus (against `bb09ff2`, verified 01:20–01:22 EDT):
+  - `pytest bff/tests/ -q` — 329/331 pass. 2 pre-existing flakes carved out in DEBUG_LOG 2026-08-06 01:23 EDT (both predate § 4.4; neither touches Stage 4 paths).
+  - `pnpm typecheck` — clean.
+  - `pnpm test:unit` — 848/856 pass. 2 pre-existing flakes carved out in DEBUG_LOG 2026-08-06 01:23 EDT (both predate § 4.4).
+  - `pnpm build` — clean, 22 pages compiled.
+- RepoGraph enabled end-to-end on DozerDB with working graph visualization (per-run panel + standalone `/repograph` route). 547 File + 2150 Symbol nodes verified in the `forgeoh` database.
+- LSPClient port (Serena) live via MCP passthrough. `curl /api/mcp/serena/ping` returns 21 tools including all 11 LSP structural ops. Three-tier retrieval cascade documented in `AGENTS.md`.
+- DozerDB consolidation decision resolved: **Option A — Kosmos-canonical shared instance** (ADR-019). Zero code changes required; the current live `kosmos-dozerdb` container on Colossus already implements the decision.
+- Full Stage 4 exit-gate manual checklist (from `docs/reconciliation-plan-stage-4.md`):
+  - [x] `GET /api/repograph/health` returns `available:true` against live DozerDB.
+  - [x] Real repo indexing confirmed via direct Cypher (547 + 2150 nodes).
+  - [x] Per-run Trace-tab List/Graph toggle renders pagerank-sized/colored nodes with click-to-drill-down.
+  - [x] Standalone `/repograph` route reachable via sidebar.
+  - [x] `react-force-graph-2d` vendoring in `PORTING_LEDGER.md`.
+  - [x] Serena LSP tool invocable, renders as distinct `lsp_*` cards, lazy-started via `uvx`.
+  - [x] `AGENTS.md` updated with three-tier retrieval cascade + Graph Storage section.
+  - [x] DozerDB consolidation decision (4.5) explicitly confirmed and logged in ADR-019.
+- **Next action:** begin Stage 5.1 — port Kosmos `ports/memory.py`, `ports/vector.py`, `ports/embeddings.py` verbatim from `github.com/rmholston420/kosmos` (pin the SHA in PORTING_LEDGER at port time).
