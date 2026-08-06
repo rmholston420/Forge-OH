@@ -5804,3 +5804,12 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
     npx playwright test tests/e2e/memory-timeline-marker.spec.ts --reporter=list
   ```
 - **Stop condition (from plan §5.6.4):** `screenshots/memory-timeline-marker.png` on `origin/main` showing the 🧠 EventCard on run-detail with the expected summary. Unit tests + endpoint tests green. `pnpm typecheck` + `pnpm build` clean.
+
+## 2026-08-06 04:09 EDT — Stage 5.6b: CLOSED (memory-consultation tool + timeline marker)
+- **Stage:** 5.6b (Memory frontend exposure — sub-slice §5.6.1 + §5.6.2 of the reconciliation plan).
+- **Result:** all Definition-of-Done gates green on Colossus. `consult_memory` present in agent-server tool list; `POST /api/memory/emit-consultation` returns 200; 21 unit tests green; Playwright DoD spec `memory-timeline-marker.spec.ts` passed in 6.3s; screenshot `screenshots/memory-timeline-marker.png` auto-pushed at commit fff2311.
+- **Files created/modified:** `openhands_tools_ext/memory/tools/__init__.py`, `openhands_tools_ext/memory/tools/consult_memory.py`, `openhands_tools_ext/tests/memory/__init__.py`, `openhands_tools_ext/tests/memory/test_consult_memory_tool.py`, `bff/routers/memory.py` (added POST /api/memory/emit-consultation), `bff/tests/test_memory_emit_endpoint.py`, `scripts/forge-up.sh` (added --import-modules for agent-server), `src/tests/e2e/memory-timeline-marker.spec.ts`, `PORTING_LEDGER.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`.
+- **Commits on origin/main:** 65d41e0 → 981ba99 → 95ab726 → 74cf797 → 4b9a60f → fff2311 (screenshot).
+- **DEBUG_LOG entries filed:** resolve_tool signature drift (03:54), Playwright :3000-vs-:3100 skip (03:54), resolve_tool takes Tool object not string (04:00), no existing agent-server conversations on fresh box (04:04), registry stores resolver closure not class (04:04), Playwright strict-mode 3-element 🧠 match (04:07).
+- **Follow-up (out of scope, tracked in DEBUG_LOG 04:00):** BFF `blocked`-routing path returns `data.id=""`. Frontend cannot render a run without an id — needs an ADR + KNOWN_ISSUES entry when picked up.
+- **Stop condition:** met. Next slice = Stage 5.6c (memory-inspector page + `GET /api/memory/recent-writes`). Do not proceed until user confirms placement/sort-order/empty-state decisions listed in SESSION_HANDOFF.md.
