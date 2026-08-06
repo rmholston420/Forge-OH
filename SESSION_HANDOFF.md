@@ -39,21 +39,18 @@ Ordered execution plan (next sub-session picks up here):
 5. **Colossus verify.** End-to-end restore against a live workspace with vLLM back up.
 6. **Docs/logs.** BUILD_LOG close-out; SESSION_HANDOFF for the next stage.
 
-## Open questions awaiting user
+## Design decisions locked (2026-08-06 07:34 EDT)
 
-Two design questions from the 6.4→6.4b handoff still stand for 6.4c:
+All three carry-over questions resolved. No open questions blocking 6.4c.
 
-- **Q1 (button placement):** Should `RestoreToHereButton` live alongside `ForkFromHereButton` on the same user-message event card, or replace it? My lean is **alongside** — fork = "branch and continue," restore = "branch and reset files to pre-fork state." Different semantics, both worth surfacing.
-- **Q2 (runs list growth):** As restore produces new run rows, the runs list grows. Should the runs list gain a "hide restored-from parents" filter to manage growth? My lean is **defer to a later slice** — real usage will show whether growth is actually a problem.
-
-Answer both at the start of the 6.4c sub-session before implementation begins.
-
-**One new design question for 6.4c planning:**
-
-- **Q3 (reset target):** `git reset --hard` needs a target ref inside the fork's worktree. Options:
-  - (a) HEAD of source workspace at fork time (matches 6.4b behaviour — simple, but loses any commits between fork time and restore time). **My lean.**
-  - (b) HEAD-at-the-picked-event (semantically ideal, but requires per-event workspace snapshots that do not exist).
-  - (c) HEAD of source workspace at restore time (matches "reset to latest," but that's just `git reset --hard` in the source — not really restore).
+- **Q1 — Button placement: ALONGSIDE.** `RestoreToHereButton` sits next to `ForkFromHereButton` on user-message event cards. Both gated behind the same `NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED` flag. Rationale: fork = "branch and continue with current files," restore = "branch and reset files to pre-event state." Distinct semantics; users need both flows.
+- **Q2 — Runs-list filter: DEFERRED.** No filter for "hide restored-from parents" this stage. Rationale: no evidence yet that runs-list crowding is a real problem. Revisit if real usage surfaces friction.
+- **Q3 — Reset target: (a) HEAD at fork time.** Composition:
+  1. `Conversation.fork(from_event_id=...)` produces the new run.
+  2. `provision_worktree` checks out HEAD of source workspace at fork time (already 6.4b behaviour — no change needed).
+  3. Inside the new fork's worktree: `git reset --hard HEAD` + `git clean -fd` to blow away any uncommitted files the agent staged mid-conversation.
+  
+  Rationale: the *purpose* of restore is to blow away the working-tree changes an agent accumulated mid-run so the user can try again from a clean file state. `git reset --hard HEAD` in the fresh worktree does exactly that. Option (b) would need per-event workspace snapshots that we deliberately deferred (ADR-025 §Rejected alternatives). Option (c) resets the *source*, not the fork — that's destructive edit, not restore.
 
 ## Verification summary (session-cumulative, all green on Colossus)
 
@@ -96,6 +93,6 @@ At 07:30 EDT during DoD verify: `role='coder' unavailable: vLLM at http://localh
 ## Next sub-session's first act
 
 1. Read this file.
-2. Answer Q1/Q2/Q3.
-3. Bring at least one coder backend online (vLLM :8501 or Ollama `qwen3-coder:32k`) — needed for 6.4c integration testing.
-4. Then implement Stage 6.4c step 1 (backend restore endpoint).
+2. Q1/Q2/Q3 already locked — skip to implementation.
+3. Bring at least one coder backend online (vLLM :8501 or Ollama `qwen3-coder:32k`). Needed for 6.4c integration testing but NOT for backend unit tests, so step 1 can proceed in parallel.
+4. Implement Stage 6.4c step 1 (backend `POST /api/runs/{run_id}/restore` endpoint).

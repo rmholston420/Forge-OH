@@ -6383,3 +6383,12 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   - `BUILD_LOG.md`, `PORTING_LEDGER.md` (unchanged — no ports this stage), `SESSION_HANDOFF.md`
 - **Frontend chip (worktree/isolated pill):** deferred to 6.4c or a later cosmetic slice. Not a DoD requirement per ADR-025.
 - **Next:** Stage 6.4c opens. Restore-via-fork: `POST /api/runs/{run_id}/restore` composing `Conversation.fork()` + `git reset --hard` inside the new fork's isolated worktree. The 6.4b worktree substrate is the prerequisite this stage depended on.
+
+## 2026-08-06 07:34 EDT — Stage 6.4c · design decisions locked (Q1/Q2/Q3)
+
+- **Stage/plugin/port:** Stage 6.4c planning · BFF restore endpoint (upcoming) · FE `RestoreToHereButton`
+- **Q1 — Button placement: ALONGSIDE `ForkFromHereButton`.** Both live on user-message event cards, both gated behind `NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED`. Fork = "branch and continue with current files." Restore = "branch and reset files to pre-event state." Distinct semantics justify surfacing both.
+- **Q2 — "hide restored-from parents" filter: DEFERRED.** No filter this stage. Insufficient evidence runs-list growth is a real problem. Revisit if usage surfaces friction.
+- **Q3 — `git reset --hard` target: HEAD at fork time.** Composition of `Conversation.fork()` + `git reset --hard HEAD` + `git clean -fd` inside the newly provisioned worktree. `provision_worktree` already checks out HEAD at fork time (6.4b behaviour, unchanged). The reset+clean blows away uncommitted files an agent staged mid-conversation — the actual "restore" semantic ADR-025 promised. Option (b) (HEAD-at-event) rejected: requires per-event workspace snapshots deliberately deferred. Option (c) (HEAD-at-restore-time) rejected: mutates source, not fork — that's destructive edit, not restore.
+- **Files touched:** SESSION_HANDOFF.md (design section rewritten from "Open questions" → "Decisions locked").
+- **Stop-condition status:** 6.4c planning complete; implementation starts next session with no design ambiguity.
