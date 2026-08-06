@@ -1,6 +1,23 @@
+> **STATUS AMENDMENT (2026-08-06 09:21 EDT):** Ratified.  Backend endpoint
+> ``POST /api/runs/{run_id}/restart`` shipped and green in `bff/tests/`
+> (45/45 pytest at commit `7fc5fb1`).  BFF-side sha capture via
+> ``event_normalize.py`` §6.4c gate + ``bff/services/event_commit_ledger.py``
+> verified live on Colossus (`stage-6.4c-verify.sh` all-green,
+> 2026-08-06 09:13 EDT).  Frontend ``RestartFromHereButton`` shipped with
+> ADR-026 §Frontend contract normative copy verbatim, sha-presence gate
+> enforced, and rules-of-hooks compliance restored.  Unit vitest covers
+> the copy-guard and the sha-gate; Playwright e2e
+> ``src/tests/e2e/run-restart-from-here.spec.ts`` proves
+> ``{from_event_id: ...}`` wire body verbatim and negatively asserts the
+> assistant-event + missing-sha D2 cases.  ADR-025 remains Superseded.
+>
+> Note: the ``ForkFromHereButton`` shares the same rules-of-hooks bug
+> pattern (``useCallback`` after early return).  Not fixed in this slice
+> — out of scope; tracked as a follow-up.
+
 # ADR-026 — Restart-from-here (fresh run at target file state, not fork-and-reset)
 
-**Status:** Proposed
+**Status:** Ratified
 **Date:** 2026-08-06
 **Slice:** Stage 6.4c (supersedes ADR-025 mid-implementation)
 **Related:**

@@ -89,7 +89,20 @@ async def inject_event(body: InjectEventRequest) -> dict:
     # extra overrides / augments any of the defaults above
     raw.update(body.extra or {})
 
-    wire = normalize_event(raw)
+    # Stage 6.4c (ADR-026 §Storage) E2E affordance: when the caller supplies
+    # a synthetic `commit_sha_at_time_of_event` in `extra`, build a stub
+    # ``sha_lookup`` that returns it so ``normalize_event`` stamps the key
+    # on the wire event.  Real user-message shas are stamped by the router
+    # paths that own the ledger; this debug injector cannot reach the
+    # ledger, so we let the test synthesize the value directly.  Any
+    # other event kind (or non-user source) is ignored by the normalizer
+    # (see ``bff/services/event_normalize.py`` §6.4c gate).
+    synthetic_sha = raw.pop("commit_sha_at_time_of_event", None)
+    sha_lookup = None
+    if isinstance(synthetic_sha, str) and synthetic_sha:
+        sha_lookup = lambda _eid, _s=synthetic_sha: _s  # noqa: E731
+
+    wire = normalize_event(raw, sha_lookup=sha_lookup)
 
     # Best-effort Socket.IO emit into the run's room. Lazy import to
     # avoid boot-cycle: event_relay imports settings which imports

@@ -50,18 +50,25 @@ interface Props {
    * the user is anchored to what they're about to restart from.  Optional.
    */
   eventLabel?: string;
+  /**
+   * The BFF-stamped commit sha for the anchor event, or null/undefined if
+   * the event was authored before the sha-capture path shipped (Stage 6.4c
+   * pre-ratify runs, or capture-failure downgrades).  Per ADR-026 §Frontend
+   * contract, the button must not render when this is absent — clicking
+   * would surface a 409 no_sha_anchor with no user recovery path.
+   */
+  commitShaAtTimeOfEvent?: string | null;
 }
 
-export function RestartFromHereButton({ runId, eventId, eventLabel }: Props) {
+export function RestartFromHereButton({
+  runId,
+  eventId,
+  eventLabel,
+  commitShaAtTimeOfEvent,
+}: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { mutate, isPending, error, reset } = useRestartRun();
-
-  // Feature-flag gate.  Evaluated AFTER all hooks (rules-of-hooks).  When
-  // the flag is disabled the whole surface — button + modal — is hidden.
-  if (!isRunCompareEnabled()) {
-    return null;
-  }
 
   const handleClose = useCallback(() => {
     reset();
@@ -81,6 +88,19 @@ export function RestartFromHereButton({ runId, eventId, eventLabel }: Props) {
       },
     );
   }, [mutate, router, runId, eventId]);
+
+  // Feature-flag AND sha-gate.  Placed AFTER all hooks so hook-count stays
+  // stable regardless of gate outcome (rules-of-hooks).  When the flag is
+  // disabled OR the anchor has no captured sha, the whole surface — button
+  // + modal — is hidden.  Per ADR-026 §Frontend contract, absent sha is
+  // treated as "button hidden" rather than "button disabled" because there
+  // is no user action that recovers from a missing capture.
+  if (!isRunCompareEnabled()) {
+    return null;
+  }
+  if (!commitShaAtTimeOfEvent) {
+    return null;
+  }
 
   return (
     <>
@@ -115,6 +135,9 @@ export function RestartFromHereButton({ runId, eventId, eventLabel }: Props) {
         >
           {error && <Banner variant="error">{error.message}</Banner>}
 
+          {/* ADR-026 §Frontend contract — dialog copy is normative.  Do NOT
+              paraphrase.  The three user-outcomes (files reset, prompt
+              replayed, source preserved) must all be surfaced verbatim. */}
           <p
             style={{
               fontSize: 'var(--text-sm)',
@@ -122,35 +145,30 @@ export function RestartFromHereButton({ runId, eventId, eventLabel }: Props) {
               margin: 0,
             }}
           >
-            This creates a new run whose working tree is reset to the commit
-            captured at the selected user message
-            {eventLabel ? (
-              <>
-                {' '}(
-                <code
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--color-text)',
-                  }}
-                >
-                  {eventLabel}
-                </code>
-                )
-              </>
-            ) : null}
-            . The message text is replayed as the first prompt on the new
-            run. The source run is left untouched.
+            Start a new run at this point with files reset to that state.
+            You'll re-send your original message; the assistant's prior
+            replies won't carry over. Your current run is preserved.
           </p>
 
-          <p
-            style={{
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-muted)',
-              margin: 0,
-            }}
-          >
-            Unlike fork, this resets files on disk to the anchor commit.
-          </p>
+          {eventLabel ? (
+            <p
+              style={{
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-text-muted)',
+                margin: 0,
+              }}
+            >
+              Anchor:{' '}
+              <code
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                {eventLabel}
+              </code>
+            </p>
+          ) : null}
 
           <div
             style={{

@@ -48,6 +48,11 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
+// A convenience default: 40-char hex, matches BFF-stamped shape and passes
+// the ADR-026 §Frontend contract "sha present" gate.  Tests that specifically
+// exercise the ABSENT-sha gate pass `commitShaAtTimeOfEvent={null}` explicitly.
+const DEFAULT_SHA = 'a'.repeat(40);
+
 const originalEnv = { ...process.env };
 
 beforeEach(() => {
@@ -66,6 +71,33 @@ describe('RestartFromHereButton', () => {
   it('renders null when feature flag is disabled', () => {
     process.env.NEXT_PUBLIC_FEATURE_RUN_COMPARE_ENABLED = 'false';
     const { container } = render(
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
+      { wrapper },
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('renders null when commitShaAtTimeOfEvent is absent (ADR-026 sha gate)', () => {
+    // ADR-026 §Frontend contract: the button must not render on events the
+    // BFF has not stamped a captured sha for.  Absent → hidden (not disabled),
+    // because the user has no action that recovers a missed capture.
+    const { container } = render(
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={null}
+      />,
+      { wrapper },
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('renders null when commitShaAtTimeOfEvent is undefined (default prop)', () => {
+    const { container } = render(
       <RestartFromHereButton runId="src-1" eventId="ev-42" />,
       { wrapper },
     );
@@ -74,7 +106,11 @@ describe('RestartFromHereButton', () => {
 
   it('renders the trigger button', () => {
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     const btn = screen.getByTestId('restart-from-here-button');
@@ -84,7 +120,11 @@ describe('RestartFromHereButton', () => {
 
   it('does not open the modal until clicked', () => {
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -92,7 +132,11 @@ describe('RestartFromHereButton', () => {
 
   it('clicking the trigger opens the confirmation modal', async () => {
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     await userEvent.click(screen.getByTestId('restart-from-here-button'));
@@ -105,6 +149,7 @@ describe('RestartFromHereButton', () => {
         runId="src-1"
         eventId="ev-42"
         eventLabel="prompt: refactor auth"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
       />,
       { wrapper },
     );
@@ -114,18 +159,35 @@ describe('RestartFromHereButton', () => {
     ).toBeInTheDocument();
   });
 
-  it('dialog body warns that files on disk are reset (ADR-026 promise)', async () => {
-    // This is the copy-guard against the ADR-026 §Storage silent-drift
-    // failure mode: if the semantics ever regress to "conversation only"
-    // (which is what fork does) the copy must NOT keep saying we reset
-    // files.  Test fails LOUDLY if the copy loses the resets-files line.
+  it('dialog body surfaces the three ADR-026 user outcomes verbatim', async () => {
+    // Copy-guard against the ADR-026 §Storage silent-drift failure mode.
+    // Per ADR-026 §Frontend contract, the confirmation copy is NORMATIVE.
+    // All three user-outcomes (files reset, prompt replayed, source
+    // preserved) must appear verbatim.  Ratification depends on this test.
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     await userEvent.click(screen.getByTestId('restart-from-here-button'));
+    // Outcome 1: files reset.
     expect(
-      screen.getByText(/resets files on disk/i),
+      screen.getByText(/files reset to that state/i),
+    ).toBeInTheDocument();
+    // Outcome 2: prompt replayed.
+    expect(
+      screen.getByText(/re-send your original message/i),
+    ).toBeInTheDocument();
+    // Outcome 3: source preserved.
+    expect(
+      screen.getByText(/your current run is preserved/i),
+    ).toBeInTheDocument();
+    // Outcome 2 (paired): prior assistant replies dropped.
+    expect(
+      screen.getByText(/assistant's prior replies won't carry over/i),
     ).toBeInTheDocument();
   });
 
@@ -135,7 +197,11 @@ describe('RestartFromHereButton', () => {
     // wire).  If this drifts, the BFF endpoint returns 422 (RestartRunRequest
     // requires from_event_id) or worse, the anchor-not-found path.
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     await userEvent.click(screen.getByTestId('restart-from-here-button'));
@@ -158,7 +224,11 @@ describe('RestartFromHereButton', () => {
       });
     });
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     await userEvent.click(screen.getByTestId('restart-from-here-button'));
@@ -169,7 +239,11 @@ describe('RestartFromHereButton', () => {
 
   it('cancel button closes the modal without calling mutate', async () => {
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     await userEvent.click(screen.getByTestId('restart-from-here-button'));
@@ -183,7 +257,11 @@ describe('RestartFromHereButton', () => {
   it('surfaces mutation error in a banner inside the dialog', async () => {
     mockError = new Error('no_sha_anchor: ledger has no row for ev-42');
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     await userEvent.click(screen.getByTestId('restart-from-here-button'));
@@ -195,7 +273,11 @@ describe('RestartFromHereButton', () => {
   it('confirm button is disabled and aria-busy while the mutation is pending', async () => {
     mockPending = true;
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     await userEvent.click(screen.getByTestId('restart-from-here-button'));
@@ -212,7 +294,11 @@ describe('RestartFromHereButton', () => {
       opts?.onSuccess?.({ ok: true });
     });
     render(
-      <RestartFromHereButton runId="src-1" eventId="ev-42" />,
+      <RestartFromHereButton
+        runId="src-1"
+        eventId="ev-42"
+        commitShaAtTimeOfEvent={DEFAULT_SHA}
+      />,
       { wrapper },
     );
     await userEvent.click(screen.getByTestId('restart-from-here-button'));

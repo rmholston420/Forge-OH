@@ -60,6 +60,11 @@ type DisplayEvent = {
   rawPayload?: Record<string, unknown>;
   summary?: string;
   securityRisk?: 'UNKNOWN' | 'LOW' | 'MEDIUM' | 'HIGH';
+  // Stage 6.4c · ADR-026 §Storage: BFF-stamped commit sha at the moment
+  // this user MessageEvent was submitted.  Snake_case matches the wire
+  // key from bff/services/event_normalize.py.  Absent → restart-from-here
+  // button hides itself (§Frontend contract sha-gate).
+  commit_sha_at_time_of_event?: string;
   raw?: unknown;
 };
 
@@ -71,6 +76,12 @@ const toDisplayEvent = (event: unknown): DisplayEvent => {
   // as `securityRisk`; streamed events are relayed raw from agent-server and
   // carry `security_risk`. Accept either so the timeline is consistent.
   const risk = e.securityRisk ?? e.security_risk;
+  // Stage 6.4c · ADR-026 §Storage: pass through the BFF-stamped commit sha
+  // when present.  Only stamped on user MessageEvents (see §6.4c gate in
+  // bff/services/event_normalize.py); other events omit it.
+  const commitSha = typeof e.commit_sha_at_time_of_event === 'string'
+    ? (e.commit_sha_at_time_of_event as string)
+    : undefined;
   return {
     id: (e.id ?? e.eventId ?? `evt:${Date.now()}`) as string | number,
     type: String(e.type ?? 'message'),
@@ -84,6 +95,7 @@ const toDisplayEvent = (event: unknown): DisplayEvent => {
     securityRisk: typeof risk === 'string' && _VALID_RISK.has(risk)
       ? (risk as 'UNKNOWN' | 'LOW' | 'MEDIUM' | 'HIGH')
       : undefined,
+    ...(commitSha ? { commit_sha_at_time_of_event: commitSha } : {}),
     raw: e.raw,
   };
 };
@@ -386,6 +398,11 @@ export default function RunDetailPage({
                           runId={runId}
                           eventId={String(displayEv.id)}
                           eventLabel={displayEv.summary ? String(displayEv.summary).slice(0, 60) : undefined}
+                          // ADR-026 §Frontend contract: only show restart
+                          // when the BFF has captured a commit sha for
+                          // this event.  Field name matches the snake_case
+                          // stamp from bff/services/event_normalize.py.
+                          commitShaAtTimeOfEvent={displayEv.commit_sha_at_time_of_event ?? null}
                         />
                       </div>
                     )}

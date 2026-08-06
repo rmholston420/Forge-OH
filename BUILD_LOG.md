@@ -6589,3 +6589,66 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   2. `8ed3ba0` — page `_fetch_event` at agent-server's limit≤100.
   3. `2e0b1b5` — `llm_message.content` extraction + fetch-before-ledger ordering.
 - **Next slice**: per reconciliation-plan-v1 Stage 6.4c, advance to step 1f (frontend Restart affordance wired to POST /runs/{id}/restart).
+
+## 2026-08-06 09:21 EDT — Stage 6.4c CLOSED · ADR-026 Ratified
+
+- **Stage/plugin/port**: Stage 6.4c · P1 Restart-from-here · frontend button + e2e + ADR ratification.
+- **What was built or changed (single slice per ADR-026 §Lock-in phase):**
+  - `src/components/domain/RestartFromHereButton.tsx`
+    - Added `commitShaAtTimeOfEvent?: string | null` prop.
+    - Fixed rules-of-hooks bug: moved `useCallback` hooks ABOVE the feature-flag early return.
+    - Added ADR-026 §Frontend contract sha-presence gate: renders null when the prop is absent/empty (defends against BFF ledger drift silently offering a button that would 404 with anchor_not_found).
+    - Replaced dialog body with ADR-026 §Frontend contract NORMATIVE copy verbatim (three user-outcomes: files reset, prompt replayed, source preserved).
+    - Moved `eventLabel` into its own `Anchor: <code>` line for readability.
+  - `src/app/(dashboard)/runs/[runId]/page.tsx`
+    - Wired `commitShaAtTimeOfEvent` from `displayEv.commit_sha_at_time_of_event` (snake_case per BFF wire shape).
+  - `src/tests/unit/domain-RestartFromHereButton.test.tsx`
+    - Added `DEFAULT_SHA` helper constant + `commitShaAtTimeOfEvent` on all eligible-render tests.
+    - Added 2 new sha-gate tests: renders null when sha is `null` (explicit) and `undefined` (default prop).
+    - Rewrote the copy-guard test to cover all three ADR-026 normative outcomes verbatim.
+  - `bff/routers/debug.py`
+    - Stage 6.4c E2E affordance: when `extra.commit_sha_at_time_of_event` is supplied, build a stub `sha_lookup` that returns it so `normalize_event` stamps the key on the wire event. Real user-message shas remain owned by the ledger-backed router paths.
+  - `bff/tests/test_debug_inject_endpoint.py`
+    - Added 3 new tests covering the synthetic-sha branch: user+sha stamps, assistant+sha does not stamp (user-only gate), backward-compat when the field is omitted.
+  - `src/tests/e2e/run-restart-from-here.spec.ts` NEW
+    - Mirrors `run-fork-from-here.spec.ts` structure and preflight.
+    - Injects three synthetic MessageEvents: user+sha (positive), assistant (D2 negative), user without sha (sha-gate negative).
+    - Asserts the ADR-026 normative dialog copy verbatim (four regex checks).
+    - Stubs `POST /api/runs/{id}/restart` and asserts wire body is `{from_event_id: userWithSha.id}` verbatim + rejects alias keys.
+    - Asserts navigation to `/runs/${restarted_run_id}` on success.
+    - Captures screenshot at `screenshots/run-restart-from-here.png` (§6.4c evidence).
+  - `docs/adr/026-restart-from-here.md`
+    - Prepended status-amendment block (2026-08-06 09:21 EDT).
+    - Flipped `**Status:** Proposed` → `**Status:** Ratified`.
+    - Noted follow-up: `ForkFromHereButton` shares the same rules-of-hooks bug (useCallback after early return) — out of scope for this slice.
+- **Ports/adapters affected**: none new. Consumers: BFF debug injector (E2E-only surface), frontend runs/[runId] page.
+- **ADR/ledger updated**: ADR-026 Proposed → Ratified. PORTING_LEDGER unchanged (no OSS ports in this slice).
+- **DoD status**: **CLOSED pending Colossus verify** (vitest + Playwright + stage-6.4c-verify.sh regression).
+- **Files touched**:
+  - `bff/routers/debug.py`
+  - `bff/tests/test_debug_inject_endpoint.py`
+  - `docs/adr/026-restart-from-here.md`
+  - `src/app/(dashboard)/runs/[runId]/page.tsx`
+  - `src/components/domain/RestartFromHereButton.tsx`
+  - `src/tests/e2e/run-restart-from-here.spec.ts` (new)
+  - `src/tests/unit/domain-RestartFromHereButton.test.tsx`
+  - `BUILD_LOG.md`
+  - `SESSION_HANDOFF.md`
+
+## 2026-08-06 09:29 EDT — Stage 6.4c closure follow-up: toDisplayEvent projection fix
+
+- **Stage/plugin/port**: Stage 6.4c · P1 Restart-from-here · frontend inspector projection.
+- **Trigger**: Colossus Playwright e2e failure on the visibility assertion for `restart-from-here-button` while vitest was green and BFF pytest was green.  Analysis in DEBUG_LOG.md 2026-08-06 09:29 EDT.
+- **Root cause**: `page.tsx::toDisplayEvent` is a typed projection over the raw event dict; it never carried `commit_sha_at_time_of_event` into `DisplayEvent`, so the button's ADR-026 §Frontend contract sha-gate correctly hid the button on eligible events.
+- **Fix applied**:
+  - Added `commit_sha_at_time_of_event?: string` to the `DisplayEvent` type.
+  - Passed the sha through `toDisplayEvent` via conditional spread (stays absent on non-user events instead of an explicit `undefined`).
+  - Simplified the call site in the inspector to `commitShaAtTimeOfEvent={displayEv.commit_sha_at_time_of_event ?? null}` (removed the ad-hoc `Record<string, unknown>` cast that was there because the field was implicit).
+- **Colossus verify pending re-run**:
+  - Pytest was 56/56 green pre-amend.
+  - Vitest was 14/14 green pre-amend.
+  - `stage-6.4c-verify.sh` PASSED pre-amend.
+  - Playwright `run-restart-from-here.spec.ts` — the ONLY red before this amend — should now flip green.
+- **Files touched**:
+  - `src/app/(dashboard)/runs/[runId]/page.tsx`
+  - `BUILD_LOG.md`, `DEBUG_LOG.md`, `SESSION_HANDOFF.md`

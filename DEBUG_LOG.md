@@ -1877,3 +1877,25 @@ Two independent problems this caused:
 - **Root cause**: `restart_from_here` ran ledger `bulk_get_shas` (step 2) BEFORE `_fetch_event` (step 3).  Ledger has no row for unknown ids → 409 `no_sha_anchor`.  Users can't tell "you typo'd the id" from "you targeted a real but pre-capture event".
 - **Fix**: Swap the order — `_fetch_event` first (404 anchor_not_found on missing ids), then ledger lookup (409 no_sha_anchor on known-but-uncaptured).
 - **Files changed**: `bff/services/restart.py`, `bff/tests/test_runs_restart.py` (new `test_unknown_event_id_returns_anchor_not_found_not_no_sha`).
+
+## 2026-08-06 09:29 EDT — RestartFromHereButton hidden on eligible events (Playwright e2e failure)
+
+**Symptom**:
+```
+Error: expect(locator).toBeVisible() failed
+  Locator: getByTestId('restart-from-here-button')
+  Expected: visible
+  Timeout: 5000ms
+  Error: element(s) not found
+```
+at `src/tests/e2e/run-restart-from-here.spec.ts:404`.  Vitest for the same component was green (14/14).
+
+**Affected**: Stage 6.4c · P1 Restart-from-here · frontend · `src/app/(dashboard)/runs/[runId]/page.tsx::toDisplayEvent`.
+
+**Root cause**: `toDisplayEvent` (page.tsx) is a **typed projection** that maps only whitelisted fields from the raw event into `DisplayEvent`.  ADR-026 §Storage `commit_sha_at_time_of_event` was stamped correctly by the BFF (verified via 3 new pytest cases on `test_debug_inject_endpoint.py` — all green) but the projection dropped the key on its way to the inspector.  The button's sha-gate saw `undefined` and correctly hid itself, exactly as designed for the missing-sha case.  The failing test was therefore correctly asserting the ADR contract — it was `toDisplayEvent`'s omission that regressed it.
+
+**Fix applied**: added `commit_sha_at_time_of_event?: string` to the `DisplayEvent` type and passed it through `toDisplayEvent` when present (conditional spread so it stays absent on non-user events instead of being explicitly `undefined`).  Simplified the page.tsx call site to `commitShaAtTimeOfEvent={displayEv.commit_sha_at_time_of_event ?? null}`.
+
+**Files changed**: `src/app/(dashboard)/runs/[runId]/page.tsx`.
+
+**Reference**: this is scope-preserving under ADR-026 §Lock-in single-slice rule — amending closure commit `9eb10ce`.

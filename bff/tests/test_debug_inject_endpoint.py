@@ -153,3 +153,90 @@ def test_emit_failure_swallowed(monkeypatch: pytest.MonkeyPatch):
         json={"runId": "run-1", "kind": "Condensation", "extra": {}},
     )
     assert r.status_code == 200
+
+
+def test_synthetic_commit_sha_stamps_user_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-026 §Storage E2E affordance: injected user MessageEvents with
+    ``extra.commit_sha_at_time_of_event`` get the sha stamped on the
+    normalized wire event, exactly as the sha_lookup path would stamp
+    a real ledger hit.  The Playwright restart-from-here spec depends
+    on this branch to synthesize eligible events without touching the
+    real event_commit_ledger.
+    """
+    monkeypatch.setenv("FORGE_TIMELINE_DEBUG_INJECT", "1")
+    client = TestClient(_make_app())
+    sha = "a" * 40
+    r = client.post(
+        "/api/_debug/inject-event",
+        json={
+            "runId": "run-1",
+            "kind": "MessageEvent",
+            "extra": {
+                "source": "user",
+                "llm_message": {"role": "user", "content": "hi"},
+                "commit_sha_at_time_of_event": sha,
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["type"] == "message"
+    assert data["source"] == "user"
+    assert data["commit_sha_at_time_of_event"] == sha
+    # Guard against the sha leaking back into raw (it must be pop()ed).
+    assert "commit_sha_at_time_of_event" not in data["raw"]
+
+
+def test_synthetic_commit_sha_ignored_on_assistant_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-026 §Frontend contract: the sha stamp gate is
+    ``kind==MessageEvent AND source==user``.  Even when a synthetic sha
+    is supplied, an assistant-source message must NOT get the key
+    (defends against the copy-paste failure where a test fixture
+    accidentally makes assistant messages restart-eligible).
+    """
+    monkeypatch.setenv("FORGE_TIMELINE_DEBUG_INJECT", "1")
+    client = TestClient(_make_app())
+    r = client.post(
+        "/api/_debug/inject-event",
+        json={
+            "runId": "run-1",
+            "kind": "MessageEvent",
+            "extra": {
+                "source": "agent",
+                "llm_message": {"role": "assistant", "content": "hi"},
+                "commit_sha_at_time_of_event": "a" * 40,
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["source"] == "agent"
+    assert "commit_sha_at_time_of_event" not in data
+
+
+def test_no_sha_stamped_when_extra_omits_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Backward-compat: injected events without ``commit_sha_at_time_of_event``
+    behave exactly as before (no stamp).  This is the pre-ADR-026 shape
+    the Stage 6.2 fork-from-here spec still relies on.
+    """
+    monkeypatch.setenv("FORGE_TIMELINE_DEBUG_INJECT", "1")
+    client = TestClient(_make_app())
+    r = client.post(
+        "/api/_debug/inject-event",
+        json={
+            "runId": "run-1",
+            "kind": "MessageEvent",
+            "extra": {
+                "source": "user",
+                "llm_message": {"role": "user", "content": "hi"},
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["source"] == "user"
+    assert "commit_sha_at_time_of_event" not in data
