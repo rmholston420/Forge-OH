@@ -6466,3 +6466,30 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
   - Migration: none — `CREATE TABLE IF NOT EXISTS` at lifespan startup.
 - **Files:** `docs/adr/026-restart-from-here.md` (Decision + Consequences + new Storage section)
 - **Stop-condition status:** ADR-026 is design-complete. Next: implementation of the ledger module + event_normalize wiring + capture-point wiring + restart endpoint + tests + frontend button. All in the same "backend + frontend ship together" commit per ADR-026 lock-in phase.
+
+## 2026-08-06 08:26 EDT — Stage 6.4c step 1c: runs router capture points + read-path threading
+
+- **Stage/plugin/port:** Stage 6.4c · `bff/routers/runs.py` · `bff/services/worktree.py` · new tests
+- **What:** Wired `event_commit_ledger` into the runs router's four sha-touching paths per ADR-026 §Storage.
+  1. `create_run` — after create+kickoff, best-effort follow-up `GET /events/search?limit=1&sort_order=TIMESTAMP` discovers the initial user MessageEvent id agent-server assigned, then calls `worktree.head_sha(working_dir)` and `event_commit_ledger.record_sha(app, run_id, event_id, sha)`. Only fires when a worktree was actually provisioned.
+  2. `send_run_message` — after `_call_lifecycle` events POST succeeds, follow-up `GET /events/search?limit=1&sort_order=CREATED_AT_DESC` identifies the newly-created event and stamps its sha.
+  3. `delete_run` — after worktree reap, `event_commit_ledger.delete_run(app, run_id)` cascade-purges every ledger row for the deleted run.
+  4. `get_run_events` — extracts event ids from the fetched page, calls `event_commit_ledger.bulk_get_shas(app, ids)` once, threads the result via `normalize_events(items, sha_lookup=result.get)` so stamped events carry `commit_sha_at_time_of_event` on the wire.
+- Every capture / cascade block is wrapped in try/except and only logs on failure. Run creation, message send, delete, and events read all succeed even when the ledger is unavailable or misbehaves. Graceful downgrade per ADR-026 (missing sha → no Restart button).
+- **New helper `bff/services/worktree.head_sha(path)`:** runs `git -C <path> rev-parse HEAD` with a 5-second timeout + strict 40-char hex-only validation. Returns `None` on any failure (missing dir, not a repo, git-not-found, timeout, empty stdout, wrong shape) so the caller can uniformly skip ledger insert.
+- **Tests (14 new, in `bff/tests/test_runs_sha_capture.py`):**
+  - `TestCreateRunCapturesSha` (6): stamped on initial user message; no-worktree skips; ledger unavailable skips; head_sha None skips; assistant-first-event skips; record_sha raises does not fail create.
+  - `TestSendRunMessageCapturesSha` (3): stamped on new user message; conversation GET 500s downgrades; ledger unavailable skips.
+  - `TestDeleteRunCascadesLedger` (3): cascade fires with (app, run_id); ledger unavailable skips; cascade raises still returns 204.
+  - `TestGetRunEventsHydratesShas` (3): stamps sha on user MessageEvents; ledger unavailable omits key; bulk_get_shas raises omits key + still 200.
+- **Files touched:**
+  - `bff/routers/runs.py` (Request injection ×4, 4 capture / cascade blocks, ADR-026 comments)
+  - `bff/services/worktree.py` (+ `head_sha` helper)
+  - `bff/tests/test_runs_sha_capture.py` (new, 14 tests)
+- **Regression check:** `bff/tests/test_runs_fork.py`, `bff/tests/test_runs_worktree.py`, `bff/tests/test_event_commit_ledger.py`, `bff/tests/test_event_normalize_commit_sha.py`, `bff/tests/test_event_normalize.py` all green (81/81 total).
+- **Commits (this slice):**
+  - `0143172` initial capture-point + read-path wiring + 14 tests.
+  - `013be31` test fixup: `_FakeUpstream` matcher + wire key (`id` not `event_id`).
+  - `1a761fe` test fixup: add required `title` to CreateRunRequest bodies (was returning 422).
+  - `2dda3d7` test fixup: two-tier URL matcher (suffix-first, substring-fallback) so `/events/search` beats `/api/conversations/run-1` for the send_run_message GET.
+- **Stop-condition status:** Stage 6.4c step 1a + 1b + 1c COMPLETE. Ledger module written + wired at lifespan; normalizer threads sha_lookup; router captures at create+send, hydrates on read, cascade-purges on delete. Step 1d next: `bff/services/restart.py` composition module + `POST /api/runs/{run_id}/restart` endpoint with 8+ tests.
