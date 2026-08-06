@@ -5443,3 +5443,21 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
     ollama pull qwen3-embedding:4b
     curl -s http://localhost:6333/collections
     FORGE_MEMORY_LIVE=1 pytest bff/tests/memory/test_ollama_embeddings_adapter_contract.py -q
+
+## 2026-08-06 02:10 EDT — Stage 5.3a: SemanticMemoryPath port (composition helper only)
+- **Stage/plugin/port:** Stage 5.3a — memory adapter surface for ADR-074 §D3 semantic lane
+- **What was built:**
+  - Vendored `SemanticMemoryPath` verbatim from Kosmos @ `c455165bca0d645f0d43572d0c286dca7033d31d` with mechanical import rewrites only
+  - Vendored Kosmos's 11-test contract suite verbatim (test_semantic_memory_path_contract.py)
+  - Added Forge-OH-side `smoke.py` helper composing Stage 5.2 `OllamaEmbeddingsAdapter` + `QdrantVectorAdapter` + `RealQdrantBackend` with the ported `SemanticMemoryPath` for live `search_semantic()` verification
+- **Files touched:**
+  - `openhands_tools_ext/memory/adapters/dozerdb/semantic_memory_path.py` (new, 258 lines, port)
+  - `openhands_tools_ext/memory/adapters/dozerdb/__init__.py` (new, 18 lines)
+  - `openhands_tools_ext/memory/adapters/dozerdb/smoke.py` (new, 59 lines, Forge-OH-native)
+  - `bff/tests/memory/test_semantic_memory_path_contract.py` (new, 268 lines, port)
+  - PORTING_LEDGER.md (append), BUILD_LOG.md (append), SESSION_HANDOFF.md (overwrite)
+- **Ports/adapters affected:** none new — this composes existing Stage 5.1 `EmbeddingsPort` + `VectorPort`
+- **ADR / ledger updated:** PORTING_LEDGER.md entry above; no new ADR required (ADR-074 is inherited from Kosmos)
+- **Test results:** 54 passed, 1 skipped in `bff/tests/memory/` under both baseline and `OLLAMA_EMBED_MODEL=qwen3-embedding:4b` (11 new SemanticMemoryPath contract tests + 43 prior memory contract tests)
+- **Stage 5.3a stop condition:** Sandbox-side complete. Awaiting Colossus live-tier verification: `python -c "import asyncio; from openhands_tools_ext.memory.adapters.dozerdb.smoke import search_semantic; print(asyncio.run(search_semantic('smoke', corpus='default')))"` should return `[]` cleanly.
+- **Next slice:** 5.3b (port `DozerDbMemoryAdapter` + graph backend + AMG policy; wire `MemoryPort.search_semantic` at last).

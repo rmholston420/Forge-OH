@@ -216,3 +216,22 @@ Format per entry:
 
 ## 2026-08-06 01:57 EDT — ADR-020 amendment to Stage 5.2 Ollama embeddings adapter
 Amendment to the Stage 5.2 Kosmos port (2026-08-06 01:44 EDT entry above): Forge-OH default embedder changed from Kosmos upstream `nomic-embed-text` to `qwen3-embedding:0.6b` per ADR-020 (`docs/adr/020-qwen3-embedding-default.md`). `qwen3-embedding:4b` also registered in the adapter's dimension table for opt-in A/B via `OLLAMA_EMBED_MODEL`. Adapter code + `.env.example` + one contract test updated to match. Kosmos re-sync of `adapters/embeddings/ollama/adapter.py` at any future SHA must preserve: (a) the three `qwen3-embedding:*` entries in `_MODEL_DIMENSIONS`, (b) the default fallback `qwen3-embedding:0.6b` in `__init__`, (c) the docstring env-var block noting ADR-020.
+
+## 2026-08-06 02:10 EDT — Kosmos adapter: DozerDB SemanticMemoryPath (Stage 5.3a)
+- **Source repo:** rmholston420/kosmos @ `c455165bca0d645f0d43572d0c286dca7033d31d`
+- **Source paths:**
+  - `adapters/memory/dozerdb/semantic_memory_path.py` (257 lines)
+  - `adapters/memory/dozerdb/test_semantic_memory_path.py` (268 lines)
+  - ADR-074 §D3 (design authority)
+- **Destination paths:**
+  - `openhands_tools_ext/memory/adapters/dozerdb/semantic_memory_path.py`
+  - `openhands_tools_ext/memory/adapters/dozerdb/__init__.py`
+  - `openhands_tools_ext/memory/adapters/dozerdb/smoke.py` (new — thin live smoke helper, not a plugin surface)
+  - `bff/tests/memory/test_semantic_memory_path_contract.py`
+- **License / ownership:** same-owner internal port (both repos owned by rmholston420); no third-party license triggered — `SemanticMemoryPath` is pure composition of Stage 5.1 ports with zero external deps.
+- **Modification notes:**
+  1. Mechanical import rewrite only: `from ports.{embeddings,memory,vector}` → `from openhands_tools_ext.memory.ports.{embeddings,memory,vector}`. Contract test additionally rewrites `from adapters.vector.qdrant.adapter` → `from openhands_tools_ext.memory.adapters.vector.qdrant.adapter` and `from adapters.memory.dozerdb.semantic_memory_path` → `from openhands_tools_ext.memory.adapters.dozerdb.semantic_memory_path`.
+  2. Class body, method signatures, docstrings, and behavior are byte-identical to source.
+  3. `smoke.py` is a Forge-OH-side thin helper that composes Stage 5.2's `OllamaEmbeddingsAdapter` + `QdrantVectorAdapter`/`RealQdrantBackend` with the ported `SemanticMemoryPath` for §5.3.4's live-smoke command. It is NOT a plugin surface and will be removed / superseded by `DozerDbMemoryAdapter.search_semantic` in Stage 5.3b.
+- **Stage 5.3a stop condition:** Reached — 11 new contract tests green under both default (`qwen3-embedding:0.6b`) and A/B override (`qwen3-embedding:4b`); full memory suite now 54 passed / 1 skipped in both configurations. Live-tier verification against real Ollama + Qdrant remains for Colossus.
+- **Deferred to 5.3b:** `DozerDbMemoryAdapter` (552 lines), `dozerdb_graph_backend.py` (215 lines), `amg_policy.py` (218 lines), their contract tests, and dependency pulls for `neo4j` + `graphiti-core` + `agent_memory_guard`.
