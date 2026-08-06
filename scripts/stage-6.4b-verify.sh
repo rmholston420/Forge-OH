@@ -25,34 +25,49 @@ WORKTREE_ROOT="${FORGE_WORKTREE_ROOT:-$HOME/.forge-oh/worktrees}"
 
 # ─── 1. Pick workspace ──────────────────────────────────────────────
 
+# Small helper to normalise the workspaces payload into a JSON list.
+# Handles all three shapes seen in agent-server / BFF releases:
+#   * bare list            e.g. [{...}, {...}]
+#   * {"workspaces":[...]}
+#   * {"data":[...]} / {"items":[...]}
+_read_workspaces() {
+  python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if isinstance(data, list):
+    items = data
+elif isinstance(data, dict):
+    items = data.get('workspaces') or data.get('data') or data.get('items') or []
+else:
+    items = []
+print(json.dumps(items))
+"
+}
+
 if [[ $# -ge 1 ]]; then
   WS_ID="$1"
 else
   echo "→ Looking for a workspace whose path is a git repo…"
-  # Use the BFF workspaces route (proxies to agent-server).
   workspaces_json="$(curl -s "$BFF/api/workspaces" || true)"
   if [[ -z "$workspaces_json" ]]; then
     echo "✗ Could not fetch workspaces from $BFF/api/workspaces" >&2
     exit 1
   fi
 
+  items_json="$(printf '%s' "$workspaces_json" | _read_workspaces)"
+  echo "   payload preview: $(printf '%s' "$items_json" | head -c 240)"
+
   # Pick the first workspace whose path is a git repo on disk.
-  WS_ID="$(python3 - <<PY
+  WS_ID="$(printf '%s' "$items_json" | python3 -c "
 import json, os, sys
-data = json.loads('''$workspaces_json''')
-items = data.get("data") or data.get("workspaces") or data.get("items") or []
+items = json.load(sys.stdin)
 for w in items:
-    path = w.get("path") or ""
-    if path and os.path.isdir(os.path.join(path, ".git")):
-        print(w.get("id"))
-        sys.exit(0)
-    # Support case where .git is a file (nested worktree) too.
-    if path and os.path.exists(os.path.join(path, ".git")):
-        print(w.get("id"))
+    path = (w or {}).get('path') or ''
+    if path and os.path.exists(os.path.join(path, '.git')):
+        print(w.get('id'))
         sys.exit(0)
 sys.exit(1)
-PY
-  )" || {
+")" || {
     echo "✗ No git-backed workspace found; pass an id explicitly." >&2
     exit 1
   }
@@ -60,12 +75,11 @@ fi
 
 echo "→ Using workspace id: $WS_ID"
 
-WS_PATH="$(curl -s "$BFF/api/workspaces" | python3 -c "
+WS_PATH="$(curl -s "$BFF/api/workspaces" | _read_workspaces | python3 -c "
 import json, sys
-data = json.load(sys.stdin)
-items = data.get('data') or data.get('workspaces') or data.get('items') or []
+items = json.load(sys.stdin)
 for w in items:
-    if w.get('id') == '$WS_ID':
+    if (w or {}).get('id') == '$WS_ID':
         print(w.get('path', ''))
         break
 ")"
