@@ -5398,3 +5398,28 @@ Not touching that in this session — out of hygiene scope. Logged as a KNOWN_IS
 - Verification: all three Protocols import cleanly with full expected method set; zero-trust helpers (validate_zero_trust_write, validate_zero_trust_payload) reject empty provenance, out-of-range confidence, and bool confidence as documented
 - Stop-condition status: Stage 5.1 DoD met (ports imported + logged). Stage 5.2 (Qdrant + Ollama embeddings adapters) is next; not started this slice.
 - Frontend pairing: N/A for 5.1 (pure interfaces); the "ships together" rule applies at the Stage 5 boundary and is satisfied by § 5.6.
+
+## 2026-08-06 01:44 EDT — Stage 5.2: Qdrant VectorPort + Ollama EmbeddingsPort adapters ported
+- Ported QdrantVectorAdapter (+ QdrantBackend Protocol seam + InMemoryQdrantBackend test fake), RealQdrantBackend, and OllamaEmbeddingsAdapter verbatim from rmholston420/kosmos @ c455165bca0d645f0d43572d0c286dca7033d31d
+- Files touched (adapters):
+  - openhands_tools_ext/memory/__init__.py (new)
+  - openhands_tools_ext/memory/adapters/__init__.py (new)
+  - openhands_tools_ext/memory/adapters/vector/{__init__.py, qdrant/__init__.py, qdrant/adapter.py, qdrant/real_backend.py} (new)
+  - openhands_tools_ext/memory/adapters/embeddings/{__init__.py, ollama/__init__.py, ollama/adapter.py} (new)
+- Files touched (tests):
+  - bff/tests/memory/{__init__.py, test_qdrant_adapter_contract.py, test_ollama_embeddings_adapter_contract.py} (new — located under bff/tests/ so CI picks them up)
+- Files touched (infra):
+  - docker-compose.yml — added `qdrant` service (image qdrant/qdrant:v1.12.4, ports 6333/6334, named volume qdrant-data)
+  - .env.example — added OLLAMA_EMBED_MODEL, QDRANT_URL, FORGE_MEMORY_LIVE; annotated OLLAMA_URL-vs-OLLAMA_BASE_URL distinction
+  - bff/requirements.txt — added qdrant-client>=1.12,<2 (lazy-imported by RealQdrantBackend)
+- Verification:
+  - 34 Qdrant contract tests PASS against InMemoryQdrantBackend
+  - 9 Ollama contract tests PASS (mock httpx), 1 correctly skipped (live tier gated on FORGE_MEMORY_LIVE=1)
+  - Static Protocol conformance: QdrantVectorAdapter satisfies VectorPort; OllamaEmbeddingsAdapter satisfies EmbeddingsPort
+  - Full bff/tests/ sweep: 346 passed / 15 unrelated network-dependent failures (agent-server / BFF not running in verification sandbox); zero regressions introduced by Stage 5.2
+- Plan deviation (documented): plan §5.2.2 tells the adapter to reuse OLLAMA_BASE_URL. Forge-OH's OLLAMA_BASE_URL is the /v1 OpenAI-compat prefix used by the chat model_router; the Kosmos adapter calls the NATIVE /api/embed endpoint and MUST use OLLAMA_URL (native root). Adjusted accordingly; annotated in .env.example and the adapter docstring.
+- Stop-condition status: Stage 5.2 code + tests + infra landed. Live 768-dim smoke test against real Ollama + real Qdrant is Colossus-only and gated on `FORGE_MEMORY_LIVE=1` — to run there:
+    docker compose up -d qdrant
+    ollama pull nomic-embed-text
+    FORGE_MEMORY_LIVE=1 pytest bff/tests/memory/test_ollama_embeddings_adapter_contract.py -q
+- Frontend pairing: N/A for 5.2 (adapters only); Stage 5's UI pairing satisfied at § 5.6.

@@ -31,6 +31,11 @@ neo4j>=5.26,<6
 tree-sitter>=0.23,<1
 tree-sitter-language-pack>=0.4.0,<1
 
+# Stage 5.2 — VectorPort backend (RealQdrantBackend wraps AsyncQdrantClient).
+# Lazy-imported inside RealQdrantBackend.__init__; contract tests use the
+# InMemoryQdrantBackend fake and do NOT require this dep to pass.
+qdrant-client>=1.12,<2
+
 # Optional dev/test
 # pytest==8.3.4
 # pytest-asyncio==0.24.0

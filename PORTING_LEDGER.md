@@ -195,3 +195,21 @@ Format per entry:
 - License/ownership: same-owner internal port (rmholston420 → rmholston420), logged for traceability per project convention
 - Modification notes: zero modifications — files copied verbatim, no import-path edits were required (upstream files import stdlib only)
 - Included exports beyond Protocols: memory.py ships MEMORY_REQUIRED_FIELDS + validate_zero_trust_write() + MemoryEventId/MemoryHit/MemoryWriteBlocked; vector.py ships REQUIRED_PAYLOAD_KEYS + validate_zero_trust_payload() + VectorHit/SnapshotHandle; embeddings.py ships EmbeddingError/EmbeddingDimensionMismatch. Stage 5.4 will reuse these existing zero-trust helpers rather than introducing a parallel pydantic model.
+
+## 2026-08-06 01:44 EDT — Kosmos adapters: Qdrant VectorPort + Ollama EmbeddingsPort
+- Source: rmholston420/kosmos, commit c455165bca0d645f0d43572d0c286dca7033d31d
+- Source paths:
+  - adapters/vector/qdrant/{__init__.py, adapter.py, real_backend.py, test_contract.py}
+  - adapters/embeddings/ollama/{__init__.py, adapter.py, test_contract.py}
+- Destination:
+  - openhands_tools_ext/memory/adapters/vector/qdrant/
+  - openhands_tools_ext/memory/adapters/embeddings/ollama/
+  - bff/tests/memory/  (contract tests relocated so CI runs them)
+- License/ownership: same-owner internal port (rmholston420 → rmholston420)
+- Modification notes:
+  - Imports rewritten mechanically: `ports.*` → `openhands_tools_ext.memory.ports.*`;
+    `adapters.vector.qdrant` → `openhands_tools_ext.memory.adapters.vector.qdrant`;
+    `adapters.embeddings.ollama` → `openhands_tools_ext.memory.adapters.embeddings.ollama`.
+  - Env vars: `KOSMOS_OLLAMA_BASE_URL` → `OLLAMA_URL` and `KOSMOS_OLLAMA_EMBED_MODEL` → `OLLAMA_EMBED_MODEL`. Plan §5.2 said reuse `OLLAMA_BASE_URL`; that is Forge-OH's OpenAI-compat `/v1` prefix and would break the native `/api/embed` calls the adapter makes. Correct env var is `OLLAMA_URL` (native root, port 11434 with no suffix). Documented in the adapter docstring and `.env.example` (plan §5.2 correction, not a spec deviation).
+  - Test env-var: `KOSMOS_STAGE_16_LIVE` → `FORGE_MEMORY_LIVE` for the Colossus live-tier smoke test.
+  - No behavior changes; SHA-256 of each file body diff-verifiable against upstream after the mechanical rewrites listed above.

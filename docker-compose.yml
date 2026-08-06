@@ -47,5 +47,17 @@ services:
       - bff
     restart: unless-stopped
 
+  # Stage 5.2 — VectorPort backend (Kosmos QdrantVectorAdapter → RealQdrantBackend).
+  # 6333 = REST/HTTP; 6334 = gRPC. Local-first, no auth (single-user Colossus).
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+
 volumes:
   openhands-data:
+  qdrant-data:
