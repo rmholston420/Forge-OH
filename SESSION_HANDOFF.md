@@ -1,28 +1,20 @@
 # Forge-OH — Session Handoff
 
 ## Current stage/plugin/port
-**Stage 6.4c step 1e follow-up 2** — extractor + ordering fixes on top of pagination fix.
+Stage 6.4c step 1e **CLOSED** — server-side restart-from-here fully verified on Colossus.
+Next: Stage 6.4c step 1f (frontend Restart affordance).
 
 ## Completed this session
-1. Step 1e — scan for user MessageEvent at any index (§3b create_run + send_run_message).
-2. Follow-up 1 — page `_fetch_event` at limit≤100 (agent-server enforces `assert limit <= 100`).
-3. Follow-up 2 — `_extract_message_text` reads `llm_message.content[*].text` (real agent-server storage form).
-4. Follow-up 2 — reorder `restart_from_here` steps: fetch event (404) BEFORE ledger lookup (409), so typos give 404 not 409.
-5. 5 new regression tests: 2 pagination, 2 llm_message extraction, 1 ordering.
+1. `cda0098` — scan initial event page for first user MessageEvent (§3b create_run + send_run_message).
+2. `8ed3ba0` — page `_fetch_event` at agent-server's `assert limit <= 100`.
+3. `2e0b1b5` — `_extract_message_text` walks `llm_message.content[*].text` (real agent-server 1.40 storage form); reorder `restart_from_here` steps so fetch precedes ledger, giving 404 anchor_not_found for unknown ids.
+4. Colossus verify PASSED (2026-08-06 09:13 EDT).  45/45 pytest green; verify script all green.
 
-## Remaining before DoD
-- Rerun `.oh-venv/bin/pytest bff/tests/test_runs_restart.py bff/tests/test_runs_sha_capture.py -x -q` on Colossus.
-- Rerun `bash scripts/stage-6.4c-verify.sh` on Colossus.  Expected: PASSED — happy-path 200 + `restarted_run_id` + `worktree_path`; neg A 404; neg C 409.
+## Remaining before next DoD
+Move to Stage 6.4c step 1f — frontend Restart button on user-message events (see `docs/reconciliation-plan-stage-6.md`).  Endpoint contract now stable.
 
 ## Open questions
 None.
 
 ## Exact next action
-On Colossus:
-```bash
-cd ~/dev/forge-oh && git pull --ff-only
-.oh-venv/bin/pytest bff/tests/test_runs_restart.py bff/tests/test_runs_sha_capture.py -x -q 2>&1 | tail -25
-bash scripts/forge-restart.sh --bff-only
-sleep 3
-bash scripts/stage-6.4c-verify.sh
-```
+Restate step 1f scope from `docs/reconciliation-plan-stage-6.md` and enumerate the UI-side files to touch, then propose the first commit.

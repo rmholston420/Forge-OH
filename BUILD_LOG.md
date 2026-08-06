@@ -6574,3 +6574,18 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **Files touched**:
   - `bff/services/restart.py`
   - `bff/tests/test_runs_restart.py`
+
+## 2026-08-06 09:13 EDT — Stage 6.4c step 1e DoD PASSED on Colossus
+
+- **Stage/plugin/port**: Stage 6.4c · P1 Restart-from-here · service+router+verify.
+- **Verify output**: `stage-6.4c-verify.sh` all green.
+  - Happy path: HTTP 200, `restarted_run_id=e4cd4869-...`, `worktree_path=/home/rmholston/.forge-oh/worktrees/run-d56414abb214` (exists, HEAD matches anchor sha `2e0b1b5...`), `reset_to_sha` matches.
+  - Neg A (unknown id): HTTP 404 `event 'ev-does-not-exist-000000' not found on run ...` — ordering fix confirmed live.
+  - Neg C (ghost UUID): HTTP 404, acceptable.
+  - Neg B: skipped (no assistant event on freshly-created queued run — expected).
+- **Pytest**: 45/45 passed (`bff/tests/test_runs_restart.py` + `bff/tests/test_runs_sha_capture.py`).
+- **DoD status**: **CLOSED.**  All step 1e follow-ups landed:
+  1. `cda0098` — scan initial page for first user MessageEvent.
+  2. `8ed3ba0` — page `_fetch_event` at agent-server's limit≤100.
+  3. `2e0b1b5` — `llm_message.content` extraction + fetch-before-ledger ordering.
+- **Next slice**: per reconciliation-plan-v1 Stage 6.4c, advance to step 1f (frontend Restart affordance wired to POST /runs/{id}/restart).
