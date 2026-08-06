@@ -4960,3 +4960,17 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **PORTING_LEDGER / ADR updated:** none. No external code vendored — this is a first-party wiring slice against the pinned SDK.
 - **KNOWN_ISSUES:** DependencyGuard (planned Stage 3.3) descoped and logged separately — no `pip install` / `npm install` call sites exist in the BFF layer, so a gate has no upstream caller. The right placement is inside an agent-server tool observer, which is out of scope for Stage 3. See KNOWN_ISSUES.md.
 - **Stop-condition status:** Stage 3.1 (backend surfaces `security_risk`; frontend renders risk badges + auto-collapse toggle; analyzer attached by default) COMPLETE per plan § 3.1 DoD. Pending Colossus live-run verification for the paste-block final check.
+
+## 2026-08-05 23:26 EDT — Stage 3.1 DoD verified green on Colossus
+
+- **What:** Ran the Stage 3.1 verification paste block on Colossus. All checks green after one iteration.
+- **Results:**
+  - `.oh-venv/bin/pytest bff/tests/test_event_normalize.py -q`: 10/10 pass in 0.01s.
+  - `pnpm typecheck` (`tsc --noEmit`): clean.
+  - `pnpm vitest run src/tests/unit/RiskBadge.test.tsx`: 8/8 pass in 545ms.
+  - `bash scripts/forge-restart.sh` + `forge-status.sh`: all three components healthy (agent-server :8090, BFF :8081, Next.js :3000).
+  - `npm run build` + `npx next start -p 3100`: `/runs` 200.
+  - `npx playwright test tests/e2e/risk-badge.spec.ts`: 2/2 pass in 1.0s (after commit `9266aa7` — one-iteration fix).
+- **Iteration:** first Playwright run failed on both tests with `getByText('terminal: rm -rf /tmp/*')` never rendering. Root cause was a route-mock envelope mismatch — `fetchRunEvents` at `src/features/run-detail/api.ts:14` unwraps `json.data`, but the spec returned `{events: [...]}`. Also filled in the missing `RunSummarySchema` fields on the run mock and added a `**/socket.io/**` stub so `useRunStream` doesn't 404 into the console. Fixed in `9266aa7`; DEBUG_LOG entry filed under `2026-08-05 23:25 EDT`.
+- **Files touched:** `src/tests/e2e/risk-badge.spec.ts`, `DEBUG_LOG.md`.
+- **Stop-condition status:** Stage 3.1 (backend surfaces `security_risk`; frontend renders risk badges + auto-collapse toggle; PatternSecurityAnalyzer attached by default) COMPLETE per plan § 3.1 DoD. Both DoD checks (backend surfaces enum-valid values + attaches analyzer on every run; frontend renders RiskBadge on LOW/MEDIUM/HIGH and hides on UNKNOWN/absent, with an opt-in auto-collapse toggle) met and verified live on Colossus. Ready for Stage 3.2 (Commit 2 — real HITL / ConfirmRisky).
