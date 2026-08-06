@@ -7078,3 +7078,44 @@ Both are Docker-image-polish issues, not topology issues. Both defer to a follow
 - §6.4 SESSION_HANDOFF overwrite — next action after this commit.
 
 **Next action**: Stage 8 initialization. Begin with 1-hour SDK-native investigation spike (does OpenHands SDK ≥1.40 already provide Microagents / Context Condensation / Pluggable Runtime that overlap with Council-Synthesis 8.1 / 8.6 / 8.2?). Then Slice 8.0 (vLLM serving-infra bundle: APC + spec-decode + fp8 KV-cache + chunked prefill).
+
+## 2026-08-06 15:00 EDT — ADR-029 filed: Stage 8 SDK-native adoption spike complete
+
+**Stage / plugin / port:** Stage 8 initialization · SDK-native investigation spike (mandated by ADR-028 §4).
+
+**What changed:** Ratified ADR-029 (Stage 8 SDK-native adoption). Investigation read of `OpenHands/software-agent-sdk@v1.40.0` source tree confirmed:
+
+- **No `microagent` module in v1.40.0** — Gemini's Council-Synthesis "Microagents" claim maps to two distinct SDK primitives: `openhands.sdk.skills` (SKILL.md ingestion + `KeywordTrigger`/`TaskTrigger`/`PathTrigger` + installed-skills marketplace) and `openhands.tools.delegate` (sub-agent spawn/delegate registry with per-subagent SKILL-style markdown at `openhands-tools/openhands/tools/preset/subagents/`).
+- **Context Condensation is first-class**: `openhands.sdk.context.condenser` ships `CondenserBase`, `LLMSummarizingCondenser` with `max_size` + `max_tokens` + `keep_first` + `minimum_progress` fields, `CondensationRequirement.HARD/SOFT`, event-log tombstone events, `View` projection.
+- **"Pluggable Runtime" is `openhands.sdk.workspace`**: `BaseWorkspace` abstract + `LocalWorkspace` + `RemoteWorkspace` (via `openhands-agent-server` on `:8090`) + `CommandResult{stdout, stderr, exit_code, timeout_occurred}`.
+- **Existing Forge-OH SDK-skill integration confirmed** at `bff/routers/skills.py:83` — SDK skills is a live integration point, not a new adoption.
+- **Adjacent SDK primitives discovered**: `critic_mixin` (§8.8 self-critique), `parallel_executor` (§8.3 N=2 selection), `planning_file_editor` + `task_tracker` + `workflow` (§8.8 plan tooling), `DelegateAction` (role-differentiated sub-agents).
+
+**Per-slice decisions codified in ADR-029:**
+
+| Slice | Decision | Effect on slice sizing |
+|---|---|---|
+| **8.1** Hermetic verification | HYBRID — adopt `RemoteWorkspace` sandbox + `execute_command`; hand-build deterministic pytest outcome schema + `VerifyPort` wrapper in `openhands_tools_ext/verification/` | Reduces from "1 slice w/ sandbox stand-up" to "1 slice: schema + parser + port" |
+| **8.2** Bounded execution-grounded repair loop | HYBRID — adopt `RemoteWorkspace` + SDK event log; hand-build N=1 loop controller + progress-signal gate in `bff/services/repair_loop.py` | Stays 1 slice; scope narrows to loop-controller code |
+| **8.6** ACE-style skill playbook | ADOPT SDK Skills wholesale (Skill, triggers, installed-skills, fetch, to_prompt); hand-build ONLY the token-budget gate in `bff/services/skill_budget.py` | Reduces from 2 slices to 1 slice |
+| **8.0/8.0.5/8.4/8.5/8.7/8.9** | Hand-build with SDK affordances where they help | No change |
+| **8.3** Selection layer | HYBRID — adopt `critic_mixin` for judge; hand-build rank aggregator | No change |
+| **8.8** Self-Refine plan critique | ADOPT `planning_file_editor` + `task_tracker` + `workflow` + `critic_mixin`; hand-build A/B experiment control arm | Slice tooling burden reduces materially |
+| **Condenser (cross-cutting §8.0)** | Adopt `LLMSummarizingCondenser` at compose time; set `keep_first` to vLLM APC prefix boundary; set `max_tokens = context_window - agent_reserve - skill_budget` | No new slice; configuration tweak on §8.0 |
+
+**Files touched:**
+- `docs/adr/029-sdk-native-adoption-for-stage-8.md` (new, 220 lines).
+- `docs/adr/README.md` (index row for ADR-029).
+
+**Ports / adapters affected:** decision surfaces:
+- Slice 8.1 will introduce `ports/verify.py` (new formal port) + `openhands_tools_ext/verification/` adapter.
+- Slice 8.6 will introduce `bff/services/skill_budget.py` filter sitting between SDK trigger match and SDK `to_prompt` rendering.
+- Slice 8.2 will introduce `bff/services/repair_loop.py` controller.
+
+**PORTING_LEDGER / ADR updated:** ADR-029 ratified. No PORTING_LEDGER entry — the adopted SDK primitives are already vendored as the pinned `openhands-sdk==1.40.0` dependency in `bff/requirements.txt`.
+
+**Stage 8 total slice count**: 12 → **11** (§8.6 collapses 2 → 1 slice; no other slice-count changes).
+
+**Stop-condition status:** ADR-028 §4 SDK-native spike DoD **MET**. Stage 8 initialization complete — clear to proceed to Slice 8.0.
+
+**Next action:** Slice 8.0 kickoff (vLLM serving-infra bundle: APC + speculative decoding + fp8 KV-cache + chunked prefill), with condenser `keep_first` alignment added to the compose-time configuration.
