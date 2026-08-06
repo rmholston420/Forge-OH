@@ -1,45 +1,36 @@
-# Forge-OH Session Handoff — 2026-08-05 20:20 EDT
+# Forge-OH Session Handoff — 2026-08-05 21:58 EDT
 
 ## Current build-sequencing position
 
-- **Stage / phase:** Stage 1 COMPLETE + F.3 SWE-bench Verified validation CLOSED. Stage 2 (Inference-Backend Flexibility) not yet started.
-- **Plugin / kernel component:** kernel · BFF · model_router.
-- **Port(s) in progress:** none. Next port: `InferenceBackend` protocol (Stage 2.1).
+- **Stage / phase:** Stage 2 (Inference-Backend Flexibility) — plan amended, code not yet started.
+- **Plugin / kernel component:** kernel · BFF · `model_router` + new `bff/services/inference_backends/` package.
+- **Port(s) in progress:** `InferenceBackend` protocol (Stage 2.1). Additive to existing role-routing core; supervisor + `RoleRoute` semantics preserved.
 
 ## Completed this session
 
-- **F.3 Path A SWE-bench Verified full-500 run** on green Stage-1 main (`530db1a`):
-  - **pass@1 = 26.6%** (133/500 raw) · **28.6%** attempted-only (133/465 excl. 35 context-skips)
-  - Wall total 8h55m · median/task 5.52s · mean/task 10.86s
-  - Zero harness crashes · zero vLLM disconnects · zero docker apply failures
-  - GPU envelope stable: 32,599 MiB peak VRAM (99.98%) · 75 °C peak temp · 454 W peak power · 89% avg util · 464/500 NVML sample sessions
-  - Artifacts: `~/.forge-oh/bench_pathF_swebench/20260805_1025_run/` (Colossus-local, gitignored per ADR-016)
-- **c01 canonical coder ratification (F.1b) CONFIRMED.** F.3 full-500 produced no signal to re-select or swap; c01 stays canonical.
-- **Per-repo verdict**: scikit-learn/pytest/xarray strong (37-53% attempted); astropy/matplotlib weak (9-16% raw); django (N=231) most defensible at 28.1% raw.
-- **ADR-013 amendment #2** prepended documenting the F.3 full-500 verdict, GPU envelope, per-repo breakdown, and CLOSED status for F.3 Path A validation phase.
-- **BUILD_LOG.md** appended with F.3 full-500 completion entry.
-- **KNOWN_ISSUES.md** gained informational entry documenting 7.0% context-budget-skip ceiling as c01 upper bound at `max_model_len=32768`.
-- **ADR index (`docs/adr/README.md`)** row for ADR-013 updated with amendment #2 status.
+- **Reality check + plan amendment:** discovered the v1 first-draft Stage 2 was authored against an older `model_router.py` snapshot (single vLLM, Ollama-only, `route_by_role(role, model, backend_id)` rewrite). The live router (post-F.3, `main`) implements ADR-009 §3a dual-role topology with `ops/vllm_supervisor.sh` swap-on-demand, `RoleRoute` dataclass, per-role locks, VLLM_SUPERVISOR_REQUEST_CAP (G.1 fix), and Ollama-fallback semantics. Executing v1 verbatim would have deleted all of that.
+- **Amended plan committed:** `docs/reconciliation-plan-stage-2.md` (canonical, 957 lines) + `docs/reconciliation-plan-v1.md` Stage 2 section rewritten as a short summary + pointer. Full reality-delta table at the bottom of the stage-2 doc.
+- **Core invariant recorded:** `InferenceBackend` is a health-inventory + selection layer ABOVE `route_by_role()`, not a replacement. `route_by_role()` gains only an optional `backend_id: str | None = None` parameter; default (None) preserves existing behavior byte-for-byte.
+- **Adapter set finalized as six** (not the v1 first draft's four): `ollama`, `vllm-coder` (:8501), `vllm-planner` (:8511), `vllm-legacy` (:8500, probe-only), `llamacpp` (health visibility only until Colossus deploys it), `sglang` (same).
+- **KNOWN_ISSUES folded in:** the two Stage-2-adjacent items (AgentPreset `Literal` cloud-only; `agentPresetId: null` on runs) become 2.1.7 and 2.1.8 in the amended plan.
+- **BUILD_LOG.md appended** with a plan-amendment entry documenting the reality delta and rationale.
 
 ## Remaining before current Definition of Done
 
-- **Stage 1 DoD:** none — Stage 1 is fully complete AND validated by full-500 SWE-bench Verified run.
-- **Stage 2 DoD:** all of Stage 2 remains. Next action below.
-- **F.3 follow-up (deferred, not blocking):** implement `apply_and_test.py` docker glue (8-step reference in module docstring). Not required for Stage 2 progression.
-- **ADR-013 amendment #3 (queued, not blocking):** will land if/when Path B (Stage 1H.5 full Forge-OH agent loop) produces a materially different pass@1.
+Amended Stage 2 Definition of Done, ordered:
+
+1. **Stage 2.1 (backend health-inventory layer + `route_by_role` additive extension + AgentPreset widening + `agentPresetId` end-to-end):** `bff/services/inference_backends/` package with six adapters, registry, protocol, types; `GET /api/inference-backends`; `POST /runs` accepts optional `backendId`; `AgentPreset.model` widened from cloud `Literal` to free-form string with new `backendId` + `role` fields; three seeded presets (ap-1 coder canonical, ap-2 planner, ap-3 Ollama fallback); `agentPresetId` surfaced on `GET /runs/{id}`.
+2. **Stage 2.2 (frontend selector + live health):** `HealthBadge` reusing existing `badge badge--*` CSS classes (NOT Tailwind bg-*); `BackendSelector` radio group; wired into Agent Presets editor + run-creation form.
+3. **Stage 2.3 (docs-only):** `docs/colossus-inference-setup.md` with SM_120 flag matrix. No new builds on Colossus.
+4. **Stage 2.4 (VRAM-aware quant + concurrency):** `hardware.py`, `quant_selector.py`, `concurrency.py`, `GET /api/inference-backends/concurrency-limit`, `ConcurrencyLimitDisplay` on Settings.
+5. **Exit gate:** full manual checklist in `docs/reconciliation-plan-stage-2.md` § "Stage 2 exit gate", including an F.3 SWE-bench 5-task smoke re-run to confirm additive `backendId` did not regress role-based routing (must land inside the smoke-30 v2 regression band: 22–38% raw).
 
 ## Open questions / awaiting user answer
 
-- None. F.3 Path A validation phase closed cleanly with the full-500 verdict. Two Stage-2 exit-gate items already filed in `KNOWN_ISSUES.md` (agent-preset `ModelId` static Literal · `agentPresetId null` on runs) resolve together in Stage 2.1.
+- **AgentPreset SQLite persistence** (Stage 1.5 leftover): keeping `_PRESETS` in-memory for Stage 2 exit; deferred to a Stage 3 leftover slot. Not blocking Stage 2 exit gate. If a preset created via the UI must survive a BFF restart before Stage 3 lands, flag it and it becomes an in-Stage-2 addition.
 
 ## Exact next action
 
-Begin **Stage 2.1: `InferenceBackend` protocol in `bff/services/model_router.py`**, per `docs/reconciliation-plan-v1.md` Stage 2. Scope:
+Execute **Stage 2.1** per `docs/reconciliation-plan-stage-2.md` § 2.1, starting at 2.0 baseline inspection on Colossus. Do NOT touch `bff/services/model_router.py` beyond appending the optional `backend_id` parameter to `route_by_role`. Do NOT delete or simplify the supervisor path, `_supervisor_ensure` locks, `_vllm_role_health`, or the Ollama fallback logic. Every code path listed under "Do NOT delete or simplify" in § 2.0 is protected by tests and ADR-009 §3a.
 
-- Introduce `InferenceBackend` protocol mapping `ModelId → {endpoint, api_style, sampling_defaults}`.
-- Wire the two Colossus vLLM endpoints (`:8501` coder, `:8511` planner) and Ollama (`:11434`) into the resolver.
-- Update agent-preset seed data so at least one preset resolves to c01 canonical coder locally.
-- Persist `agentPresetId` on run records (resolves the `agentPresetId: null` KNOWN_ISSUES entry).
-- Exit-gate: creating a preset with a real local model produces a `routing.model` matching that preset on the resulting run record.
-
-Colossus is on `main` at `530db1a` before this closeout commit lands; working tree clean; F.3 artifacts preserved at `~/.forge-oh/bench_pathF_swebench/20260805_1025_run/`.
+Colossus is on `main` at the plan-amendment commit; working tree clean.

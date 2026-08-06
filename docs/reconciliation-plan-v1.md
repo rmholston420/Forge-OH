@@ -81,30 +81,51 @@ Before starting any stage: read `SESSION_HANDOFF.md` if it exists. Before invest
 
 ## Stage 2 — Inference-Backend Flexibility (`ModelClient` Port)
 
-### 2.1 Backend: `InferenceBackend` protocol
-- Extend `model_router.py` with a protocol: `base_url`, `health_check()`, `list_models()`, `supports_streaming`.
-- Implement four adapters: `OllamaBackend`, `VLLMBackend`, `LlamaCppBackend`, `SGLangBackend`, all behind the same OpenAI-compatible client interface currently used for Ollama.
-- Add `GET /api/inference-backends` (list configured backends + live health).
-- Extend `POST /runs` routing payload to accept `backendId` alongside `agentPresetId`.
+> **Detailed execution plan:** see `docs/reconciliation-plan-stage-2.md`
+> (amended 2026-08-05 to match live `model_router.py`: dual vLLM roles,
+> swap-on-demand supervisor per ADR-009 §3a, `RoleRoute` dataclass).
+> The stage-2 doc is authoritative for implementation; this section is
+> a short summary for navigation.
 
-### 2.2 Frontend: backend selector
-- Add a backend selector (Ollama / vLLM / llama.cpp / SGLang) to the Agent Presets editor and run-creation form.
-- Show live health/reachability per option, reusing the `MCPServerCard` Connected/Warning/Disconnected badge pattern.
+**Goal:** replace Forge-OH's Ollama-only routing surface with a genuine
+`InferenceBackend` port supporting Ollama, vLLM (coder + planner + legacy
+probe), llama.cpp, and SGLang, each exposed as a health-checked,
+selectable adapter in the UI, with Colossus/Blackwell tuning living
+entirely inside adapters, and a VRAM-aware concurrency ceiling for
+future worktree-parallel agents.
 
-### 2.3 Colossus-specific adapter tuning (lives in the adapter, never the core)
-- llama.cpp: `-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="120" -DGGML_CUDA_FA_ALL_QUANTS=ON`.
-- vLLM: `TORCH_CUDA_ARCH_LIST="12.0"`, PyTorch cu128/cu130, FlashInfer attention backend (not `flash-attn`, which throws `undefined symbol` on SM_120).
-- CUDA 12.8+ (13.2 + cuDNN 9.20 recommended); do not mix CUDA 12 install with newer PyTorch Blackwell wheels.
-- Auto-select quant tier at process start by querying VRAM/compute capability (`nvidia-smi`): 32B-class at Q8 full-context, or 70B-class at IQ3/Q4_K_M within the 32GB budget.
+**Architectural invariant:** `InferenceBackend` is a health-inventory +
+selection layer **above** the existing role-routing core, not a
+replacement for it. `route_by_role()` keeps its role→backend→model→
+max_tokens resolution, swap-on-demand supervisor coalescing, and
+Ollama fallback semantics. A new optional `backend_id` parameter lets
+callers pin a specific runtime; default `None` preserves existing
+behavior byte-for-byte.
 
-### 2.4 Bound worktree-agent concurrency by VRAM
-- Compute actual VRAM budget (base model footprint + per-concurrent-request KV cache at configured context length) as a runtime-read value from the hardware-detection adapter, not a hardcoded constant.
-- Cap active-worktree-agent count at whatever concurrency fits with headroom for sandboxed tool-execution processes on the same GPU.
+### 2.1 Backend — `InferenceBackend` protocol + six adapters
+- Package `bff/services/inference_backends/` with `protocol.py`, `types.py`, six adapter files, `registry.py`.
+- Adapters: `ollama`, `vllm-coder` (`:8501`), `vllm-planner` (`:8511`), `vllm-legacy` (`:8500`, probe-only), `llamacpp`, `sglang`.
+- `GET /api/inference-backends` returns id, displayName, baseUrl, live health, supportsStreaming.
+- `route_by_role()` gains optional `backend_id: str | None = None`; default unchanged.
+- `POST /runs` accepts optional `backendId`; forwarded to `route_by_role`.
+- `AgentPreset.model` widened from cloud `Literal` to free-form string; new `backendId` + `role` fields; three seeded presets (c01 coder, planner, Ollama fallback).
+- `agentPresetId` surfaced end-to-end on run records (resolves two KNOWN_ISSUES entries).
 
-### 2.5 Verify
-- Start a run against each of the four backends in turn (pull/serve a small test model on each).
-- Confirm `model_router.py` routes correctly per selection.
-- Confirm the frontend selector reflects real-time health for all four.
+### 2.2 Frontend — backend selector + live health
+- `HealthBadge` component reusing existing `badge badge--*` CSS classes (do not introduce Tailwind bg-* classes — codebase pattern is CSS-class based).
+- `BackendSelector` radio group (not `<select>`) with per-item badge + latency + error tooltip.
+- Wired into Agent Presets editor and run-creation form; "Auto" default preserves current role-based routing.
+
+### 2.3 Colossus adapter tuning — docs only
+- Stage 2 documents SM_120 build flags for llama.cpp / vLLM / SGLang in `docs/colossus-inference-setup.md`.
+- **No new builds on Colossus in this stage.** Colossus's live topology (Ollama + vLLM under `ops/vllm_supervisor.sh` per ADR-009 §3a) is F.3-validated and must not change without a new ADR. llama.cpp / SGLang deployment deferred to a future ADR; adapter side is ready when that ADR lands.
+
+### 2.4 VRAM-aware quant/concurrency budget
+- `hardware.py` (nvidia-smi VRAM + compute-cap query), `quant_selector.py` (deterministic tier lookup — not an LLM judgment), `concurrency.py` (runtime-computed ceiling).
+- `GET /api/inference-backends/concurrency-limit` + a read-only `ConcurrencyLimitDisplay` on the Settings page.
+
+### 2.5 Exit gate
+See `docs/reconciliation-plan-stage-2.md` § "Stage 2 exit gate" for the full manual checklist, including the F.3 SWE-bench 5-task smoke re-run to confirm additive `backendId` did not regress role-based routing.
 
 ---
 

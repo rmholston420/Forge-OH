@@ -4825,3 +4825,23 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Ports / adapters affected:** none (validation + docs only)
 - **PORTING_LEDGER / ADR updated:** ADR-013 addendum (smoke-30 v2 calibration + regression band)
 - **Stop-condition status:** F.3 Path A validation + smoke-30 v2 calibration **CLOSED**. Stage 1 tooling frozen. Ready for Stage 2.1 (InferenceBackend protocol in `bff/services/model_router.py`).
+
+## 2026-08-05 21:58 EDT — Stage 2 plan amended to match live model_router (docs-only)
+
+- **Stage / plugin / port:** Stage 2 (Inference-Backend Flexibility) · docs · no code changes
+- **What changed:**
+  - Added `docs/reconciliation-plan-stage-2.md` (amended, canonical for Stage 2 execution)
+  - Rewrote Stage 2 section of `docs/reconciliation-plan-v1.md` to summarize + point at the stage-2 doc
+- **Reason:** the v1 first-draft Stage 2 assumed a single vLLM endpoint at `:8001/v1` and an Ollama-only `route_by_role(role, model, backend_id)` signature. Live `bff/services/model_router.py` (post-F.3, `main` at `530db1a` era) implements the ADR-009 §3a dual-role topology (`:8501` coder / `:8511` planner) with `ops/vllm_supervisor.sh` swap-on-demand, `RoleRoute` dataclass, per-role locks, request-cap short-circuit (G.1 fix), and Ollama-fallback semantics. Executing the v1 first draft verbatim would have deleted all of that.
+- **Amended architectural invariant:** `InferenceBackend` is a health-inventory + selection layer ABOVE the existing role-routing core, not a replacement. `route_by_role()` keeps its signature; new optional `backend_id: str | None = None` parameter is additive. Default (None) preserves existing behavior byte-for-byte.
+- **Adapter set widened 4 → 6:** `ollama`, `vllm-coder` (:8501), `vllm-planner` (:8511), `vllm-legacy` (:8500, probe-only), `llamacpp` (not deployed on Colossus — adapter is health-visibility only), `sglang` (same).
+- **Colossus builds scope-cut:** Stage 2.3 is docs-only (`docs/colossus-inference-setup.md`). No llama.cpp / SGLang build on Colossus in Stage 2 — that requires a new ADR (ADR-009 §3a explicitly says one runtime holds the 5090 at a time; adding a new one is an architectural decision, not a stage step).
+- **KNOWN_ISSUES entries folded in:** the two Stage-2-adjacent items (AgentPreset `Literal` still cloud-only on main; `agentPresetId: null` on run responses) become 2.1.7 and 2.1.8 of the amended plan.
+- **Frontend badge pattern corrected:** v1 first draft assumed Tailwind `bg-*-500` classes; the codebase (verified in `src/features/mcp/McpServerCard.tsx`) uses `badge badge--success/warning/muted/error`. `HealthBadge` reuses the existing classes.
+- **Files touched:**
+  - `docs/reconciliation-plan-stage-2.md` — new (957 lines)
+  - `docs/reconciliation-plan-v1.md` — Stage 2 section rewritten as a short summary + pointer
+  - `BUILD_LOG.md` — this entry
+- **Ports / adapters affected:** none yet (docs-only). Stage 2.1 execution begins next session.
+- **PORTING_LEDGER / ADR updated:** none. ADR-009 §3a explicitly preserved and cited. If Stage 2.1 execution reveals a load-bearing decision (e.g. how `agentPresetId` persists absent an SQLite layer), a new ADR will be filed at that time.
+- **Stop-condition status:** Stage 2 amended plan on `main`. Ready to begin Stage 2.1 code work per amended plan.
