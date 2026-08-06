@@ -7042,3 +7042,39 @@ Next: Stage 7.1 begins after the queued 30-test benchmark confirms Stage 6 gains
 **PORTING_LEDGER / ADR updated**: none (audit confirmed existing content is correct).
 
 **Stop-condition status**: Companion §7.4 exit checklist per ADR-028 §6 item 2 **passes**: every commit hash resolves against its stated upstream; no `.env`-family secret file is staged or tracked; `.gitignore` coverage is complete. Stage 7 DoD items 1 + 2 both cleared (item 1 pending operator `docker compose up -d` verification). Items 3 + 4 (BUILD_LOG + SESSION_HANDOFF) satisfied by this commit.
+
+## 2026-08-06 14:48 EDT — Stage 7 DoD MET · docker compose bff + qdrant healthy on Colossus
+
+**Stage / plugin / port**: Stage 7 (deviated per [ADR-028](docs/adr/028-stage-7-deviation-topology-first-capability-slices-renumbered.md)) · docker-compose · no ports touched (topology-only stage).
+
+**What changed**:
+- Operator ran the exact §7.1 verification recipe on Colossus at 2026-08-06 14:47 EDT.
+- `docker compose up -d --build` succeeded after two fix commits landed earlier this session:
+  - `365ec15` — build context = repo root; COPY bff + openhands_tools_ext; add `.dockerignore`.
+  - `fe833b9` — drop nonexistent `pyproject.toml` COPY.
+- `docker compose ps` shows both services `Up 10 seconds`:
+  - `forge-oh-bff-1` (image `forge-oh-bff`), 0.0.0.0:8081→8081/tcp
+  - `forge-oh-qdrant-1` (image `qdrant/qdrant:v1.12.4`), 0.0.0.0:6333-6334→6333-6334/tcp
+- BFF startup log shows `Uvicorn running on http://0.0.0.0:8081` and `Application startup complete`.
+- Socket.IO polling probe against `http://127.0.0.1:8081/socket.io/?EIO=4&transport=polling` returned **`200`** — confirms `bff.main:app_with_sio` mount (not the bare `app`), which was the exact regression Stage 7 was created to prevent.
+- Qdrant probe against `http://127.0.0.1:6333/collections` returned `"ok"`.
+
+**Files touched (this entry documents verification, no new files)**: none.
+
+**Ports / adapters affected**: none (verification only).
+
+**PORTING_LEDGER / ADR updated**: ADR-028 §6 DoD items 1 + 2 + 3 + 4 all now cleared. ADR-028 remains `accepted`; no status change.
+
+**Non-blocking findings surfaced during verification** (filed to `KNOWN_ISSUES.md` at 2026-08-06 14:47 EDT):
+1. Dockerfile HEALTHCHECK probes `/health` which returns 404 (the real endpoint is under `/api/repograph/health`). Container is functionally healthy but Docker health status stays `starting` forever. Cosmetic.
+2. Trajectory drain scheduler logs `[Errno 13] Permission denied: '/home/bff'` once at container startup — non-root user has HOME=/home/bff but `useradd --system` didn't create the dir. Non-fatal (catch-and-continue); trajectory persistence inside the container silently no-ops. Cosmetic.
+
+Both are Docker-image-polish issues, not topology issues. Both defer to a follow-up cleanup slice outside Stage 7.
+
+**Stop-condition status**: **Stage 7 DoD MET.** ADR-028 §6 all four items cleared:
+- §6.1 companion §7.1 exit checklist — passes on Colossus (this entry).
+- §6.2 companion §7.4 exit checklist — passes (BUILD_LOG 2026-08-06 14:36 EDT).
+- §6.3 BUILD_LOG entries — this entry + 14:36 EDT.
+- §6.4 SESSION_HANDOFF overwrite — next action after this commit.
+
+**Next action**: Stage 8 initialization. Begin with 1-hour SDK-native investigation spike (does OpenHands SDK ≥1.40 already provide Microagents / Context Condensation / Pluggable Runtime that overlap with Council-Synthesis 8.1 / 8.6 / 8.2?). Then Slice 8.0 (vLLM serving-infra bundle: APC + spec-decode + fp8 KV-cache + chunked prefill).

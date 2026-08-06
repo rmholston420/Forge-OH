@@ -9,6 +9,28 @@ Timestamp format: `YYYY-MM-DD HH:MM EDT`.
 
 ---
 
+## 2026-08-06 14:47 EDT — BFF container HEALTHCHECK probes wrong path (`/health` → 404)
+
+- **Blocks:** none. Container is functionally healthy; Stage 7 DoD is met. `docker compose ps` just reports `(health: starting)` indefinitely and `docker logs` emits one 404 line per 30s from the internal probe.
+- **Symptom:** `docker logs forge-oh-bff-1` → `"GET /health HTTP/1.1" 404 Not Found` on every HEALTHCHECK interval.
+- **Root cause:** `bff/Dockerfile` HEALTHCHECK targets `http://localhost:8081/health`, but the only handler on `/health` is `bff/routers/repograph.py:190` mounted under `/api/repograph/*` (so the real URL is `/api/repograph/health`). `bff/main.py` exposes no bare `/health`.
+- **Attempted fixes:** none.
+- **Next investigation:** add a bare `@app.get("/health")` returning `{"ok": True}` to `bff/main.py` (cheap, standard convention). Alternative: change HEALTHCHECK to probe an unconditionally-200 endpoint like `/api/agent-presets`. Prefer the former.
+- **Related DEBUG_LOG search terms:** `health 404`, `HEALTHCHECK`, `docker container health`.
+
+---
+
+## 2026-08-06 14:47 EDT — Containerized BFF trajectory drain fails on missing `/home/bff`
+
+- **Blocks:** none. Startup completes; other subsystems work. Trajectory persistence inside the container silently no-ops until fixed.
+- **Symptom:** `docker logs forge-oh-bff-1` → `trajectory drain scheduler failed to start: [Errno 13] Permission denied: '/home/bff'` once at startup.
+- **Root cause:** `openhands_tools_ext/trajectory/store.py:59` resolves the DB path as `Path.home() / ".forge-oh" / "trajectories.db"`. In the container the non-root `bff` user (uid 1001) has `HOME=/home/bff` but `useradd --system` in `bff/Dockerfile` did not create that dir.
+- **Attempted fixes:** none.
+- **Next investigation:** two clean options — (1) create the home dir via `useradd --create-home --home-dir /home/bff` in `bff/Dockerfile`; or (2) set `TRAJECTORY_STORE_PATH=/app/data/trajectories.db` in `docker-compose.yml`, add a named volume mount for `/app/data`, and let `store.py:53`'s `override` path win. Prefer (2) — keeps trajectory DB out of the ephemeral container FS via a persistent volume.
+- **Related DEBUG_LOG search terms:** `trajectory drain`, `/home/bff`, `Permission denied`, `Path.home`.
+
+---
+
 ## 2026-08-06 00:05 EDT — confirm_unknown=True is required until analyzer attach is hard-required
 
 - **Blocks:** none. Current fail-closed behavior is correct; this issue documents the precondition for a future flip.

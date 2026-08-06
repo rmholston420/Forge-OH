@@ -2081,3 +2081,24 @@ Bff/qdrant compose came up (build succeeded, image tagged `forge-oh-bff`), but e
 - `.dockerignore` (new)
 
 **Related BUILD_LOG entry**: 2026-08-06 14:36 EDT (Stage 7.1 initial commit `6200028` that introduced the broken build context).
+
+## 2026-08-06 14:47 EDT — Two non-blocking cosmetic issues surfaced during Stage 7.1 verification
+
+**Symptom (both observed but non-fatal in `docker logs forge-oh-bff-1` immediately after successful startup)**:
+
+```
+trajectory drain scheduler failed to start: [Errno 13] Permission denied: '/home/bff'
+INFO:     127.0.0.1:35204 - "GET /health HTTP/1.1" 404 Not Found
+```
+
+Both surfaced only because the container went from red (crash-loop) to green (`Up 10 seconds (health: starting)`, socketio probe `200`, qdrant probe `"ok"`). BFF startup **completes** and traffic **flows** — these are cosmetic, filed to KNOWN_ISSUES rather than fixed inline.
+
+**Affected stage / plugin / port**: Stage 7.1 · containerized BFF · `bff/Dockerfile` HEALTHCHECK + `openhands_tools_ext.trajectory.store` path resolution.
+
+**Root cause A — `/health 404`**: `bff/Dockerfile` HEALTHCHECK probes `/health`, but the only handler on that path is `bff/routers/repograph.py:190` mounted under `/api/repograph/*` — so the actual URL is `/api/repograph/health`, not `/health`. `bff/main.py` exposes no bare `/health`. Container never reports "healthy" but is functionally serving.
+
+**Root cause B — trajectory drain permission denied**: `openhands_tools_ext/trajectory/store.py:59` resolves the trajectory DB path as `Path.home() / ".forge-oh" / "trajectories.db"`. In the container, the non-root `bff` user (uid 1001) has HOME=/home/bff which was never created by `useradd --system` in `bff/Dockerfile`. The trajectory drain scheduler catches the error and continues; startup proceeds.
+
+**Fix applied**: none in this session. Both filed to `KNOWN_ISSUES.md` for a follow-up cosmetic-cleanup slice. Neither impacts Stage 7 DoD (topology reconciliation), only Docker-image polish.
+
+**Related BUILD_LOG entry**: 2026-08-06 14:48 EDT (Stage 7 DoD MET).
