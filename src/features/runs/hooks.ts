@@ -12,6 +12,7 @@ import {
   forkRun,
   restartRun,
   sendRunMessage,
+  switchRunModel,
 } from './api';
 import type { CreateRunRequest } from './schemas';
 import { QUERY_KEYS } from '@/lib/query/query-keys';
@@ -159,6 +160,28 @@ export function useRestartRun() {
         });
       }
     },
+  });
+}
+
+/**
+ * Stage 6.5.2 — switchRunModel mutation (ADR-027).
+ *
+ * Variables shape:
+ *   { runId: string, agentPresetId: string }   — both required
+ *
+ * On success invalidates the run row + list so the header re-renders with
+ * the newly-resolved model badge.  Errors flow through as ApiError so the
+ * caller (RunModelSwitchModal) can inspect ``.status`` to render 404 /
+ * 422 / 503 / 502 messaging distinctly.
+ */
+export type SwitchRunModelVars = { runId: string; agentPresetId: string };
+
+export function useSwitchRunModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: SwitchRunModelVars) =>
+      switchRunModel(vars.runId, { agentPresetId: vars.agentPresetId }),
+    onSuccess: (_data, vars) => invalidateRun(qc, vars.runId),
   });
 }
 

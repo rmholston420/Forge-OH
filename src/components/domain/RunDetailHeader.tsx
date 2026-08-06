@@ -13,6 +13,12 @@ export interface RunDetailHeaderProps {
   onEditSecrets?: () => void;
   onApprove?: () => void;
   onReject?: () => void;
+  /**
+   * Stage 6.5.2 — open the runtime model-switch modal.  Rendered next to
+   * Fork; only shown when the run is running or paused (switching a
+   * completed/failed/awaiting run is a no-op the BFF would reject anyway).
+   */
+  onSwitchModel?: () => void;
   /** Disable all controls (e.g. while a mutation is in flight). */
   busy?: boolean;
 }
@@ -30,6 +36,7 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({
   onEditSecrets,
   onApprove,
   onReject,
+  onSwitchModel,
   busy = false,
 }) => {
   const isRunning = run.status === 'running' || run.status === 'streaming';
@@ -115,6 +122,16 @@ export const RunDetailHeader: React.FC<RunDetailHeaderProps> = ({
           >
             ⎇ Fork
           </button>
+          {(isRunning || isPaused) && onSwitchModel && (
+            <button
+              className={[styles.btn, styles['btn--secondary']].join(' ')}
+              onClick={onSwitchModel}
+              aria-label="Switch model"
+              disabled={busy}
+            >
+              🔀 Switch model
+            </button>
+          )}
           <button
             className={[styles.btn, styles['btn--secondary']].join(' ')}
             onClick={onEditSecrets}

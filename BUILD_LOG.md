@@ -6765,3 +6765,26 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **ADR-027 helper discrepancy note**: ADR-027 §1 mentioned a `get_conversation_id_for_run` helper. Confirmed via `bff/routers/runs.py` module docstring that `run_id === conversation_id` in this codebase — helper is not needed. Endpoint forwards directly to `f"/api/conversations/{run_id}/switch_llm"`. May file an ADR-027 amendment note; keeping this BUILD_LOG entry as the paper trail for now.
 - **Sandbox verification**: 14/14 pytest green in `/tmp/forge-oh-work`; regression suite (`test_runs_fork`, `test_runs_restart`, `test_model_router_catalog`) 68/68 green together.
 - **Stop-condition status**: §6.5.2 code + tests landed. Awaiting Colossus verify pass.
+
+## 2026-08-06 10:20 EDT — Stage 6.5.3: RunModelSwitchModal + header button (ADR-027)
+
+- **What was built**: Frontend model-switch control landed. Users can now change the LLM of a running or paused run mid-conversation via a modal preset picker in the run-detail header.
+- **Stage/plugin/port**: Stage 6.5 · runtime model switching · frontend of the `POST /api/runs/{run_id}/model` port shipped in §6.5.2 (`f58f66c`).
+- **Files added**:
+  - `src/components/domain/RunModelSwitchModal.tsx` — modal with preset picker, Confirm/Cancel flow, ADR-027 error-contract mapping (200 happy / 404 preset-or-run-not-found / 422 preset misconfigured / 503 model temporarily unavailable / 502 agent-server error). Reuses `Modal`, `Button`, `Banner` primitives — no new UI components introduced.
+  - `src/tests/unit/domain-RunModelSwitchModal.test.tsx` — 6 Vitest cases via MSW (title + preselect, no-op switch disabled, cancel path, 200 happy, 422 incompatible-role, 503 unavailable, 404 not-found).
+  - `src/tests/e2e/run-model-switch.spec.ts` — 2 Playwright cases: button visible on running/paused run + modal opens & cancels without side effects. Skips cleanly when no eligible run exists.
+- **Files modified**:
+  - `src/lib/api/endpoints.ts` — added `ENDPOINTS.RUNS.model(runId)`.
+  - `src/features/runs/api.ts` — added `switchRunModel()` + `SwitchModelAck` type.
+  - `src/features/runs/hooks.ts` — added `useSwitchRunModel()` + `SwitchRunModelVars` type (mirrors `useRestartRun` shape).
+  - `src/components/domain/RunDetailHeader.tsx` — added `onSwitchModel?: () => void` prop + `🔀 Switch model` button rendered only when `isRunning || isPaused` AND the prop is provided (guards against accidental exposure on completed/failed/awaiting runs).
+  - `src/app/(dashboard)/runs/[runId]/page.tsx` — mounted `RunModelSwitchModal` with `modelSwitchOpen` state; wired the header `onSwitchModel` callback.
+- **Ports/adapters affected**: none (this slice is pure UI wiring to the existing BFF port). BFF contract unchanged.
+- **ADR/ledger updates**: none required — this slice implements ADR-027, does not amend it.
+- **Design decisions** (both flagged to user as "make optimal choice" during scope inspection):
+  - **Placement**: separate button in the controls row (next to Fork/Env), NOT a hot dropdown embedded in the chip cluster. Rationale: chip cluster is read-only status; action buttons stay actions; modal provides an explicit Confirm step because mid-run model swap is a disruptive operation that should not be one-click-triggerable.
+  - **Error surfacing**: reuse `<Banner variant="error">` inside the modal (matching `RunSecretsModal` pattern). No new toast primitive introduced.
+- **Known follow-up (out of scope for §6.5.3)**: `RunSummarySchema` exposes `agentPresetName` but not `agentPresetId`. The modal currently falls back to `presets[0]` for preselection when no explicit `currentAgentPresetId` is passed. Wiring the current preset ID cleanly requires either (a) adding `agentPresetId` to `RunSummarySchema` + the BFF row (surface change) or (b) resolving the name → ID client-side from the preset list. Filed as a note in the page.tsx mount — not blocking §6.5.3 DoD because the fallback works and the modal's Confirm step is explicit.
+- **Verification**: sandbox has no `node_modules` (fresh checkout); TS + Vitest + Playwright run on Colossus after push.
+- **Stop-condition status**: §6.5.3 code + tests landed; Colossus verify pending.

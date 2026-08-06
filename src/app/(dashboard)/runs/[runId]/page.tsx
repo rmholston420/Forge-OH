@@ -15,6 +15,7 @@ import { useRunStream } from '@/lib/streaming/useRunStream';
 import type { StreamEvent } from '@/lib/streaming/useRunStream';
 import { RunDetailHeader } from '@/components/domain/RunDetailHeader';
 import { RunSecretsModal } from '@/components/domain/RunSecretsModal';
+import { RunModelSwitchModal } from '@/components/domain/RunModelSwitchModal';
 import { EventCard } from '@/components/domain/EventCard';
 import { ForkFromHereButton } from '@/components/domain/ForkFromHereButton';
 import { RestartFromHereButton } from '@/components/domain/RestartFromHereButton';
@@ -118,6 +119,7 @@ export default function RunDetailPage({
   const forkMut = useForkRun();
   const router = useRouter();
   const [secretsOpen, setSecretsOpen] = React.useState(false);
+  const [modelSwitchOpen, setModelSwitchOpen] = React.useState(false);
 
   const {
     selectedTab, setSelectedTab,
@@ -244,6 +246,7 @@ export default function RunDetailPage({
             });
           }}
           onEditSecrets={() => setSecretsOpen(true)}
+          onSwitchModel={() => setModelSwitchOpen(true)}
           onPause={() => {
             // One toggle drives both Pause and Resume based on current status.
             if (run.status === 'paused') resumeMut.mutate(run.id);
@@ -269,6 +272,18 @@ export default function RunDetailPage({
           runId={run.id}
           open={secretsOpen}
           onClose={() => setSecretsOpen(false)}
+        />
+      )}
+
+      {run && (
+        <RunModelSwitchModal
+          runId={run.id}
+          // NOTE: RunSummary does not yet expose ``agentPresetId`` — only
+          // ``agentPresetName``.  Wiring the current preset ID requires a
+          // separate slice (add ``agentPresetId`` to RunSummarySchema + the
+          // BFF row).  For now the modal falls back to preset[0] pre-selection.
+          open={modelSwitchOpen}
+          onClose={() => setModelSwitchOpen(false)}
         />
       )}
 

@@ -137,3 +137,40 @@ export async function sendRunMessage(runId: string, message: string): Promise<Me
   const result = await bffPost<MessageAck>(ENDPOINTS.RUNS.message(runId), { message });
   return unwrap(result);
 }
+
+// ---------------------------------------------------------------------------
+// Stage 6.5.2 — runtime model switching (ADR-027).
+// POST /api/runs/{run_id}/model with { agentPresetId }.
+//
+// The wire body is PRESET-ONLY.  Raw model strings and LLM-Input blobs are
+// rejected at the BFF's Pydantic layer because credentials/model-source must
+// never come from the browser — the BFF hydrates from the preset registry +
+// inference-backends registry and forwards to agent-server switch_llm.
+// See ADR-027 (Ratified 2026-08-06) and BUILD_LOG.md 2026-08-06 10:12 EDT.
+// ---------------------------------------------------------------------------
+
+export type SwitchModelAck = {
+  ok: boolean;
+  run_id: string;
+  agentPresetId: string;
+  resolved: {
+    role: 'coder' | 'planner' | string;
+    backend: 'vllm' | 'ollama' | string;
+    model: string;
+    base_url: string;
+    max_tokens: number;
+  };
+  resolved_model_note: string | null;
+  agent_server?: unknown;
+};
+
+export async function switchRunModel(
+  runId: string,
+  opts: { agentPresetId: string },
+): Promise<SwitchModelAck> {
+  const result = await bffPost<SwitchModelAck>(
+    ENDPOINTS.RUNS.model(runId),
+    { agentPresetId: opts.agentPresetId },
+  );
+  return unwrap(result);
+}

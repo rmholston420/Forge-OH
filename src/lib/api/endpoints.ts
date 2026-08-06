@@ -35,6 +35,12 @@ export const ENDPOINTS = {
     approve: (runId: string) => `${BASE}/runs/${runId}/approve`,
     reject: (runId: string) => `${BASE}/runs/${runId}/reject`,
     message: (runId: string) => `${BASE}/runs/${runId}/message`,
+    // Stage 6.5.2 — runtime model switching (ADR-027).  Wire body is
+    // ``{agentPresetId}`` only; the BFF hydrates the LLM-Input from the
+    // preset registry + inference-backends registry and forwards to
+    // agent-server ``POST /api/conversations/{cid}/switch_llm``.
+    // Raw ``model`` / ``backendId`` from the browser is explicitly rejected.
+    model: (runId: string) => `${BASE}/runs/${runId}/model`,
     secrets: (runId: string) => `${BASE}/runs/${runId}/secrets`,
     // Stage 3.4 — the BFF endpoint at bff/routers/runs.py::compare_runs
     // takes `base` + `fork` query keys. The previous `left` / `right`
