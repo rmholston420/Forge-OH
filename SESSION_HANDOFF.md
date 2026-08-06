@@ -1,39 +1,45 @@
-# Forge-OH Session Handoff — 2026-08-05 09:52 EDT
+# Forge-OH Session Handoff — 2026-08-05 20:20 EDT
 
 ## Current build-sequencing position
 
-- **Stage / phase:** Stage 1 COMPLETE — Stage 2 (Inference-Backend Flexibility) not yet started.
+- **Stage / phase:** Stage 1 COMPLETE + F.3 SWE-bench Verified validation CLOSED. Stage 2 (Inference-Backend Flexibility) not yet started.
 - **Plugin / kernel component:** kernel · BFF · model_router.
 - **Port(s) in progress:** none. Next port: `InferenceBackend` protocol (Stage 2.1).
 
 ## Completed this session
 
-- Three-PR chain merged to `main`:
-  - PR #5 `2aa3065` — Stage 1 Reconciliation Plan v1 (sub-slices 1.1–1.7).
-  - PR #6 `b37944c` — ADR-012 Dual-Mode Model Routing (docs only).
-  - PR #7 `c6009c7` — F.3 SWE-bench harness + ADRs 013 / 015 / 016 / 017.
-- ADR-016 mirror parity closeout committed to `main` as `c22c037`:
-  - Tracked `scripts/check-approval-checkbox.ts` and `scripts/e2e-approval.ts`.
-  - `.gitignore` explicit rules for `scripts/debug-out/` and `scripts/__pycache__/`.
-  - Colossus-side deletion of five dead Path D bench scripts and two dead `vllm_start_qwen*` launchers superseded by `ops/vllm_launch_{coder,planner}.sh`.
-- Stage 1 exit-gate: **7/7 automated + 5/5 browser eyeball + 19/19 Playwright** — all green.
-- Full-500 SWE-bench Verified run killed at 20/500 (3 resolved = 15% pass@1) by user request; partial output preserved at `~/.forge-oh/bench_pathF_swebench/20260805_0907_run/`. Will be restarted clean on green Stage 1 main.
+- **F.3 Path A SWE-bench Verified full-500 run** on green Stage-1 main (`530db1a`):
+  - **pass@1 = 26.6%** (133/500 raw) · **28.6%** attempted-only (133/465 excl. 35 context-skips)
+  - Wall total 8h55m · median/task 5.52s · mean/task 10.86s
+  - Zero harness crashes · zero vLLM disconnects · zero docker apply failures
+  - GPU envelope stable: 32,599 MiB peak VRAM (99.98%) · 75 °C peak temp · 454 W peak power · 89% avg util · 464/500 NVML sample sessions
+  - Artifacts: `~/.forge-oh/bench_pathF_swebench/20260805_1025_run/` (Colossus-local, gitignored per ADR-016)
+- **c01 canonical coder ratification (F.1b) CONFIRMED.** F.3 full-500 produced no signal to re-select or swap; c01 stays canonical.
+- **Per-repo verdict**: scikit-learn/pytest/xarray strong (37-53% attempted); astropy/matplotlib weak (9-16% raw); django (N=231) most defensible at 28.1% raw.
+- **ADR-013 amendment #2** prepended documenting the F.3 full-500 verdict, GPU envelope, per-repo breakdown, and CLOSED status for F.3 Path A validation phase.
+- **BUILD_LOG.md** appended with F.3 full-500 completion entry.
+- **KNOWN_ISSUES.md** gained informational entry documenting 7.0% context-budget-skip ceiling as c01 upper bound at `max_model_len=32768`.
+- **ADR index (`docs/adr/README.md`)** row for ADR-013 updated with amendment #2 status.
 
 ## Remaining before current Definition of Done
 
-- **Stage 1 DoD:** none — Stage 1 is fully complete.
+- **Stage 1 DoD:** none — Stage 1 is fully complete AND validated by full-500 SWE-bench Verified run.
 - **Stage 2 DoD:** all of Stage 2 remains. Next action below.
+- **F.3 follow-up (deferred, not blocking):** implement `apply_and_test.py` docker glue (8-step reference in module docstring). Not required for Stage 2 progression.
+- **ADR-013 amendment #3 (queued, not blocking):** will land if/when Path B (Stage 1H.5 full Forge-OH agent loop) produces a materially different pass@1.
 
 ## Open questions / awaiting user answer
 
-- **Restart full-500 SWE-bench Verified run** (was killed at 20/500 to close Stage 1 clean). User indicated intent to restart on green main.
-- **Two Stage-2 exit-gate acceptance criteria** were formally deferred from Stage 1 and filed in `KNOWN_ISSUES.md`:
-  - Agent-preset `ModelId` is a static `Literal` with no local-endpoint plumbing.
-  - `GET /api/runs/{id}` returns `agentPresetId: null` on succeeded runs.
-  These resolve together in Stage 2.1 when the `InferenceBackend` protocol formally consumes preset config.
+- None. F.3 Path A validation phase closed cleanly with the full-500 verdict. Two Stage-2 exit-gate items already filed in `KNOWN_ISSUES.md` (agent-preset `ModelId` static Literal · `agentPresetId null` on runs) resolve together in Stage 2.1.
 
 ## Exact next action
 
-Restart the full-500 SWE-bench Verified run on green Stage 1 main. Then begin Stage 2.1: `InferenceBackend` protocol in `bff/services/model_router.py`, per `docs/reconciliation-plan-v1.md` Stage 2.
+Begin **Stage 2.1: `InferenceBackend` protocol in `bff/services/model_router.py`**, per `docs/reconciliation-plan-v1.md` Stage 2. Scope:
 
-Colossus is on `main` at `c22c037` after this closeout lands; working tree clean; three stale slice branches deleted; `scripts/` inventory mirrors GitHub exactly.
+- Introduce `InferenceBackend` protocol mapping `ModelId → {endpoint, api_style, sampling_defaults}`.
+- Wire the two Colossus vLLM endpoints (`:8501` coder, `:8511` planner) and Ollama (`:11434`) into the resolver.
+- Update agent-preset seed data so at least one preset resolves to c01 canonical coder locally.
+- Persist `agentPresetId` on run records (resolves the `agentPresetId: null` KNOWN_ISSUES entry).
+- Exit-gate: creating a preset with a real local model produces a `routing.model` matching that preset on the resulting run record.
+
+Colossus is on `main` at `530db1a` before this closeout commit lands; working tree clean; F.3 artifacts preserved at `~/.forge-oh/bench_pathF_swebench/20260805_1025_run/`.

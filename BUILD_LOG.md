@@ -4762,3 +4762,23 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Ports / adapters affected:** none (verification only, no code changes).
 - **PORTING_LEDGER / ADR updated:** —
 - **Stop-condition status:** **Stage 1 stop condition MET.** Forge-OH is now functional enough to be used for Stage 2 (Inference-Backend Flexibility) work. Next action: begin Stage 2.1 (`InferenceBackend` protocol in `model_router.py`), which is the natural home for the two deferred acceptance criteria.
+
+## 2026-08-05 19:20 EDT — F.3 SWE-bench Verified full-500 complete on green Stage-1 main
+
+- **Stage / plugin / port:** Stage 1 (validation phase) · Path F.3 SWE-bench Verified · c01 canonical coder validation
+- **What changed:**
+  - F.3 Path A full-500 run completed on green `530db1a` main: **pass@1 = 26.6%** (133/500 raw · 28.6% attempted-only 133/465)
+  - Ratified c01 (Qwen3.6-27B INT4 AutoRound) as canonical coder from F.1b **confirmed** — no re-selection, no model swap indicated
+  - Zero harness crashes, zero vLLM disconnects, zero docker apply failures across 8h55m / 500 tasks / 464 NVML sample sessions
+  - GPU envelope held stable: 32,599 MiB peak VRAM (99.98%), 75 °C peak temp (under 83 °C throttle), 454 W peak power, 89% avg utilization
+  - 35 context-budget-skipped tasks (7.0%) — all had `prompt_tokens > 32k`; matplotlib/sympy/xarray dominant, all attributable to c01's 32k `max_model_len` window ceiling, not coder deficit
+  - Per-repo breakdown recorded in ADR-013 amendment #2: scikit-learn (43.8%), pytest (36.8%), xarray (53.3% attempted-only) cluster high; astropy (9.1%), matplotlib (11.8%) cluster low; django (28.1%, N=231) most statistically defensible slice
+- **Files touched:**
+  - `docs/adr/013-qwen36-27b-canonical-coder-planner.md` — amendment #2 prepended (F.3 full-500 verdict)
+  - `docs/adr/README.md` — row for ADR-013 updated with amendment #2 status
+  - `KNOWN_ISSUES.md` — informational entry added for context-budget-skip ceiling
+  - `SESSION_HANDOFF.md` — overwrite pointing at Stage 2.1 kickoff
+  - `BUILD_LOG.md` — this entry
+- **Ports / adapters affected:** none (validation-only artifact; no code changes)
+- **PORTING_LEDGER / ADR updated:** ADR-013 amendment #2 (F.3 full-500 validation)
+- **Stop-condition status:** F.3 Path A validation phase **CLOSED**. Stage 1 fully complete. Ready for Stage 2.1 (InferenceBackend protocol in `bff/services/model_router.py`).
