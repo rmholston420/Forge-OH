@@ -26,7 +26,10 @@ describe('AgentPresetCard', () => {
   it('renders name and model badge', () => {
     render(<AgentPresetCard preset={BASE} />);
     expect(screen.getByText('General Dev')).toBeInTheDocument();
-    expect(screen.getByText('GPT-4o')).toBeInTheDocument();
+    // Stage 2.1 badge behaviour: classifyModel renders preset.model verbatim
+    // (no case-folding).  Fixture is 'gpt-4o' — assert on that literal.
+    // (Fixed by Stage 7-C.2-hotfix 2026-08-06 after drift caused a false FAIL.)
+    expect(screen.getByText('gpt-4o')).toBeInTheDocument();
   });
 
   it('shows Default star badge when isDefault=true', () => {
