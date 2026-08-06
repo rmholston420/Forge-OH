@@ -6321,3 +6321,25 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 - **PORTING_LEDGER:** N/A (native git plumbing via subprocess; no OSS vendoring).
 - **ADR reference:** ADR-025 §Decision · Stage 6.4b.
 - **Stop-condition status (6.4b):** primitive in place — DoD not yet met. Next: step 2 (run-lifecycle wiring) + step 3 (read-path updates) + step 5 (FE chip) + step 6 (Colossus concurrency verify).
+
+## 2026-08-06 07:21 EDT — Stage 6.4b step 2 · GREEN (worktree wired into runs lifecycle)
+
+- **What shipped:** worktree provisioning wired into `create_run`, new `DELETE /runs/{id}` endpoint reaps managed worktrees, C1 leak-guard rolls back the worktree on any create-path failure.
+- **Commits:** `3cf0d20` (main wiring) + `d4d1dd2` (204-signature fix so FastAPI accepts the DELETE route).
+- **Decisions locked (per user):** A1 (non-git workspaces log-and-pass-through), B2 (dedicated DELETE endpoint in this slice), C1 (best-effort rollback on failed create).
+- **Verification on Colossus:**
+  - `pytest bff/tests/test_runs_worktree.py bff/tests/test_worktree_service.py bff/tests/test_runs_fork.py -v` → **39 passed in 0.32 s**.
+  - Full BFF suite (minus 3 pre-known agent-server-dependent files): **563 passed, 1 skipped, 2 failed, 23 deselected**. Both failures pre-exist Stage 6.4b (`test_event_relay_yield.py` since G.1 hotfix5, `test_repograph_router.py` since slice D.1) — verified via `git log`. Not our regression.
+- **Coverage highlights (new `test_runs_worktree.py`):**
+  - DELETE happy path: fetch conv, delete on agent-server, reap only when `working_dir` tail starts with `run-`.
+  - DELETE skips reap on unmanaged paths (`/workspaces/plain`) and on empty `working_dir`.
+  - DELETE tolerates agent-server 404 on delete (still reaps).
+  - DELETE tolerates `remove_worktree` raising (logs, still returns 204).
+  - DELETE surfaces 404 on missing conv, 502 on agent-server unreachable.
+- **Design decision preserved in code comments:** worktree keeps its mint-time name (`run-<hex12>`) for the run's whole lifetime. We do NOT rename to `<cid>` because agent-server already holds `working_dir` in memory; renaming (or `git worktree move`) would invalidate agent-server's file access. `delete_run` recovers the name from `conv.workspace.working_dir`.
+- **Stage/plugin/port:** Stage 6.4b · `bff/routers/runs.py` (create + delete) · consumes `bff.services.worktree` port.
+- **Files touched:** `bff/routers/runs.py`, `bff/tests/test_runs_worktree.py`.
+- **Ports/adapters affected:** new `DELETE /api/runs/{run_id}` endpoint; response class explicitly `Response` for 204.
+- **PORTING_LEDGER:** N/A (native code).
+- **ADR reference:** ADR-025 §Decision · Stage 6.4b · A1 + B2 + C1.
+- **Stop-condition status (6.4b):** primitive live, run lifecycle wired. **DoD not yet met** — read-path updates + Colossus concurrency verify still ahead. Next: step 3 (surface `workspaceType: "worktree"` on the RunSummary + confirm `run_compare` handles the divergent working_dirs correctly).
