@@ -14,7 +14,7 @@ event-detail drawer keeps working.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 _KIND_TO_TYPE: dict[str, str] = {
     "MessageEvent": "message",
@@ -357,8 +357,27 @@ def _extract_security_risk(raw: dict[str, Any]) -> str | None:
     return None
 
 
-def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
-    """Project a raw agent-server event to the frontend ToolEvent shape."""
+def normalize_event(
+    raw: dict[str, Any],
+    *,
+    sha_lookup: Callable[[str], str | None] | None = None,
+) -> dict[str, Any]:
+    """Project a raw agent-server event to the frontend ToolEvent shape.
+
+    ``sha_lookup`` (Stage 6.4c · ADR-026 §Storage) — optional callable that
+    receives an ``event_id`` and returns the commit-sha the BFF captured
+    at the moment that user-message event was submitted to agent-server,
+    or ``None`` when no sha is recorded.  When provided AND the event is a
+    user ``MessageEvent``, the returned dict gains a
+    ``commit_sha_at_time_of_event`` key.  Absent lookups downgrade
+    gracefully: the key is simply omitted and the frontend hides the
+    "Restart from here" button on that event.
+
+    Kept synchronous by design: the sync router paths call this on
+    already-materialised event dicts.  Callers that need bulk lookup
+    should pre-populate a dict via ``event_commit_ledger.bulk_get_shas``
+    and pass ``sha_lookup=result.get``.
+    """
     if not isinstance(raw, dict):
         return {
             "id": "",
@@ -416,8 +435,40 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
         if risk is not None:
             out["securityRisk"] = risk
 
+    # Stage 6.4c (ADR-026 §Storage): stamp commit_sha_at_time_of_event on
+    # user MessageEvents when the BFF's event_commit_ledger has a hit for
+    # this event_id.  The lookup is opt-in via `sha_lookup=`; callers that
+    # do not pass it (e.g. the sync test suite, F.16 event relay serializer
+    # smoke test) get the pre-ADR-026 shape unchanged.
+    #
+    # "User message" == kind=="MessageEvent" AND source=="user" (the same
+    # discriminator the trace-reconstruction pipeline uses in
+    # bff/services/trace_reconstruction.py).
+    if (
+        sha_lookup is not None
+        and kind == "MessageEvent"
+        and raw.get("source") == "user"
+    ):
+        event_id = raw.get("id") or ""
+        if event_id:
+            sha = sha_lookup(event_id)
+            if sha:
+                out["commit_sha_at_time_of_event"] = sha
+
     return out
 
 
-def normalize_events(items: list[Any]) -> list[dict[str, Any]]:
-    return [normalize_event(x) for x in items if isinstance(x, dict)]
+def normalize_events(
+    items: list[Any],
+    *,
+    sha_lookup: Callable[[str], str | None] | None = None,
+) -> list[dict[str, Any]]:
+    """Batch form of :func:`normalize_event` that threads ``sha_lookup``.
+
+    See :func:`normalize_event` for ``sha_lookup`` semantics.
+    """
+    return [
+        normalize_event(x, sha_lookup=sha_lookup)
+        for x in items
+        if isinstance(x, dict)
+    ]
