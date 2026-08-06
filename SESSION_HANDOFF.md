@@ -25,8 +25,9 @@ _Last updated: 2026-08-06 06:42 EDT_
 cd ~/dev/forge-oh
 git pull origin main
 
-# 1) Vitest: the button suite should now be 10/10 (was 9/9). Full run for safety.
-pnpm test:vitest 2>&1 | tail -20
+# 1) Vitest: the button suite should now be 10/10 (was 9/9).
+#    Script name is `test:unit` (NOT test:vitest — that name doesn't exist in package.json).
+pnpm test:unit -- src/tests/unit/domain-ForkFromHereButton.test.tsx 2>&1 | tail -20
 
 # 2) Clean prod build.
 pnpm build 2>&1 | tail -8
