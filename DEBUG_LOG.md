@@ -1435,3 +1435,19 @@ ValueError: Free memory on device cuda:0 (2.0/31.39 GiB) on startup is less than
 - **Files changed:** `bff/routers/runs.py`.
 - **Not addressed here:** run-store SQLite persistence of `agentPresetId`. The BFF's `run_id == conversation_id` (no separate SQLite run mapping) means a subsequent `GET /api/runs/{id}` after a BFF restart still cannot recover the field for old runs. That's the Stage 3 leftover documented in the amended Stage 2 plan; new runs return it correctly.
 - **Verification:** shape assertion added to the endpoint tests; live-run verification pending Stage 2.4 exit-gate on Colossus.
+
+## 2026-08-05 23:15 EDT — SDK security_analyzer surface: fully present at 1.40.0, no gap (informational)
+
+- **Symptom (pre-check):** Reconciliation plan v1 § 3.1 flagged as a decision gate: "confirm whether pinned openhands-sdk==1.40.0 exposes security_analyzer risk scores on ActionEvents; if absent, log SDK-gap and skip risk-based mode." Baseline inspection on Colossus confirmed the surface is present and complete.
+- **Affected stage/plugin/port:** Stage 3.1 · BFF · `bff/routers/runs.py` (attach point) + `bff/services/event_normalize.py` (surfacing).
+- **Root cause (of the pre-check ambiguity):** The plan pre-dated the SDK inspection. The docstring reference to `PatternSecurityAnalyzer` in `openhands/sdk/security/ensemble.py` seeded doubt; a first grep suggested the class didn't exist at a `pattern_analyzer.py` module path. Deeper inspection showed it lives at `openhands.sdk.security.defense_in_depth.pattern.PatternSecurityAnalyzer` and is re-exported from `openhands.sdk.security.__init__`.
+- **Fix applied (informational, not a code fix — this is baseline knowledge for future slices):**
+  - `ActionEvent.security_risk` is a real field on the event; the SDK populates it only when a `SecurityAnalyzer` is attached to the conversation.
+  - Enum values in `openhands.sdk.security.risk.SecurityRisk`: `UNKNOWN | LOW | MEDIUM | HIGH`.
+  - Confirmation policies at `openhands.sdk.security.confirmation_policy`: `AlwaysConfirm | NeverConfirm | ConfirmRisky(threshold: SecurityRisk, confirm_unknown: bool)` — discriminated union with `kind` as the tag.
+  - Wire shape for the confirmation-policy body: `{"policy": {"kind": "AlwaysConfirm"}}` (BFF already does this) or `{"policy": {"kind": "ConfirmRisky", "threshold": "MEDIUM", "confirm_unknown": true}}`.
+  - Wire shape for security_analyzer body: `{"security_analyzer": <analyzer.model_dump(mode="json")>}` posted to `/api/conversations/{cid}/security_analyzer`. Contract from `openhands.sdk.conversation.impl.remote_conversation:1410-1420`.
+  - Analyzers available at 1.40.0: `PatternSecurityAnalyzer` (deterministic regex, no LLM), `LLMSecurityAnalyzer` (trusts actor LLM's own risk annotation), `PolicyRailSecurityAnalyzer` (guardrails), `GraySwanAnalyzer` (external API, requires `GRAYSWAN_API_KEY`), `ToolShieldLLMSecurityAnalyzer` (separate guardrail LLM), `EnsembleSecurityAnalyzer` (merges multiple analyzers).
+- **Chosen default (Stage 3.1):** `PatternSecurityAnalyzer` — deterministic, no LLM cost, no external network dependency, no API key. Ships risk values on real patterns immediately; swap-out to `EnsembleSecurityAnalyzer` or `ToolShieldLLMSecurityAnalyzer` is a one-line change once we add preset-level analyzer selection in a later slice.
+- **Files touched:** none — this entry captures baseline SDK knowledge so no future session re-diagnoses.
+- **Related BUILD_LOG entry:** 2026-08-05 23:15 EDT — Stage 3.1 Security Analyzer risk indicators.

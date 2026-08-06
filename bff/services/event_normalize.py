@@ -166,6 +166,29 @@ def _generic_summary(ev: dict[str, Any]) -> str:
     return ev.get("kind", "event")
 
 
+# Valid SecurityRisk enum values from openhands.sdk.security.risk (SDK 1.40.0).
+# We pass these through verbatim to the frontend; anything else is dropped.
+_VALID_SECURITY_RISK = {"UNKNOWN", "LOW", "MEDIUM", "HIGH"}
+
+
+def _extract_security_risk(raw: dict[str, Any]) -> str | None:
+    """Pull `security_risk` off an ActionEvent, normalized to an enum string.
+
+    Returns None when the field is absent or invalid. Populated only when a
+    SecurityAnalyzer is attached to the conversation (Stage 3.1 attaches
+    PatternSecurityAnalyzer by default; see BUILD_LOG.md).
+    """
+    v = raw.get("security_risk")
+    if v is None:
+        return None
+    # SDK may serialize as an enum member or its string value.
+    if hasattr(v, "value"):
+        v = v.value
+    if isinstance(v, str) and v in _VALID_SECURITY_RISK:
+        return v
+    return None
+
+
 def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
     """Project a raw agent-server event to the frontend ToolEvent shape."""
     if not isinstance(raw, dict):
@@ -191,7 +214,7 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
     else:
         summary = _generic_summary(raw)
 
-    return {
+    out: dict[str, Any] = {
         "id": raw.get("id") or "",
         "eventId": raw.get("id") or "",
         "type": typ,
@@ -200,6 +223,16 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
         "summary": summary,
         "raw": raw,
     }
+
+    # Stage 3.1: surface SecurityAnalyzer risk annotations on ActionEvents.
+    # Only add the key when the value is a known SecurityRisk enum member;
+    # frontend hides the badge on UNKNOWN/absent.
+    if kind == "ActionEvent":
+        risk = _extract_security_risk(raw)
+        if risk is not None:
+            out["securityRisk"] = risk
+
+    return out
 
 
 def normalize_events(items: list[Any]) -> list[dict[str, Any]]:

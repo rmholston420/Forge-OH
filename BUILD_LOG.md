@@ -4930,3 +4930,33 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Iteration:** first Playwright run failed with "Cannot navigate to invalid URL" because relative `page.goto('/agents')` needs `baseURL` set. Matched the `gpu-popover.spec.ts` env-resolution pattern and pushed `ca720d5`.
 - **Files touched:** `src/tests/e2e/backend-selector.spec.ts` (env-var handling).
 - **Stop-condition status:** Stage 2 (backend visibility + preset routing + per-run pin override) COMPLETE per amended plan. Both DoD checks (§ 2.1 backend inventory + preset routing; § 2.2 frontend selector + preset card fix) met and verified live on Colossus. Ready for Stage 3.
+
+## 2026-08-05 23:15 EDT — Stage 3.1 — SecurityAnalyzer risk indicators (SDK surface confirmed present)
+
+- **What:** Surfaced `ActionEvent.security_risk` end-to-end and attached `PatternSecurityAnalyzer` by default on every new conversation. Users now see LOW/MEDIUM/HIGH risk chips next to action events, plus an auto-collapse toggle that hides UNKNOWN/absent-risk actions from the timeline. No LLM cost added — the pattern analyzer is deterministic regex-based.
+- **Stage / plugin / port:** Stage 3.1 · BFF+frontend · `event_normalize`, `security_analyzer` attach point, `EventCard`, `RiskBadge`, run-detail timeline.
+- **SDK surface confirmation (pre-code inspection):**
+  - `openhands-sdk==1.40.0` exposes `ActionEvent.security_risk` (in the model_fields list).
+  - `SecurityRisk` enum: `UNKNOWN | LOW | MEDIUM | HIGH` at `openhands.sdk.security.risk`.
+  - `ConfirmationPolicy` kinds (deferred to Stage 3.2): `AlwaysConfirm | NeverConfirm | ConfirmRisky(threshold, confirm_unknown)`.
+  - Attach point: `POST /api/conversations/{cid}/security_analyzer` with `{ "security_analyzer": <analyzer.model_dump(mode="json")> }` — parallel to the existing `/confirmation_policy` call. Contract from `openhands.sdk.conversation.impl.remote_conversation.set_security_analyzer` (line 1410-1420).
+  - `PatternSecurityAnalyzer` (`openhands.sdk.security.defense_in_depth.pattern`) constructs no-args with default `high_patterns`, `medium_patterns`, `injection_high_patterns`, `injection_medium_patterns`. Included in `openhands.sdk.security.__all__`.
+  - No SecurityAnalyzer was previously attached in `bff/routers/runs.py` — `security_risk` was always None on live events until this slice.
+- **Files touched (backend):**
+  - `bff/services/event_normalize.py` — added `_extract_security_risk()` and mapped `security_risk` → `securityRisk` on normalized ActionEvents. Only known enum values pass through; invalid/absent are dropped.
+  - `bff/routers/runs.py` — new "3aa" block POSTs `PatternSecurityAnalyzer().model_dump(mode="json")` right after conversation creation, before the confirmation-policy call. Best-effort: attach failure logs a warning but does not fail run creation. Runtime SDK import so tests without the SDK still import the module.
+  - `bff/tests/test_event_normalize.py` (new) — 9 cases covering all four enum values, invalid strings, enum-valued objects, non-ActionEvent kinds, and normalize_events filtering.
+- **Files touched (frontend):**
+  - `src/lib/schemas/event.ts` — added `SecurityRiskSchema` enum + `securityRisk` field on `ToolEventSchema`.
+  - `src/features/security/RiskBadge.tsx` (new) — CSS-Modules + core Badge component, mirrors `HealthBadge` pattern. LOW→success, MEDIUM→warning, HIGH→error; hides on UNKNOWN/null/absent. `role="status"` wrapper with aria-label.
+  - `src/components/domain/EventCard.tsx` — mounted `<RiskBadge>` inline in the header between summary and meta.
+  - `src/components/domain/EventCard.module.css` — added `.riskBadge` selector.
+  - `src/features/run-detail/store.ts` — added `autoCollapseLowRisk` state + `setAutoCollapseLowRisk` action.
+  - `src/app/(dashboard)/runs/[runId]/page.tsx` — pulled the toggle from the store, added a timeline toolbar with the checkbox, filter action events by `securityRisk` when the toggle is on. Preserved `securityRisk` through `toDisplayEvent`.
+  - `src/app/(dashboard)/runs/[runId]/run-detail.module.css` — added `.timelineToolbar`, `.autoCollapseToggle`, `.hiddenBadge` selectors using existing design tokens.
+  - `src/tests/unit/RiskBadge.test.tsx` (new) — 8 cases: LOW/MEDIUM/HIGH variant mapping, hidden on UNKNOWN/null/undefined, aria-label, visible text.
+  - `src/tests/e2e/risk-badge.spec.ts` (new) — route-mocked fixture spec, 2 tests: RiskBadge visibility + auto-collapse behavior.
+- **Ports / adapters affected:** none new. Uses the existing agent-server `POST /api/conversations/{cid}/security_analyzer` endpoint (SDK 1.40.0 contract).
+- **PORTING_LEDGER / ADR updated:** none. No external code vendored — this is a first-party wiring slice against the pinned SDK.
+- **KNOWN_ISSUES:** DependencyGuard (planned Stage 3.3) descoped and logged separately — no `pip install` / `npm install` call sites exist in the BFF layer, so a gate has no upstream caller. The right placement is inside an agent-server tool observer, which is out of scope for Stage 3. See KNOWN_ISSUES.md.
+- **Stop-condition status:** Stage 3.1 (backend surfaces `security_risk`; frontend renders risk badges + auto-collapse toggle; analyzer attached by default) COMPLETE per plan § 3.1 DoD. Pending Colossus live-run verification for the paste-block final check.

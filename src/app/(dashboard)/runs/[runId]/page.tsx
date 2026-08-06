@@ -56,11 +56,18 @@ type DisplayEvent = {
   payload?: Record<string, unknown>;
   rawPayload?: Record<string, unknown>;
   summary?: string;
+  securityRisk?: 'UNKNOWN' | 'LOW' | 'MEDIUM' | 'HIGH';
   raw?: unknown;
 };
 
+const _VALID_RISK = new Set(['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH']);
+
 const toDisplayEvent = (event: unknown): DisplayEvent => {
   const e = (event ?? {}) as Record<string, unknown>;
+  // Stage 3.1 — bootstrap events go through BFF normalize_event and arrive
+  // as `securityRisk`; streamed events are relayed raw from agent-server and
+  // carry `security_risk`. Accept either so the timeline is consistent.
+  const risk = e.securityRisk ?? e.security_risk;
   return {
     id: (e.id ?? e.eventId ?? `evt:${Date.now()}`) as string | number,
     type: String(e.type ?? 'message'),
@@ -71,6 +78,9 @@ const toDisplayEvent = (event: unknown): DisplayEvent => {
     payload: (e.payload as Record<string, unknown> | undefined) ?? {},
     rawPayload: (e.rawPayload as Record<string, unknown> | undefined) ?? {},
     summary: e.summary as string | undefined,
+    securityRisk: typeof risk === 'string' && _VALID_RISK.has(risk)
+      ? (risk as 'UNKNOWN' | 'LOW' | 'MEDIUM' | 'HIGH')
+      : undefined,
     raw: e.raw,
   };
 };
@@ -102,6 +112,7 @@ export default function RunDetailPage({
     streamReconnecting, setStreamReconnecting,
     setPendingApprovalBanner, pendingApprovalBanner,
     latestStreamEventId,
+    autoCollapseLowRisk, setAutoCollapseLowRisk,
   } = useRunDetailStore();
 
   // handleEvent uses StreamEvent (the socket wire type) — not ToolEvent.
@@ -131,10 +142,29 @@ export default function RunDetailPage({
     onReconnecting: useCallback(() => setStreamReconnectingRef.current(true), []),
   });
 
-  const allEvents = [
+  const allEventsUnfiltered = [
     ...bootstrapEvents,
     ...streamEvents.filter((se) => !bootstrapEvents.find((be) => be.id === se.id)),
   ];
+
+  // Stage 3.1 — auto-collapse toggle. When on, hide action events whose
+  // securityRisk is absent or UNKNOWN. Non-action events (messages,
+  // observations, errors) are never filtered so the timeline still tells
+  // the story of what the agent did.
+  // Known limitation (Stage 3.1): stream-relayed events currently arrive
+  // without BFF normalization, so they have `type: 'message'` fallback
+  // and slip through the filter. Bootstrap events (via `useRunEvents`)
+  // are normalized and filter correctly. Stream normalization is a
+  // follow-up slice.
+  const allEvents = autoCollapseLowRisk
+    ? allEventsUnfiltered.filter((evt) => {
+        const disp = toDisplayEvent(evt);
+        if (disp.type !== 'action') return true;
+        const r = disp.securityRisk;
+        return r === 'LOW' || r === 'MEDIUM' || r === 'HIGH';
+      })
+    : allEventsUnfiltered;
+  const hiddenCount = allEventsUnfiltered.length - allEvents.length;
 
   const streamState = streamReconnecting ? 'reconnecting' : streamConnected ? 'connected' : 'disconnected';
 
@@ -225,6 +255,22 @@ export default function RunDetailPage({
           />
           <div className={styles.timelineLayout}>
           <div className={styles.timeline}>
+            <div className={styles.timelineToolbar} role="toolbar" aria-label="Timeline options">
+              <label className={styles.autoCollapseToggle}>
+                <input
+                  type="checkbox"
+                  checked={autoCollapseLowRisk}
+                  onChange={(e) => setAutoCollapseLowRisk(e.target.checked)}
+                  aria-label="Auto-collapse low-risk actions"
+                />
+                <span>Auto-collapse low-risk actions</span>
+                {autoCollapseLowRisk && hiddenCount > 0 && (
+                  <span className={styles.hiddenBadge} aria-live="polite">
+                    {hiddenCount} hidden
+                  </span>
+                )}
+              </label>
+            </div>
             {runLoading && (
               <div className={styles.skeletonList}>
                 {Array.from({ length: 3 }).map((_, i) => (

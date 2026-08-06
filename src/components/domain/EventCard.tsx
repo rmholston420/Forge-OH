@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import type { ToolEvent } from '@/lib/schemas/event';
 import { formatDate } from '@/lib/utils/format';
+import { RiskBadge } from '@/features/security/RiskBadge';
 import styles from './EventCard.module.css';
 
 const EVENT_ICONS: Record<string, string> = {
@@ -45,6 +46,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, selected, highlight
       <div className={styles.header}>
         <span className={styles.icon} aria-hidden="true">{icon}</span>
         <span className={styles.summary}>{String(event.summary ?? '')}</span>
+        <RiskBadge risk={event.securityRisk} className={styles.riskBadge} />
         <span className={styles.meta}>{formatDate(event.timestamp)}</span>
         {Boolean(event.raw) && (
           <button

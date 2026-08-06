@@ -73,3 +73,37 @@
   overflow-x: auto;
   border-top: 1px solid var(--color-border-subtle);
 }
+
+/* Stage 3.1 — timeline toolbar with auto-collapse toggle. */
+.timelineToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  background: var(--color-bg-surface-alt);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.autoCollapseToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+  user-select: none;
+}
+
+.autoCollapseToggle input[type="checkbox"] { cursor: pointer; }
+
+.hiddenBadge {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+}

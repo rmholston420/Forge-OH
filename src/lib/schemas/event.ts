@@ -25,6 +25,12 @@ export const EventTypeSchema = z.enum([
 
 export type EventType = z.infer<typeof EventTypeSchema>;
 
+// Stage 3.1 — mirrors openhands.sdk.security.risk.SecurityRisk (SDK 1.40.0).
+// Only populated on ActionEvents when a SecurityAnalyzer is attached to the
+// conversation (Stage 3.1 attaches PatternSecurityAnalyzer by default).
+export const SecurityRiskSchema = z.enum(['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH']);
+export type SecurityRisk = z.infer<typeof SecurityRiskSchema>;
+
 export const ToolEventSchema = z.object({
   id: z.union([z.string(), z.number()]),
   eventId: z.union([z.string(), z.number()]).optional(),
@@ -33,6 +39,7 @@ export const ToolEventSchema = z.object({
   runId: z.string().optional(),
   source: z.string().optional(),
   summary: z.string().optional(),
+  securityRisk: SecurityRiskSchema.optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
   rawPayload: z.record(z.string(), z.unknown()).optional(),
   raw: z.unknown().optional(),

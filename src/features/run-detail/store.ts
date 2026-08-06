@@ -15,6 +15,10 @@ const initialState = {
   streamEventIds: new Set<string | number>(),
   streamConnected: false,
   streamReconnecting: false,
+  // Stage 3.1: when true, hide action events whose securityRisk is UNKNOWN
+  // or absent so the timeline highlights only analyzer-flagged actions.
+  // Off by default — users opt in.
+  autoCollapseLowRisk: false,
 };
 
 export interface RunDetailStore {
@@ -34,6 +38,7 @@ export interface RunDetailStore {
   streamEventIds: Set<string | number>;
   streamConnected: boolean;
   streamReconnecting: boolean;
+  autoCollapseLowRisk: boolean;
 
   setSelectedTab: (tab: RunDetailStore['selectedTab']) => void;
   setSelectedEventId: (id: string | null) => void;
@@ -47,6 +52,7 @@ export interface RunDetailStore {
   clearStreamEvents: () => void;
   setStreamConnected: (value: boolean) => void;
   setStreamReconnecting: (value: boolean) => void;
+  setAutoCollapseLowRisk: (value: boolean) => void;
   reset: () => void;
 }
 
@@ -81,5 +87,6 @@ export const useRunDetailStore = create<RunDetailStore>((set) => ({
   clearStreamEvents: () => set({ streamEvents: [], streamEventIds: new Set() }),
   setStreamConnected: (streamConnected) => set({ streamConnected }),
   setStreamReconnecting: (streamReconnecting) => set({ streamReconnecting }),
+  setAutoCollapseLowRisk: (autoCollapseLowRisk) => set({ autoCollapseLowRisk }),
   reset: () => set({ ...initialState, streamEventIds: new Set() }),
 }));

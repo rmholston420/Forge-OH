@@ -393,6 +393,34 @@ async def create_run(body: CreateRunRequest) -> dict:
     except Exception as exc:
         log.warning("create_run: seed_sidecar raised (swallowed): %s", exc)
 
+    # 3aa) Stage 3.1 — attach PatternSecurityAnalyzer so ActionEvents get
+    #      a real `security_risk` value (LOW/MEDIUM/HIGH/UNKNOWN).
+    #      Contract from openhands.sdk.conversation.impl.remote_conversation
+    #      (set_security_analyzer): POST { security_analyzer: <dump> } to
+    #      /api/conversations/{cid}/security_analyzer.
+    #      PatternSecurityAnalyzer is deterministic (regex-based) and has
+    #      no LLM cost. Best-effort: analyzer attach failure must not
+    #      break run creation. Runtime import so BFF unit tests without the
+    #      SDK installed still import this module.
+    try:
+        from openhands.sdk.security import PatternSecurityAnalyzer
+        analyzer_body = {
+            "security_analyzer": PatternSecurityAnalyzer().model_dump(mode="json"),
+        }
+        sa_resp = await client.post(
+            f"/api/conversations/{cid}/security_analyzer",
+            json=analyzer_body,
+        )
+        if sa_resp.status_code >= 400:
+            log.warning(
+                "create_run: attaching PatternSecurityAnalyzer to %s failed: %s %s",
+                cid,
+                sa_resp.status_code,
+                sa_resp.text[:200],
+            )
+    except Exception as exc:
+        log.warning("create_run: security_analyzer attach failed: %s", exc)
+
     # 3a) Stage 1E — apply confirmation policy BEFORE kicking the loop off.
     #     'AlwaysConfirm' makes agent-server enter waiting_for_confirmation
     #     at every tool call; user must click Approve/Reject in the UI.

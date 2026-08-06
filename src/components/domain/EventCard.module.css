@@ -62,3 +62,6 @@
   max-height: 300px;
   overflow-y: auto;
 }
+
+/* Stage 3.1 — inline risk chip in the event header. */
+.riskBadge { flex-shrink: 0; margin-left: var(--space-2); }
