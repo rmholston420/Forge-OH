@@ -4782,3 +4782,22 @@ On the answerable subset (21 tasks): pass@1 = 9/21 = 43%. Qwen3-Coder anchor is 
 - **Ports / adapters affected:** none (validation-only artifact; no code changes)
 - **PORTING_LEDGER / ADR updated:** ADR-013 amendment #2 (F.3 full-500 validation)
 - **Stop-condition status:** F.3 Path A validation phase **CLOSED**. Stage 1 fully complete. Ready for Stage 2.1 (InferenceBackend protocol in `bff/services/model_router.py`).
+
+## 2026-08-05 21:05 EDT — Smoke-30 v2 calibrated task set replaces smoke-25
+
+- **Stage / plugin / port:** Stage 1 (validation-tooling refinement) · bench harness · c01 canonical coder
+- **What changed:**
+  - Replaced ad-hoc 5-repo × 5-task smoke-25 (django/sympy/sphinx/sklearn/matplotlib only) with a **stratified 30-task smoke** sampled from F.3 full-500 ground truth
+  - Sampling method: proportional-by-repo (weighted by full-500 population) × within-repo outcome stratification (resolved / unresolved / context-budget-skip) × `random.seed(42)` for reproducibility
+  - Full 12/12 repo coverage: adds astropy, xarray, pytest, pylint, requests, seaborn, flask to the smoke (all absent in old smoke-25)
+  - Composition: 8 resolved + 18 unresolved + 4 context-budget-skip = 30 tasks
+  - **Predicted pass@1: 26.7% raw (Δ = +0.1pt vs full-500's 26.6% raw)** — smoke now calibrated to predict full-500 within ~3pt
+  - Old smoke-25 predicted at 40% pass@1 (~+13pt overestimate); new smoke-30 predicted at 26.7% (~+0.1pt) — over 100× better calibration
+  - CLI: `--smoke` is the new preferred flag; `--smoke-25` retained as alias (now runs the 30-task set — backward-compat but no longer 25 tasks)
+  - Every task ID in the smoke has a known outcome from full-500 log (embedded as `# expected: <outcome>` comment) so future runs can regression-test at task level, not just aggregate
+- **Files touched:**
+  - `bench/pathF_swebench/bench_pathF_swebench.py` — `SMOKE_25_TASK_IDS` → `SMOKE_TASK_IDS` (30 entries); argparse flag `--smoke-25` → `--smoke`/`--smoke-25` dual-name; manifest field `smoke_25` → `smoke` + new `smoke_task_count`
+  - `BUILD_LOG.md` — this entry
+- **Ports / adapters affected:** none (harness-tooling only; no runtime behavior change for BFF/model_router/OpenHands SDK)
+- **PORTING_LEDGER / ADR updated:** none (documented in ADR-013 amendment #2 references; no new ADR needed — this is a bench-tooling refinement, not an architectural decision)
+- **Stop-condition status:** ready to run. Next: user runs `python3 -m bench.pathF_swebench.bench_pathF_swebench --smoke --model c01` on Colossus; validate actual pass@1 lands within 3pt of predicted 26.7%.

@@ -114,44 +114,67 @@ except Exception as _e:  # pragma: no cover - import guard
     _GPU_SAMPLER_AVAILABLE = False
     print(f"[F.3 Path A] warn: NVML sampler unavailable: {_e}", flush=True)
 
-# 25-task cross-repo smoke set. 5 tasks each from 5 different repos to
-# stress-test image pulls + repo-specific test invocations before committing
-# to the overnight full-500 run. IDs sampled from SWE-bench Verified test split
-# (princeton-nlp/SWE-bench_Verified). Chosen to cover distinct base_commits
-# per repo — same base_commit means same image, so we'd get an artificial
-# free hit on the second task.
-SMOKE_25_TASK_IDS = [
-    # Django (5)
-    "django__django-10914",  # confirmed green in F.3.0
-    "django__django-11133",
-    "django__django-12708",
-    "django__django-13315",
-    "django__django-14580",
-    # Sympy (5)
-    "sympy__sympy-13480",
-    "sympy__sympy-13877",
-    "sympy__sympy-14248",
-    "sympy__sympy-18189",
-    "sympy__sympy-20590",  # SWE-bench README's validate-gold instance
-    # Sphinx (5)
-    "sphinx-doc__sphinx-8035",
-    "sphinx-doc__sphinx-8595",
-    "sphinx-doc__sphinx-8721",
-    "sphinx-doc__sphinx-9367",
-    "sphinx-doc__sphinx-10466",
-    # Scikit-learn (5)
-    "scikit-learn__scikit-learn-10297",
-    "scikit-learn__scikit-learn-11310",
-    "scikit-learn__scikit-learn-13439",
-    "scikit-learn__scikit-learn-14053",
-    "scikit-learn__scikit-learn-15100",
-    # Matplotlib (5)
-    "matplotlib__matplotlib-22719",
-    "matplotlib__matplotlib-23299",
-    "matplotlib__matplotlib-24026",
-    "matplotlib__matplotlib-24149",
-    "matplotlib__matplotlib-25311",
+# 30-task calibrated smoke set (v2) — stratified sample from the F.3 full-500
+# ground-truth outcomes (~/.forge-oh/bench_pathF_swebench/20260805_1025_run,
+# recorded in ADR-013 amendment #2). Proportional to full-500 repo distribution
+# (django=231, sympy=75, sphinx=44, ...) with within-repo stratification by
+# outcome (resolved / unresolved / context-budget-skip) using random.seed(42).
+#
+# Predicted pass@1 = 26.7% raw (Δ = +0.1pt vs full-500's 26.6% raw); this smoke
+# is calibrated to predict full-500 within 3pt for regression-testing harness
+# changes without a 9-hour full run. Every task listed here has a KNOWN outcome
+# from the full-500 log, marked in the comment column.
+#
+# Composition: 8 resolved + 18 unresolved + 4 context-budget-skip = 30.
+# Full 12/12 repo coverage (adds astropy/xarray/pytest/pylint/requests/seaborn/
+# flask that were absent in the old 5-repo smoke-25).
+SMOKE_TASK_IDS = [
+    # django/django (11: 3 resolved + 7 unresolved + 1 skip; largest slice)
+    "django__django-11099",       # expected: resolved
+    "django__django-11749",       # expected: unresolved
+    "django__django-11880",       # expected: unresolved
+    "django__django-11999",       # expected: resolved
+    "django__django-12308",       # expected: unresolved
+    "django__django-13401",       # expected: unresolved
+    "django__django-13512",       # expected: unresolved
+    "django__django-13925",       # expected: resolved
+    "django__django-15629",       # expected: skip
+    "django__django-16333",       # expected: unresolved
+    "django__django-16801",       # expected: unresolved
+    # sympy/sympy (5: 1 resolved + 3 unresolved + 1 skip)
+    "sympy__sympy-12096",         # expected: unresolved
+    "sympy__sympy-13031",         # expected: unresolved
+    "sympy__sympy-13878",         # expected: unresolved
+    "sympy__sympy-14248",         # expected: skip
+    "sympy__sympy-14711",         # expected: resolved
+    # sphinx-doc/sphinx (3: 1 resolved + 1 unresolved + 1 skip)
+    "sphinx-doc__sphinx-7590",    # expected: skip
+    "sphinx-doc__sphinx-8548",    # expected: unresolved
+    "sphinx-doc__sphinx-9591",    # expected: resolved
+    # matplotlib/matplotlib (2: 1 resolved + 1 skip — hardest repo, skip-heavy)
+    "matplotlib__matplotlib-24570",  # expected: resolved
+    "matplotlib__matplotlib-26208",  # expected: skip
+    # scikit-learn/scikit-learn (2: 1 resolved + 1 unresolved — strongest repo)
+    "scikit-learn__scikit-learn-13142",  # expected: unresolved
+    "scikit-learn__scikit-learn-14629",  # expected: resolved
+    # pydata/xarray (1 unresolved)
+    "pydata__xarray-4687",        # expected: unresolved
+    # astropy/astropy (1 unresolved — weakest repo by pass@1)
+    "astropy__astropy-14365",     # expected: unresolved
+    # pytest-dev/pytest (1 unresolved)
+    "pytest-dev__pytest-10356",   # expected: unresolved
+    # pylint-dev/pylint (1 unresolved)
+    "pylint-dev__pylint-4661",    # expected: unresolved
+    # psf/requests (1 unresolved)
+    "psf__requests-6028",         # expected: unresolved
+    # mwaskom/seaborn (1 unresolved)
+    "mwaskom__seaborn-3187",      # expected: unresolved
+    # pallets/flask (1 resolved — sole flask task in full-500, resolved cleanly)
+    "pallets__flask-5014",        # expected: resolved
 ]
+
+# Backward-compat alias. Prefer SMOKE_TASK_IDS.
+SMOKE_25_TASK_IDS = SMOKE_TASK_IDS
 
 # ---------- vLLM call ----------
 
@@ -545,8 +568,12 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     task_group = ap.add_mutually_exclusive_group(required=True)
     task_group.add_argument("--tasks", help="instance_id, comma-separated list, or 'all'")
-    task_group.add_argument("--smoke-25", action="store_true",
-                            help="cross-repo smoke set (django/sympy/sphinx/sklearn/matplotlib × 5 each)")
+    task_group.add_argument("--smoke", "--smoke-25", dest="smoke_25",
+                            action="store_true",
+                            help="calibrated 30-task smoke stratified from F.3 "
+                                 "full-500 ground truth (predicts full-500 pass@1 "
+                                 "within ~3pt). --smoke-25 kept as alias for "
+                                 "backward compat, but now runs the 30-task set.")
     ap.add_argument("--model", choices=list(CELLS.keys()), default="c01",
                     help="model cell to test (default: c01, the ratified coder)")
     ap.add_argument("--dry-plan-only", action="store_true",
@@ -560,7 +587,7 @@ def main(argv: list[str]) -> int:
 
     # Resolve task list.
     if args.smoke_25:
-        ids = list(SMOKE_25_TASK_IDS)
+        ids = list(SMOKE_TASK_IDS)
     elif args.tasks == "all":
         ids = ["all"]
     else:
@@ -594,7 +621,8 @@ def main(argv: list[str]) -> int:
         "task_ids": [t["instance_id"] for t in tasks],
         "dry_plan_only": args.dry_plan_only,
         "keep_sandbox": args.keep_sandbox,
-        "smoke_25": bool(args.smoke_25),
+        "smoke": bool(args.smoke_25),
+        "smoke_task_count": len(SMOKE_TASK_IDS) if args.smoke_25 else 0,
         "resumed": bool(args.resume_run),
     }
     try:
