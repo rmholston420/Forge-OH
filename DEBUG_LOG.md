@@ -1721,3 +1721,41 @@ Two independent problems this caused:
 - `openhands_tools_ext/tests/write/test_write_note_idempotent.py` — regression test.
 
 **Also fixed in same commit:** `scripts/test-crash-resume.sh` phase 4 was silent on success. Added `echo` on success + on the replay-mark response for observability. No behavior change.
+
+## 2026-08-06 06:37 EDT — BFF Socket.IO 403/404 when launched via `bff.main:app`
+
+- **Symptom:** Playwright spec fails on
+  `getByText('Disconnected from run stream').toHaveCount(0)` with browser
+  console repeatedly logging
+  `WebSocket connection to 'ws://localhost:8081/socket.io/...' failed:
+  Error during WebSocket handshake: Unexpected response code: 403`.
+  BFF log shows `WebSocket /socket.io/... 403 - connection rejected`.
+  Direct `curl http://127.0.0.1:8081/socket.io/?EIO=4&transport=polling`
+  returns HTTP 404 `{"detail":"Not Found"}`.
+- **Affected:** BFF · Socket.IO layer · any E2E spec that uses live socket
+  streaming or debug-inject relay.
+- **Root cause:** `bff/main.py` defines two ASGI objects:
+  - `app` — bare FastAPI (routes only, no socket.io mount)
+  - `app_with_sio = socketio.ASGIApp(sio, other_asgi_app=app)` — the real
+    entry-point that mounts `/socket.io/` in front of the FastAPI routes.
+  Launching `uvicorn bff.main:app` (as we had been doing manually) serves
+  only the bare FastAPI, so `/socket.io/` is unrouted → 404 on polling and
+  uvicorn's built-in WS protocol handler returns 403 on WebSocket upgrades
+  for unmounted paths.
+- **Fix:** always launch BFF with `uvicorn bff.main:app_with_sio`. Verified
+  handshake returns HTTP 200 with
+  `0{"sid":"...","upgrades":["websocket"],...}` payload.
+- **Files changed:** none (operational fix — recipe update).
+- **Canonical restart recipe (Colossus):**
+  ```bash
+  pkill -f 'uvicorn bff.main' 2>/dev/null
+  sleep 2
+  cd ~/dev/forge-oh
+  source .oh-venv/bin/activate
+  FORGE_TIMELINE_DEBUG_INJECT=1 PYTHONPATH=. \
+    nohup uvicorn bff.main:app_with_sio --host 0.0.0.0 --port 8081 \
+      > /tmp/forge-bff-8081.log 2>&1 &
+  disown
+  ```
+- **Cross-refs:** consider updating `forge-oh-colossus-ops` skill so future
+  sessions never launch `bff.main:app` again.

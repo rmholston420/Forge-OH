@@ -6177,3 +6177,38 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 **Stop-condition status:** ✅ Code paths shipped end-to-end. BFF tests: 9/9 PASS locally in the sandbox interpreter. Frontend tests: written, unverified in sandbox (no Node runtime available here). AWAITING Colossus verification block: `pytest bff/tests/test_runs_fork.py` + `pnpm vitest run src/tests/unit/domain-ForkFromHereButton.test.tsx` + manual UI click-through.
 
 **Next up (after DoD verified on Colossus):** Stage 6.5 — runtime model switching. Note: probe showed `supports_runtime_model_switch: false` on the current conversation — expect another spec-vs-reality divergence to investigate.
+
+## 2026-08-06 06:38 EDT — Stage 6.4 · Playwright DoD spec passing
+
+- **Slice:** Stage 6.4 · fork-from-here on user messages · Playwright E2E DoD
+- **What was built:**
+  - `src/tests/e2e/run-fork-from-here.spec.ts` — full Playwright DoD spec:
+    - Bypasses BFF `/api/runs` routing (which is blocked when vLLM :8501 is down)
+      by listing/creating a conversation directly on agent-server :8090.
+    - Uses agent-server 1.40.0 `/api/conversations/search` LIST route
+      (paginated) — not `/api/conversations` (batch-get by ids, 422 without them).
+    - Creates a bare conversation with
+      `workspace: {working_dir, kind: 'LocalWorkspace'}` when reuse yields none,
+      matching the create_body shape at `bff/routers/runs.py` L360-392.
+    - Waits for `StreamBanner` "Disconnected from run stream" text to disappear
+      before injecting events (socket-room join gate).
+    - Injects a user event and an agent event via `POST /api/_debug/inject-event`,
+      verifies the "Fork from here" button is visible on the user card and
+      absent on the agent card.
+    - Clicks fork, intercepts the outbound `POST /api/runs/{runId}/fork`, and
+      asserts the wire body contains `from_event_id: <userEventId>` verbatim.
+- **Files touched:**
+  - `src/tests/e2e/run-fork-from-here.spec.ts` (new + 4 iterations this session)
+- **Ports/adapters affected:** none (test-only slice)
+- **ADR/ledger:** no new ADR, no vendored code — hand-built test scaffolding.
+- **Stop-condition status:** MET.
+  - Regression: bff/tests/test_runs_fork.py = 9/9, full fork+idempotency+
+    endpoints suite = 38/38, Vitest ForkFromHereButton = 9/9, `pnpm build`
+    clean, and now Playwright E2E = 1/1 in 1.3s on Colossus.
+  - Wire-key regression defended at BFF, FE, unit-test, and E2E layers.
+- **Colossus verification:**
+  - Repo path `~/dev/forge-oh`, HEAD at `f2d43dd` at test time.
+  - Prod build `next start -p 3100` (never `next dev`).
+  - BFF must be launched via `uvicorn bff.main:app_with_sio` (NOT `bff.main:app`)
+    with `FORGE_TIMELINE_DEBUG_INJECT=1`. Using bare `app` mounts no
+    `/socket.io/` and yields 404/403 on WS handshake — logged in DEBUG_LOG.
