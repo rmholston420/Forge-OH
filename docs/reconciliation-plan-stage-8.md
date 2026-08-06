@@ -2,150 +2,193 @@
 
 **Status:** DRAFT (2026-08-06) — Slice 8.0 kickoff. Only §8.0 is drafted here; §8.0.5–§8.9 are placeholders that inherit from `Forge-OH-Improvements-Research-Model-Council-Synthesis.md` (Perplexity project files repo, commit `8e093bc`) and [ADR-029](./adr/029-sdk-native-adoption-for-stage-8.md).
 
-**Canonical governance:** ADR-028 (Stage 7 deviation, capability slices renumbered to Stage 8) and ADR-029 (SDK-native adoption per slice).
+**Canonical governance:** ADR-028 (Stage 7 deviation, capability slices renumbered to Stage 8), ADR-029 (SDK-native adoption per slice), ADR-013 amendment #1 (Qwen3.6-27B-int4-AutoRound coder / DeepSeek-R1-distill-32B-AWQ planner).
+
+**Revision history:**
+- 2026-08-06 15:12 EDT — initial draft targeted `scripts/vllm_start.sh` (F.18 GGUF experiment). Superseded within the hour.
+- 2026-08-06 15:24 EDT — retargeted to canonical `ops/vllm_launch_coder.sh` (Docker · int4-AutoRound) per ADR-013 amendment #1 + DEBUG_LOG 2026-08-03 18:34 EDT. VRAM math redone against actual F.3.0 concurrency=1 profile.
 
 ---
 
-## §8.0 — vLLM serving-infra config bundle
+## §8.0 — vLLM serving-infra config bundle (coder role first)
 
-### Scope (verbatim from Council-Synthesis §8.0, line 116)
+### Scope
 
-> Enable APC + spec-decode + fp8 KV-cache + chunked prefill; align OpenHands condenser `keep_first` with APC prefix; re-baseline smoke-30.
->
-> **Sizing:** 1 slice (config only). **Depends on:** — (independent). **Formerly:** 7.0.
+Council-Synthesis §8.0 (line 116) calls for one config bundle enabling APC + spec-decode + fp8 KV-cache + chunked prefill on vLLM. Forge-OH's canonical vLLM stack (per [ADR-013 amendment #1](./adr/013-qwen36-27b-canonical-coder-planner.md)) uses two Docker containers that share the single RTX 5090 via the supervisor's auto-swap policy:
+
+- **Coder** — `ops/vllm_launch_coder.sh` → `qwen3.6-27b-int4-autoround` on :8501, `vllm/vllm-openai:latest`.
+- **Planner** — `ops/vllm_launch_planner.sh` → `deepseek-r1-distill-qwen-32b-awq` on :8511, same image.
+
+Because the pair never runs concurrently on the same GPU (32 GiB is not enough for both), §8.0 applies the bundle **coder-only first**. A follow-up §8.0b copies the identical bundle onto the planner launcher after coder DoD is green. This isolates any regression to one model class, which the rollback bisect §Rollback strategy needs.
+
+**Native venv (`~/venv/vllm-new`) is NOT a target.** Per DEBUG_LOG 2026-08-03 18:34 EDT the native venv runs vLLM 0.10.2 which predates required features; the vetted stack is the pinned Docker image. F.19.5 tracks the native-venv 0.26+ upgrade separately.
 
 ### Definition of Done
 
-1. `scripts/vllm_start.sh` launches the current baseline model (`qwen3-coder-30b` GGUF) with the full flag bundle in §Flag matrix below, on port :8500, on Colossus, one nohup restart.
-2. `curl -s http://127.0.0.1:8500/v1/models` returns the served model within 900s of restart.
-3. `bench/pathF_swebench/` smoke-30 (the same 30 tasks that produced Path A pass@1 = 33.3% baseline at `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/`) re-runs against the reconfigured launcher.
-4. Smoke-30 does not regress by more than **1 task** vs. the 33.3% baseline (10/30 tasks solved). Any regression greater than 1 task blocks the slice and forces the fallback strategy in §Rollback.
+1. `ops/vllm_launch_coder.sh` launches with the full flag bundle in §Flag matrix below, on Colossus, via `ops/vllm_supervisor.sh up coder`.
+2. `curl -sf http://127.0.0.1:8501/v1/models` returns the served model (`qwen3.6-27b-int4-autoround`) within 900s of launch.
+3. `bench/pathF_swebench/` smoke-30 (same 30 tasks that produced Path A pass@1 = 33.3% baseline at `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/`) re-runs against the reconfigured launcher at `--concurrency 1` (F.3.0's operating point).
+4. Smoke-30 does not regress by more than **1 task** vs. the 33.3% baseline (10/30 tasks solved). Any regression greater than 1 task blocks the slice and forces the §Rollback strategy.
 5. The 4 context-budget-skipped tasks from KNOWN_ISSUES §68 (`django-15629`, `matplotlib-26208`, `sphinx-7590`, `sympy-14248`) no longer skip — they load and either pass or fail through the model, not through the harness's `context-budget-skip` short-circuit.
-6. **Condenser `keep_first` alignment** — `LLMSummarizingCondenser` config in whatever composes the Forge-OH agent (see [ADR-029 §D4](./adr/029-sdk-native-adoption-for-stage-8.md)) is set so its preserved prefix aligns with the vLLM APC prefix boundary. Concretely: `keep_first` events must render to a token count that is a multiple of the vLLM APC block size (see §Condenser alignment below).
-7. BUILD_LOG entry timestamped at slice completion, and SESSION_HANDOFF overwritten. No PORTING_LEDGER entry — this slice adopts SDK primitives already vendored and adds no new OSS.
+6. **Condenser `keep_first` alignment** — `LLMSummarizingCondenser` config in whatever composes the Forge-OH agent (per [ADR-029 §D4](./adr/029-sdk-native-adoption-for-stage-8.md)) is set so its preserved prefix aligns with the vLLM APC prefix boundary. See §Condenser alignment below.
+7. BUILD_LOG entry timestamped at slice completion. SESSION_HANDOFF overwritten to point to §8.0b (planner-side copy). No PORTING_LEDGER entry — this slice adopts SDK primitives already vendored and adds no new OSS.
 
 ### Stop condition (stricter than DoD, per ADR-028)
 
-Slice 8.0 stops the moment DoD item 4 (regression ≤ 1 task) can be attested. It does **not** wait for §8.0.5's 100-task expanded smoke or paired McNemar — those are §8.0.5's contract. Slice 8.0 also does not attempt to raise pass@1; it is a zero-code slice whose only success criterion is "no regression + context ceiling raised."
+Slice 8.0 stops the moment DoD item 4 (regression ≤ 1 task) can be attested. It does **not** wait for §8.0.5's 100-task expanded smoke or paired McNemar — those are §8.0.5's contract. Slice 8.0 also does not attempt to raise pass@1; it is a config-only slice whose only success criterion is "no regression + context ceiling raised."
 
 ### Flag matrix (proposed)
 
-Baseline for comparison is the current `scripts/vllm_start.sh` at commit `f5eff7b` (see §Baseline flags below).
+Baseline for comparison is the current `ops/vllm_launch_coder.sh` at commit `b0dd4a0` (see §Baseline flags below).
 
 | Flag | Current | Slice 8.0 target | Rationale |
 |---|---|---|---|
-| `--enable-prefix-caching` | ON | **ON (unchanged)** | APC already enabled. Slice 8.0 does not change this; it aligns the condenser to it (DoD item 6). |
-| `--kv-cache-dtype` | (default `auto` → fp16) | **`fp8`** | Halves KV memory per token. Confirmed working on Colossus SM_120 with AWQ models via `bench/pathE_qwen36_27b/vllm_launch.sh:195`. Enables DoD item 5 (raise ceiling without OOM). |
-| `--max-model-len` | 32768 | **65536** | Council-Synthesis §8.0 targets the 4/30 context-budget-skipped tasks. All four (matplotlib, sympy, sphinx, django) fit in 65k with 4k output reserve. 131072 (native) would force `--max-num-seqs` reduction and courts long-context regressions §8.0 warns about. |
-| `--max-num-seqs` | 8 | **8 (unchanged)** | 65k×fp8-KV × 8 seqs ≈ 12.5 GiB KV budget, fits in the ~13 GiB headroom left after 18.5 GiB weights + 0.5 GiB compile. Confirmed by DEBUG_LOG §2026-08-05 02:31 "AWQ/GPTQ 4-bit: usable up to ~32-35B params." Same 8 preserves throughput profile of the baseline. |
-| `--enable-chunked-prefill` | OFF (default varies by vLLM version) | **ON (explicit)** | Council-Synthesis §8.0 direct requirement. Makes long-prompt scheduling coexist cleanly with decode requests. Pairs with `--long-prefill-token-threshold` below. |
-| `--long-prefill-token-threshold` | (unset → default) | **`4096`** | Council-Synthesis line 66 (Gemini) recommends this as the direct fix for context-ceiling pressure. Prompts longer than 4096 tokens are chunked instead of one-shot prefilled; keeps decode latency responsive while ceiling is raised to 65k. |
+| `--enable-prefix-caching` | ON | **ON (unchanged)** | APC already enabled. |
+| `--kv-cache-dtype` | (default `auto` → fp16) | **`fp8`** | Halves KV memory per token. Proven on Colossus SM_120 with AWQ / compressed-tensors int4 models via `bench/pathE_qwen36_27b/vllm_launch.sh:195`. Enables DoD item 5 (raise ceiling without OOM). |
+| `--max-model-len` | 32768 | **65536** | Council-Synthesis §8.0 targets the 4/30 context-budget-skipped tasks. All four fit in 65k with 4k output reserve. 131072 (native) would force `--max-num-seqs` reduction and courts long-context regressions §8.0 warns about. |
+| `--max-num-seqs` | 128 | **128 (unchanged)** | Steady-state concurrency is 1 (F.3.0 uses `--concurrency 1` in `bench/pathF_swebench/`). 128 is a paged-allocator ceiling that does not itself allocate KV. VRAM math in §VRAM budget below shows the raised ceiling fits at concurrency=1. |
+| `--enable-chunked-prefill` | OFF (default varies by vLLM version) | **ON (explicit)** | Council-Synthesis §8.0 direct requirement. Makes long-prompt scheduling coexist cleanly with decode. Pairs with `--long-prefill-token-threshold`. |
+| `--long-prefill-token-threshold` | (unset → default) | **`4096`** | Council-Synthesis line 66 (Gemini) recommends this as the direct fix for context-ceiling pressure. Prompts >4096 tokens are chunked instead of one-shot prefilled. |
 | `--speculative-config` | OFF | **`'{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}'`** | n-gram spec-decode. Zero extra VRAM. Council-Synthesis rates "modest but stacks." Model-based draft deferred — its VRAM cost cannibalizes the fp8-KV win. |
-| `--dtype float16` | ON (GGUF-required) | **ON (unchanged)** | GGUF loader rejects bf16 on SM_120. Not a Slice 8.0 concern. |
-| `--gpu-memory-utilization` | 0.85 | **0.90** | Matches `bench/pathE_qwen36_27b/vllm_launch.sh:191`. Raises effective VRAM budget from 27.2 GiB to 28.8 GiB — the extra ~1.6 GiB is what makes the 65k×8-seq×fp8 KV envelope feasible. |
-| `--served-model-name` | `qwen3-coder-30b` | **`qwen3-coder-30b` (unchanged)** | Do not change; BFF model-router (`bff/services/model_router.py`) resolves by served name. |
-| `--host` / `--port` | `127.0.0.1:8500` | **unchanged** | Single-port baseline; coder+planner split deferred out of Slice 8.0. |
-| `--hf-config-path Qwen/Qwen3-Coder-30B-A3B-Instruct` | ON | **ON (unchanged)** | GGUF has no tokenizer config; this is required. |
+| `--gpu-memory-utilization` | 0.90 | **0.90 (unchanged)** | Already at pathE launcher level. |
+| `--dtype` | `auto` | **`auto` (unchanged)** | int4-AutoRound loader auto-selects; do not override. |
+| `--tool-call-parser qwen3_coder` | ON | **ON (unchanged)** | Model-specific; not a Slice 8.0 concern. |
+| `--enable-auto-tool-choice` | ON | **ON (unchanged)** | Coder-role requirement. |
+| `--trust-remote-code` | ON | **ON (unchanged)** | int4-AutoRound quant class requires it. |
+| `--host 0.0.0.0 --port 8000` (in-container) | ON | **ON (unchanged)** | Container-internal port; supervisor maps host `:8501 → :8000`. |
 | `VLLM_USE_FLASHINFER_SAMPLER=0` (env) | ON | **ON (unchanged)** | SM_120 workaround. |
 | `VLLM_ATTENTION_BACKEND=FLASH_ATTN` (env) | ON | **ON (unchanged)** | Required for SM_120. |
+| `HF_HUB_OFFLINE=1` (env) | ON | **ON (unchanged)** | Offline model resolution. |
 
-**Baseline flags** (current `scripts/vllm_start.sh` line 46–55 verbatim):
+**Baseline flags** (current `ops/vllm_launch_coder.sh` lines 55–68 verbatim):
 
 ```bash
-"$VENV_BIN" serve "$BLOB" \
-  --served-model-name "$SERVED_NAME" \
-  --host 127.0.0.1 \
-  --port "$PORT" \
-  --gpu-memory-utilization 0.85 \
+docker run -d --name "$CONTAINER" --gpus all \
+  --ipc=host --shm-size=8g \
+  "${BLACKWELL_ENVS[@]}" \
+  -v "$MODELS_DIR:/models:ro" \
+  -p "${PORT}:8000" \
+  "$IMAGE" \
+  --model "/models/$MODEL_DIR" \
+  --served-model-name "$NAME" \
+  --host 0.0.0.0 --port 8000 \
+  --gpu-memory-utilization 0.90 \
   --max-model-len 32768 \
-  --max-num-seqs 8 \
-  --dtype float16 \
+  --max-num-seqs 128 \
+  --dtype auto \
+  --trust-remote-code \
+  --tool-call-parser qwen3_coder \
+  --enable-auto-tool-choice \
   --enable-prefix-caching \
-  --hf-config-path Qwen/Qwen3-Coder-30B-A3B-Instruct
+  "$@"
 ```
 
-**Slice 8.0 target flags** (proposed replacement for the same block):
+**Slice 8.0 target flags** (proposed replacement — additions marked, existing preserved):
 
 ```bash
-"$VENV_BIN" serve "$BLOB" \
-  --served-model-name "$SERVED_NAME" \
-  --host 127.0.0.1 \
-  --port "$PORT" \
+docker run -d --name "$CONTAINER" --gpus all \
+  --ipc=host --shm-size=8g \
+  "${BLACKWELL_ENVS[@]}" \
+  -v "$MODELS_DIR:/models:ro" \
+  -p "${PORT}:8000" \
+  "$IMAGE" \
+  --model "/models/$MODEL_DIR" \
+  --served-model-name "$NAME" \
+  --host 0.0.0.0 --port 8000 \
   --gpu-memory-utilization 0.90 \
   --max-model-len 65536 \
-  --max-num-seqs 8 \
-  --dtype float16 \
+  --max-num-seqs 128 \
+  --dtype auto \
+  --trust-remote-code \
+  --tool-call-parser qwen3_coder \
+  --enable-auto-tool-choice \
   --enable-prefix-caching \
   --kv-cache-dtype fp8 \
   --enable-chunked-prefill \
   --long-prefill-token-threshold 4096 \
   --speculative-config '{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}' \
-  --hf-config-path Qwen/Qwen3-Coder-30B-A3B-Instruct
+  "$@"
 ```
 
-**Net change**: 5 flags added (`--kv-cache-dtype fp8`, `--enable-chunked-prefill`, `--long-prefill-token-threshold 4096`, `--speculative-config …`), 2 flags modified (`--gpu-memory-utilization 0.85 → 0.90`, `--max-model-len 32768 → 65536`), 0 flags removed. Zero code change outside `scripts/vllm_start.sh`.
+**Net change**: 4 flags added (`--kv-cache-dtype fp8`, `--enable-chunked-prefill`, `--long-prefill-token-threshold 4096`, `--speculative-config …`), 1 flag modified (`--max-model-len 32768 → 65536`), 0 flags removed. Zero code change outside `ops/vllm_launch_coder.sh`.
 
 ### VRAM budget math (for DoD item 4 confidence)
 
-- Total VRAM: 32.0 GiB (RTX 5090)
+Redone against actual conditions at F.3 (KNOWN_ISSUES §68 peak = 32,599 MiB at 99.98%) and F.3.0 concurrency=1 (`bench/pathF_swebench/apply_and_test.py:306`).
+
+- Total VRAM: 32.0 GiB
 - `gpu-memory-utilization=0.90`: usable = **28.8 GiB**
-- GGUF model weights (qwen3-coder-30b, Q4_K_M-class): ~**18.5 GiB**
-- torch.compile / inductor allocations: ~**0.5 GiB**
-- Reserved after weights + compile: **28.8 − 18.5 − 0.5 = 9.8 GiB for KV**
-- fp8 KV cost @ 65536 ctx × 8 seqs (Qwen3-Coder-30B-A3B, 48 layers, 8 KV heads × 128 head_dim):
-  - Per-token KV bytes ≈ 2 × layers × kv_heads × head_dim × sizeof(fp8) = 2 × 48 × 8 × 128 × 1 = **98,304 B ≈ 96 KiB**
-  - Per-seq KV @ 65536 ctx ≈ 96 KiB × 65536 = **6.0 GiB**
-  - 8 seqs × 6.0 GiB = **48 GiB → exceeds 9.8 GiB**
+- `qwen3.6-27b-int4-autoround` weights (compressed-tensors int4, ~27B params): ~**14.5 GiB** (measured from KNOWN_ISSUES §68 peak minus KV / activations)
+- torch.compile / inductor allocations + activations at ctx=32k: ~**5 GiB**
+- KV budget currently used at 32k × concurrency=1: **~13 GiB (fp16 KV)** — this is why F.3 hit 99.98%. Model config: 27B Qwen3.6, 40 layers, 8 KV heads, head_dim 128.
+- Per-token KV @ fp16: 2 × 40 × 8 × 128 × 2 = 163,840 B ≈ **160 KiB/token**
+- Sanity: 32768 tokens × 160 KiB = 5.0 GiB per seq @ fp16 → confirmed within measured range (max-num-seqs=128 with paged allocator, but concurrency=1 means only ~1 seq worth is resident at steady state; some paging overhead accounts for the 13 GiB observation).
 
-**This math shows the naive expansion doesn't fit.** vLLM's KV cache is not per-seq × ctx, it's a shared paged allocator (block size default 16 tokens). Effective KV need at steady state ≈ `avg_ctx_per_seq × num_seqs × per_token_kv`. On smoke-30 the avg prompt is ~12k tokens; steady-state KV therefore ≈ 96 KiB × 12,288 × 8 = **9.0 GiB**, which fits inside the 9.8 GiB envelope with ~0.8 GiB headroom.
+Under Slice 8.0 flags:
 
-**Peak KV** happens if all 8 concurrent sequences hit near-65k prompts simultaneously. This is extremely unlikely on smoke-30 (only 4/30 tasks exceed 32k), but if it happens vLLM will admission-control (queue instead of OOM) via its paged allocator — the effective behavior is "occasional preemption," not "crash." §8.0.5 will collect the numbers needed to prove or refute this in production.
+- fp8 KV halves per-token cost: **80 KiB/token**
+- @ max-model-len=65536, concurrency=1: 65536 × 80 KiB = **5.0 GiB per active seq** — same footprint as the current 32k×fp16 configuration.
+- **Slice 8.0's raised ceiling is VRAM-neutral at concurrency=1.** The gain is: prompts up to 65k tokens can now execute where they previously hit the harness's `context-budget-skip` short-circuit.
 
-**Contingency:** if the smoke-30 run hits repeated preemption, `--max-num-seqs 4` (halve concurrency) recovers throughput per seq at the cost of parallelism. This is the fallback in §Rollback item 2.
+**Concurrency>1 case (informational, not Slice 8.0):** If a future slice raises harness concurrency to 4, KV envelope becomes 4 × 5.0 GiB = 20 GiB, still within the ~13 GiB current + 8 GiB post-weight headroom = 21 GiB. Marginal but feasible.
+
+**Peak-load contingency (Slice 8.0):** if a smoke-30 task hits sustained 65k prompts and preemption cascades, `--max-num-seqs 32` (from 128) tightens the admission-control ceiling. This is §Rollback item 2.
 
 ### Condenser alignment (DoD item 6)
 
-Per [ADR-029 §D4](./adr/029-sdk-native-adoption-for-stage-8.md), `LLMSummarizingCondenser` gets composed into the Forge-OH agent stack (a compose-time change, not a slice on its own). The `keep_first` field must preserve enough events at the head of the conversation to cover the vLLM APC-cached prefix.
+Per [ADR-029 §D4](./adr/029-sdk-native-adoption-for-stage-8.md), `LLMSummarizingCondenser` gets composed into the Forge-OH agent stack (compose-time change, not a slice). The `keep_first` field must preserve enough events at the head of the conversation to cover the vLLM APC-cached prefix.
 
-vLLM APC caches at block granularity. **APC block size default is 16 tokens** (`--block-size 16`). The condenser's "kept events" render to a prompt block via `to_prompt`; that block's token length is what must be a multiple of 16 to align cleanly.
+vLLM APC caches at block granularity. **APC block size default is 16 tokens** (`--block-size 16` in vLLM ≥ 0.10). The condenser's "kept events" render to a prompt block via `to_prompt`; that block's token length is what must be a multiple of 16 to align cleanly.
 
 **Practical setting for Slice 8.0**:
 - The system prompt + task descriptor in Forge-OH's agent typically renders to ~1200 tokens (measured in `bench/pathF_swebench/` prompts).
-- `keep_first=4` (Council-Synthesis line 60 recommendation) preserves the first 4 events, which for Forge-OH's event schema is: `SystemPromptEvent`, `UserTaskEvent`, `RepoManifestEvent`, `PlanEvent`. Token count for this quadruple: measure at composition time, pad the `to_prompt` block with a trailing `\n` line to the next multiple of 16.
-- **Concrete value**: `keep_first=4` proposed. Alignment enforced at compose time via a helper (`bff/services/agent_compose.py::pad_prefix_to_apc_block` — a new one-function file, ≤ 20 LoC).
+- `keep_first=4` (Council-Synthesis line 60 recommendation) preserves the first 4 events, which for Forge-OH's event schema is: `SystemPromptEvent`, `UserTaskEvent`, `RepoManifestEvent`, `PlanEvent`. Token count for this quadruple varies per task but is always ≥ 1024.
+- **Concrete value**: `keep_first=4` proposed. Alignment enforced at compose time via a helper (`bff/services/agent_compose.py::pad_prefix_to_apc_block` — a new one-function file, ≤ 20 LoC) that pads the last-event trailing whitespace to the next multiple of 16 tokens.
 
-If measurement in §8.0.5 shows the 4-event prefix routinely varies in token count across tasks, we bump `keep_first` to 8 (still well within `LLMSummarizingCondenser`'s validated defaults).
+If measurement in §8.0.5 shows the 4-event prefix routinely varies in token count by ≥ 16 tokens across tasks (which would cause frequent APC misses), we bump `keep_first` to 8.
 
 ### Rollback strategy (if DoD item 4 fails)
 
 If the smoke-30 re-baseline regresses by more than 1 task:
 
-1. **Bisect the flag additions** (in this order): remove `--speculative-config` first (least tested; workload-dependent per Council-Synthesis). Re-run smoke. If pass, spec-decode alone caused the regression — file a follow-up to investigate acceptance rate.
-2. **If still regressed**: remove `--enable-chunked-prefill` + `--long-prefill-token-threshold`. Re-run.
-3. **If still regressed**: lower `--max-model-len` back to 32768 (isolates fp8 KV as the change). Re-run. If pass, the fp8 kernel has a long-context regression on GGUF + SM_120; file a DEBUG_LOG entry and defer the ceiling raise to a subsequent slice.
-4. **If still regressed**: revert `--kv-cache-dtype fp8`. Re-run. If pass, fp8 KV on GGUF float16 is not viable on this stack; note the finding and revisit at AWQ migration.
-5. **Final fallback**: revert `scripts/vllm_start.sh` to the exact `f5eff7b` state and file the failure as an ADR-worthy blocker.
+1. **Bisect the flag additions** (in this order): remove `--speculative-config` first (least tested; workload-dependent per Council-Synthesis). Re-run smoke. If pass, spec-decode alone caused the regression — file a follow-up to investigate n-gram acceptance rate on this model.
+2. **If still regressed**: tighten `--max-num-seqs 128 → 32` (admission-control ceiling; addresses preemption cascades). Re-run.
+3. **If still regressed**: remove `--enable-chunked-prefill` + `--long-prefill-token-threshold`. Re-run.
+4. **If still regressed**: lower `--max-model-len` back to 32768 (isolates fp8 KV as the change). Re-run. If pass, the fp8 kernel has a long-context regression on this model + SM_120; file DEBUG_LOG and defer the ceiling raise.
+5. **If still regressed**: revert `--kv-cache-dtype fp8`. Re-run. If pass, fp8 KV on int4-AutoRound is not viable on this stack; note the finding and revisit with a different weight quantization.
+6. **Final fallback**: revert `ops/vllm_launch_coder.sh` to exact `b0dd4a0` state and file the failure as an ADR-worthy blocker.
 
-Each rollback step is one commit. The bisect finishes in one bench run per step.
+Each rollback step is one commit. The bisect finishes in one bench run per step. Steps 4/5 also require restarting the vLLM container (`ops/vllm_supervisor.sh restart coder`); steps 1/2/3 also require restart.
 
 ### Files touched (Slice 8.0)
 
-1. `scripts/vllm_start.sh` — replace flag block (see §Flag matrix above).
+1. `ops/vllm_launch_coder.sh` — replace flag block (see §Flag matrix above).
 2. `bff/services/agent_compose.py` (new, ~20 LoC) — the APC-block-alignment helper for condenser `keep_first`.
-3. `bff/main.py` or wherever the agent is composed — one call to the helper.
+3. Whatever module composes the Forge-OH agent (locate at execution time; likely `bff/main.py` or a `bff/services/agent_factory.py`) — one call to the helper.
 4. `docs/reconciliation-plan-stage-8.md` (this file) — mark §8.0 status → **Ratified** when smoke-30 passes.
 5. `BUILD_LOG.md` — append slice-completion entry.
-6. `SESSION_HANDOFF.md` — overwrite to point to Slice 8.0.5.
+6. `SESSION_HANDOFF.md` — overwrite to point to §8.0b (planner-side copy).
 
 ### Open questions surfaced during draft (NON-BLOCKING for Slice 8.0 execution)
 
-**Q1: Exact vLLM version pinned.** `scripts/vllm_start.sh` uses `$HOME/venv/vllm-new/bin/vllm` without a version pin. `--long-prefill-token-threshold` requires vLLM ≥ 0.10.0. Before executing Slice 8.0, run `~/venv/vllm-new/bin/vllm --version` on Colossus and confirm ≥ 0.10.0. If not, either upgrade (out-of-scope) or drop the `--long-prefill-token-threshold` line (keeps `--enable-chunked-prefill` with default threshold).
+**Q1: vLLM version inside `vllm/vllm-openai:latest` on Colossus.** `--long-prefill-token-threshold` and `--speculative-config` JSON syntax require vLLM ≥ 0.10.0. The `:latest` tag on Colossus was validated for F.19 (bench/f19pre) which used these features successfully at bench time, so ≥ 0.10 is nearly certain — but confirm with `docker run --rm vllm/vllm-openai:latest --version` before executing.
 
-**Q2: `--speculative-config` JSON syntax.** vLLM ≥ 0.10 accepts inline JSON on the command line via `--speculative-config`. Older versions used `--num-speculative-tokens` + `--speculative-model`. Q1's version check answers this simultaneously.
+**Q2: n-gram spec-decode acceptance rate on Qwen3.6-27B int4-AutoRound.** Council-Synthesis rates n-gram "modest" and workload-dependent. §8.0.5 will measure acceptance rate; §8.0 accepts n-gram on the "modest but stacks + zero VRAM" argument.
 
-**Q3: APC block size default.** The 16-token default is what vLLM ships; `--block-size` can be overridden. Slice 8.0 does not touch `--block-size`; §8.0.5's measurement work will confirm the block size in effect and refine `keep_first` if needed.
+**Q3: `--block-size` default in this vLLM version.** The 16-token default assumed for §Condenser alignment. Verify at bench time; if different, adjust `pad_prefix_to_apc_block` constant accordingly.
 
-Neither Q1 nor Q2 nor Q3 blocks the drafting of Slice 8.0. All three are execution-time checks the operator does on Colossus in a single shell probe. If Q1 returns < 0.10.0, the flag matrix degrades gracefully to a 3-flag bundle (fp8 KV + APC + n-gram spec-decode via old syntax) which is still Council-Synthesis §8.0's minimum viable bundle.
+None of Q1/Q2/Q3 blocks drafting. Q1 is a 1-shot Colossus probe.
+
+### Companion slice §8.0b (planner) — deferred to after §8.0 DoD
+
+Same flag matrix, applied to `ops/vllm_launch_planner.sh`, with these differences:
+- `--tool-call-parser` remains absent (planner is DeepSeek-R1, uses reasoning parser instead).
+- `--reasoning-parser deepseek_r1` unchanged.
+- `--quantization awq_marlin` unchanged (env-controlled via `FORGE_VLLM_PLANNER_QUANTIZATION`).
+- Same fp8 KV + chunked prefill + spec-decode + max-model-len 65k.
+- DoD: planner-role smoke (whatever bench exercises the planner path — TBD in §8.0b) does not regress.
+
+§8.0b will file as a separate BUILD_LOG entry and does not need a separate ADR — it's a mechanical copy governed by ADR-029 §D5's cross-cutting §8.0 condenser tweak.
 
 ---
 

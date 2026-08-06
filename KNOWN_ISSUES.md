@@ -177,3 +177,19 @@ Two unit-test failures observed on Colossus while running `pytest bff/tests/test
 - **Impact:** Diagnostic test only. The three real tests in the file (`test_update_from_event_runs_in_worker_thread`, `test_slow_producer_does_not_block_event_loop`, and the wrapped version) all pass. Production event_relay behaviour is correct.
 - **Fix path (out of Stage 5 scope):** Swap the create_task order — `http_task` first, then `relay_task`, then gather. See DEBUG_LOG 2026-08-06 04:17 EDT for full explanation.
 - **Do NOT block Stage 5 on this.**
+
+### 2026-08-06 — `~/venv/vllm-new` broken: huggingface-hub 1.26 vs transformers pinning <1.0
+
+- **Blocks:** F.19.5 (native venv 0.26+ upgrade); no active slice.
+- **Symptom:**
+  ```
+  ImportError: huggingface-hub>=0.34.0,<1.0 is required for a normal functioning of this module,
+  but found huggingface-hub==1.26.0.
+  ```
+  Triggered by `~/venv/vllm-new/bin/vllm --version` on Colossus. Full traceback ends at `transformers/utils/versions.py:44 in _compare_versions`, package `transformers` importing from `dependency_versions_check.py`.
+- **Attempted fixes:** none yet — deferred (canonical vLLM path is Docker; venv is not on any live path).
+- **Next investigation:** when F.19.5 (native-venv 0.26+ upgrade) is picked up, run one of:
+  1. `~/venv/vllm-new/bin/pip install 'huggingface-hub<1.0' --force-reinstall` (pin down)
+  2. `~/venv/vllm-new/bin/pip install -U transformers` (pin up — likely required for vLLM ≥ 0.26)
+  Option 2 is more forward-compatible with the F.19.5 target of vLLM 0.26+; option 1 is a quick unstick.
+- **Related DEBUG_LOG search terms:** `huggingface-hub`, `dependency_versions_check`, `require_version_core`, `vllm-new`, `ImportError.*hub`.

@@ -7170,3 +7170,25 @@ Unchanged: `--enable-prefix-caching` (already ON), `--max-num-seqs 8`, `--dtype 
 5. Attest DoD item 4 (regression ≤ 1 task) + DoD item 5 (the 4 context-skip tasks now execute).
 
 **Next action**: user runs the Colossus-side probe for Q1 and the smoke re-baseline; I then update `scripts/vllm_start.sh` with the exact flag block once the vLLM version answer is in.
+
+## 2026-08-06 15:24 EDT — Slice 8.0 kickoff DRAFT corrected: target is `ops/vllm_launch_coder.sh`, not `scripts/vllm_start.sh`
+
+- **Stage / plugin / port:** Stage 8 · §8.0 · coder vLLM serving-infra (:8501)
+- **What changed:**
+  - `docs/reconciliation-plan-stage-8.md` §8.0 fully rewritten to target the canonical Docker-based coder launcher `ops/vllm_launch_coder.sh` (qwen3.6-27b-int4-autoround), per ADR-013 amendment #1 + DEBUG_LOG 2026-08-03 18:34 EDT. Prior draft (2026-08-06 15:12 EDT entry above) mistakenly targeted `scripts/vllm_start.sh`, which is the OFF-PLAN F.18 GGUF experiment.
+  - Baseline vs. target flag matrix regenerated against the correct file (see §Flag matrix in the doc).
+  - VRAM math redone: F.3 baseline peak = 32,599 MiB (KNOWN_ISSUES §68), F.3.0 concurrency=1 (`bench/pathF_swebench/apply_and_test.py:306`), fp8 KV halves per-token cost, raised ceiling is VRAM-neutral at concurrency=1.
+  - Slice 8.0 now applies to **coder-only**; §8.0b (planner) tracked as a follow-up mechanical copy.
+- **Files touched:** `docs/reconciliation-plan-stage-8.md`
+- **Ports / adapters affected:** :8501 (coder); planner :8511 tracked for §8.0b.
+- **PORTING_LEDGER / ADR updated:** —
+- **Stop-condition status:** DRAFT complete (corrected). Awaiting Colossus-side vLLM version probe + smoke re-baseline execution before Slice 8.0 execution can begin.
+
+## 2026-08-06 15:24 EDT — Venv breakage found: `~/venv/vllm-new` has HF Hub 1.26 vs transformers requiring <1.0
+
+- **Stage / plugin / port:** F.19.5 (native venv upgrade tracking)
+- **What changed:** Filed KNOWN_ISSUES entry documenting the new failure mode. Native venv is not on the Slice 8.0 path (canonical route is Docker) so this does not block; F.19.5 already tracks the native-venv 0.26+ upgrade.
+- **Files touched:** `KNOWN_ISSUES.md`
+- **Ports / adapters affected:** none live; affects only bench-time tooling that shells into the native venv.
+- **PORTING_LEDGER / ADR updated:** —
+- **Stop-condition status:** deferred to F.19.5.

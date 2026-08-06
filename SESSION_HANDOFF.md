@@ -1,82 +1,52 @@
-# Forge-OH Session Handoff — 2026-08-06 15:12 EDT
+# Forge-OH Session Handoff — 2026-08-06 15:24 EDT
 
 ## Current build-sequencing position
 
-- **Stage / phase:** Stage 8 · Slice 8.0 (vLLM serving-infra config bundle) · **kickoff DRAFT complete**, awaiting one Colossus-side probe before flag block is written into `scripts/vllm_start.sh`.
-- **Plugin / kernel component:** vLLM launcher config. Config-only slice per ADR-029 §D5 (no capability code).
-- **Port(s) in progress:** none (Slice 8.0 introduces no new port). Slice 8.0's only new file is a ~20-LoC compose helper `bff/services/agent_compose.py` for condenser APC-block alignment.
+- **Stage / phase:** Stage 8 · Slice 8.0 (vLLM serving-infra config bundle)
+- **Plugin / kernel component:** coder role · vLLM launcher · Docker path (canonical per ADR-013 amendment #1)
+- **Ports / adapters in progress:**
+  - `ops/vllm_launch_coder.sh` (canonical coder launcher, :8501, `vllm/vllm-openai:latest`, `qwen3.6-27b-int4-autoround`)
+  - `bff/services/agent_compose.py` (new file, ~20 LoC, APC-block-alignment helper for condenser `keep_first`)
 
 ## Completed this session
 
-- **Stage 7 DoD verification** on Colossus (2026-08-06 14:47 EDT) — BUILD_LOG.
-- **ADR-029 filed and ratified** (2026-08-06 15:00 EDT) — SDK-native adoption decisions for §8.1 / §8.2 / §8.6; Stage 8 total slice count 12 → 11.
-- **Slice 8.0 kickoff drafted** (2026-08-06 15:12 EDT) — new `docs/reconciliation-plan-stage-8.md` with the full flag matrix, VRAM math, condenser-alignment plan, and rollback bisect. Optimal choices ratified on the 4 delegated open questions.
+- Read `docs/reconciliation-plan-v1.md`, Council-Synthesis §8.0 slice contract, KNOWN_ISSUES §68, `bench/pathE_qwen36_27b/vllm_launch.sh:195`, DEBUG_LOG 2026-08-03 18:34 EDT.
+- Drafted `docs/reconciliation-plan-stage-8.md` §8.0 targeting `scripts/vllm_start.sh` (F.18 GGUF experiment) — pushed as commit `b0dd4a0`.
+- User ran the Colossus-side vLLM version probe. Two findings:
+  1. `~/venv/vllm-new/bin/vllm --version` failed with `ImportError: huggingface-hub>=0.34.0,<1.0 is required ... found huggingface-hub==1.26.0`. The native venv is broken but not on any live Slice 8.0 path.
+  2. This forced the recognition that the canonical Forge-OH launcher is `ops/vllm_launch_coder.sh` (Docker, int4-AutoRound), not `scripts/vllm_start.sh` (F.18 GGUF experiment).
+- Fully rewrote `docs/reconciliation-plan-stage-8.md` §8.0 to target the correct launcher. Redid VRAM math against F.3 baseline peak (32,599 MiB) and F.3.0 concurrency=1. Filed KNOWN_ISSUES entry for the venv breakage.
 
-## Slice 8.0 flag matrix — summary
+## Remaining before Slice 8.0 Definition of Done
 
-Full detail: `docs/reconciliation-plan-stage-8.md` §Flag matrix.
-
-**Delta from current `scripts/vllm_start.sh` at `f5eff7b`:**
-
-Added flags:
-- `--kv-cache-dtype fp8`
-- `--enable-chunked-prefill`
-- `--long-prefill-token-threshold 4096`
-- `--speculative-config '{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}'`
-
-Modified flags:
-- `--gpu-memory-utilization 0.85 → 0.90`
-- `--max-model-len 32768 → 65536`
-
-Unchanged: APC (already on), max-num-seqs=8, dtype float16, all env vars.
-
-Condenser side: `LLMSummarizingCondenser(keep_first=4)` + ~20-LoC compose helper padding preserved prefix to vLLM's 16-token APC blocks.
-
-## Remaining before current Definition of Done
-
-**Requires one Colossus-side action from user (or a shell command relay through me).** DoD item 3 requires a smoke-30 re-run; I cannot run it. Steps 1–2 below are what unblocks me writing the exact `scripts/vllm_start.sh` change:
-
-1. Confirm vLLM version pinned on Colossus:
-   ```bash
-   ~/venv/vllm-new/bin/vllm --version
-   ```
-   - If `≥ 0.10.0`: I write the full 4-flag addition into `scripts/vllm_start.sh` as drafted.
-   - If `< 0.10.0`: I drop `--long-prefill-token-threshold` (chunked prefill defaults to a reasonable threshold) and rewrite `--speculative-config` to the pre-0.10 `--num-speculative-tokens 5 --speculative-model '[ngram]'` syntax.
-
-2. After I land the `scripts/vllm_start.sh` change:
-   ```bash
-   cd ~/dev/forge-oh
-   git pull
-   bash scripts/vllm_stop.sh 8500
-   nohup bash scripts/vllm_start.sh > ~/.forge-oh/vllm.log 2>&1 &
-   # Wait for /v1/models
-   for i in $(seq 1 450); do
-     if curl -sf http://127.0.0.1:8500/v1/models >/dev/null 2>&1; then
-       echo "READY"; break
-     fi
-     sleep 2
-   done
-   curl -s http://127.0.0.1:8500/v1/models | python3 -m json.tool
-   ```
-
-3. Re-run smoke-30 from `bench/pathF_swebench/` against baseline 30 tasks. Attest DoD item 4 (regression ≤ 1 task from 33.3% baseline) and DoD item 5 (the 4 context-budget-skipped tasks — `django-15629`, `matplotlib-26208`, `sphinx-7590`, `sympy-14248` — now load through the model).
-
-4. On green attestation: I add the compose helper (`bff/services/agent_compose.py`) + wire condenser `keep_first=4`, then mark §8.0 status → Ratified in `docs/reconciliation-plan-stage-8.md`, close the slice in BUILD_LOG, and open Slice 8.0.5.
+1. Verify vLLM version inside `vllm/vllm-openai:latest` on Colossus (see §Exact next action). Nearly certain ≥ 0.10; §8.0 doc §Open questions Q1 tracks this.
+2. Agent writes the 4-flag block + 2 modified flags into `ops/vllm_launch_coder.sh` (see `docs/reconciliation-plan-stage-8.md` §Flag matrix `Slice 8.0 target flags`). One commit.
+3. Agent adds `bff/services/agent_compose.py` (helper) + one call site in whatever composes the Forge-OH agent (locate at execution time — likely `bff/main.py` or `bff/services/agent_factory.py`). Same commit.
+4. User restarts coder container: `ops/vllm_supervisor.sh down coder && ops/vllm_supervisor.sh up coder`. Confirms `/v1/models` responds.
+5. User re-runs `bench/pathF_swebench/` smoke-30 at `--concurrency 1` against the same 30 tasks that produced Path A pass@1 = 33.3% baseline at `~/.forge-oh/bench_pathF_swebench/20260806_1211_run/`.
+6. DoD attestation:
+   - Regression ≤ 1 task vs. 33.3% baseline. Rollback bisect (§Rollback strategy in the doc) if worse.
+   - 4 context-budget-skipped tasks (`django-15629`, `matplotlib-26208`, `sphinx-7590`, `sympy-14248`) load through the model (pass or fail, but not `context-budget-skip`).
+7. Agent appends BUILD_LOG entry + overwrites SESSION_HANDOFF pointing to §8.0b (planner-side copy). Commits + pushes.
 
 ## Open questions / awaiting user answer
 
-**Q1 (blocking Slice 8.0 execution but not drafting):** vLLM version on Colossus. Answers Q1, Q2, Q3 from `docs/reconciliation-plan-stage-8.md` §Open questions in one probe.
+None blocking. Three non-blocking questions surfaced in the doc (§Open questions Q1/Q2/Q3): vLLM version confirmation, n-gram acceptance rate on the coder model, and vLLM `--block-size` default. Q1 resolves with the exact-next-action probe below.
 
 ## Exact next action
 
-Paste this on Colossus and return the output:
+Paste on Colossus:
 
 ```bash
-cd ~/dev/forge-oh && git pull && ~/venv/vllm-new/bin/vllm --version
+cd ~/dev/forge-oh && git pull && \
+  docker run --rm vllm/vllm-openai:latest --version 2>&1 | head -5
 ```
 
-Once I have the version, I:
-1. Write the correct flag block into `scripts/vllm_start.sh` (with graceful degradation if < 0.10.0).
-2. Add `bff/services/agent_compose.py` compose helper.
-3. Commit and push both under one commit `Slice 8.0: vLLM serving-infra config bundle`.
-4. Hand back to you for the launcher restart + smoke-30 re-baseline (DoD steps 4–5 above).
+Return the version string. On confirming ≥ 0.10:
+
+- I write the full 4-flag addition + 2 modified flags into `ops/vllm_launch_coder.sh` (exactly matching `docs/reconciliation-plan-stage-8.md` §Flag matrix "Slice 8.0 target flags").
+- I add `bff/services/agent_compose.py` (~20 LoC helper) and wire it into the agent composition site (I locate it before editing).
+- I commit both under one commit: "Slice 8.0: vLLM coder-role serving-infra config bundle".
+- I hand back with the exact restart + smoke-30 commands.
+
+If < 0.10 (very unlikely given F.19.5 tracking): degraded version — drop `--long-prefill-token-threshold`; use pre-0.10 spec-decode syntax.
