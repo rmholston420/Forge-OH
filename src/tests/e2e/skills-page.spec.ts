@@ -74,8 +74,18 @@ test.describe('Stage 6.6 Skills page', () => {
     await page.goto(`${FRONTEND_URL}/skills`);
     await expect(page.getByRole('heading', { name: 'Skills' })).toBeVisible({ timeout: 15_000 });
 
+    // Wait until at least one row has hydrated so the count buttons
+    // reflect the loaded data (not the initial 0/0/0 render).
+    await expect(page.getByTestId('skill-row').first()).toBeVisible({ timeout: 15_000 });
+
     const allBtn = page.getByRole('button', { name: /^All \(/ });
     const userBtn = page.getByRole('button', { name: /^User \(/ });
+
+    // Poll the button label until the count is non-zero (or timeout).
+    await expect.poll(async () => {
+      const t = (await allBtn.textContent()) || '';
+      return Number((t.match(/\((\d+)\)/) || [])[1] || 0);
+    }, { timeout: 10_000 }).toBeGreaterThan(0);
 
     const allText = (await allBtn.textContent()) || '';
     const userText = (await userBtn.textContent()) || '';

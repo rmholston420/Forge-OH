@@ -6844,3 +6844,20 @@ Agent-server 1.40.0 `ForkConversationRequest` silently ignores unknown keys and 
 **Stop-condition status**: §6.6.5 DoD met on paper — `/skills` lists real skill definitions with triggers, and MessageEvents that carry `activated_skills` now surface a chip on the Trace tab. **Playwright visual verification on Colossus is the next action** (see SESSION_HANDOFF). Not blocking merge because unit tests and TS types compile-check the contract end-to-end.
 
 **PORTING_LEDGER**: no entries — no OSS vendored in this slice.
+
+## 2026-08-06 11:25 EDT — Stage 6.6 CLOSED · Colossus verified
+
+**Verification pass on Colossus at `35e5141`**:
+- **forge-restart.sh + forge-status.sh**: agent-server :8090 / BFF :8081 / Next.js :3000 all `alive · match` (Next.js `child`, expected pnpm→next-server pattern).
+- **BFF unit tests**: `pytest bff/tests/test_skills_router.py -q` → **10 passed in 0.15s**.
+- **Live endpoint**: `GET /api/skills` → `{count: 23, sources: {user: 15, project: 8}}` — matches the direct SDK-loader counts from the prior skills-batch verification.
+- **Production build**: `npm run build` succeeded; `next start -H 127.0.0.1 -p 3100` returned `prod=200` on `/skills`.
+- **Playwright**: 4 tests → 3 passed on first pass. One flake (`scope filter toggles`): `textContent()` race — buttons rendered as `All (0)` before hydration fetch resolved. Fixed by adding `await expect(getByTestId('skill-row').first()).toBeVisible()` + `expect.poll()` on button label to await non-zero count.
+
+**Stop-condition status**: **§6.6.5 CLOSED**. `/skills` lists 23 real skill definitions (15 user + 8 project) with triggers, description, and 500-char expandable preview. Sidebar entry navigates cleanly. `SkillsChip` wired to `span.attributes.activatedSkills` on MessageEvent spans — will surface on the first run whose trigger fires.
+
+**Deferred (not blocking)**:
+1. Visual confirmation of the SkillsChip on a real firing run — needs a task that triggers a known skill (e.g. any run touching `next dev` should fire `forge-oh-colossus-ops`). Will show up organically in the next Playwright run capture.
+2. Swap BFF router body back to a proxy of upstream `/api/skills` when agent-server SDK v1.40.0 bug is fixed. Contract unchanged, one-commit swap.
+
+**Files touched**: same 14 as `35e5141` + `src/tests/e2e/skills-page.spec.ts` (test-3 flake fix).
